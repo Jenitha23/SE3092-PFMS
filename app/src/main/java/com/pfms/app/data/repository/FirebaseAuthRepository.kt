@@ -10,8 +10,9 @@ import kotlinx.coroutines.tasks.await
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.pfms.app.data.model.DefaultFinancialData
+import javax.inject.Inject
 
-class FirebaseAuthRepository(
+class FirebaseAuthRepository @Inject constructor(
     private val firebaseAuth: FirebaseAuth,
     private val firestore: FirebaseFirestore
 ) : AuthRepository {
