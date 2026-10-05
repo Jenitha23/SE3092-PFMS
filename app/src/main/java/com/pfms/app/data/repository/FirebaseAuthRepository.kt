@@ -1,15 +1,17 @@
 package com.pfms.app.data.repository
 
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.userProfileChangeRequest
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.pfms.app.data.model.DefaultFinancialData
 import com.pfms.app.domain.model.AuthUser
 import com.pfms.app.domain.repository.AuthRepository
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.pfms.app.data.model.DefaultFinancialData
 import javax.inject.Inject
 
 class FirebaseAuthRepository @Inject constructor(
@@ -18,6 +20,7 @@ class FirebaseAuthRepository @Inject constructor(
 ) : AuthRepository {
 
     override val currentUser: Flow<AuthUser?> = callbackFlow {
+
         val listener = FirebaseAuth.AuthStateListener { auth ->
             trySend(auth.currentUser?.toAuthUser())
         }
@@ -34,9 +37,10 @@ class FirebaseAuthRepository @Inject constructor(
         email: String,
         password: String
     ): Result<AuthUser> {
+
         return try {
 
-            // 1. Create the Firebase Authentication account
+            // 1. Create Firebase Authentication account
             val authResult = firebaseAuth
                 .createUserWithEmailAndPassword(email, password)
                 .await()
@@ -46,19 +50,23 @@ class FirebaseAuthRepository @Inject constructor(
                     IllegalStateException("User account could not be created.")
                 )
 
-            // 2. Set the display name in Firebase Authentication
+            // 2. Save display name in Firebase Authentication
             firebaseUser.updateProfile(
-                com.google.firebase.auth.userProfileChangeRequest {
+                userProfileChangeRequest {
                     this.displayName = displayName
                 }
             ).await()
 
-            // 3. Create the user's Firestore profile
+            // 3. Reference the user's Firestore document
             val userDocument = firestore
                 .collection("users")
                 .document(firebaseUser.uid)
 
-            val profileData = hashMapOf(
+            // 4. Create a Firestore batch
+            val batch = firestore.batch()
+
+            // 5. Create user profile
+            val profileData = hashMapOf<String, Any?>(
                 "uid" to firebaseUser.uid,
                 "displayName" to displayName,
                 "email" to (firebaseUser.email ?: email),
@@ -68,11 +76,9 @@ class FirebaseAuthRepository @Inject constructor(
                 "updatedAt" to FieldValue.serverTimestamp()
             )
 
-            userDocument.set(profileData).await()
+            batch.set(userDocument, profileData)
 
-            // 4. Create default expense categories
-            val batch = firestore.batch()
-
+            // 6. Create default expense categories
             DefaultFinancialData.expenseCategories.forEach { categoryName ->
 
                 val categoryDocument = userDocument
@@ -88,7 +94,7 @@ class FirebaseAuthRepository @Inject constructor(
                 batch.set(categoryDocument, categoryData)
             }
 
-            // 5. Create default income sources
+            // 7. Create default income sources
             DefaultFinancialData.incomeSources.forEach { sourceName ->
 
                 val sourceDocument = userDocument
@@ -104,10 +110,10 @@ class FirebaseAuthRepository @Inject constructor(
                 batch.set(sourceDocument, sourceData)
             }
 
-            // 6. Save all default categories and income sources
+            // 8. Commit profile + categories + income sources together
             batch.commit().await()
 
-            // 7. Return application authentication model
+            // 9. Return application authentication model
             val authUser = AuthUser(
                 uid = firebaseUser.uid,
                 displayName = displayName,
@@ -118,6 +124,7 @@ class FirebaseAuthRepository @Inject constructor(
             Result.success(authUser)
 
         } catch (exception: Exception) {
+
             Result.failure(exception)
         }
     }
@@ -126,7 +133,9 @@ class FirebaseAuthRepository @Inject constructor(
         email: String,
         password: String
     ): Result<AuthUser> {
+
         return try {
+
             val result = firebaseAuth
                 .signInWithEmailAndPassword(email, password)
                 .await()
@@ -139,6 +148,7 @@ class FirebaseAuthRepository @Inject constructor(
             Result.success(firebaseUser.toAuthUser())
 
         } catch (exception: Exception) {
+
             Result.failure(exception)
         }
     }
@@ -146,7 +156,9 @@ class FirebaseAuthRepository @Inject constructor(
     override suspend fun sendPasswordResetEmail(
         email: String
     ): Result<Unit> {
+
         return try {
+
             firebaseAuth
                 .sendPasswordResetEmail(email)
                 .await()
@@ -154,21 +166,27 @@ class FirebaseAuthRepository @Inject constructor(
             Result.success(Unit)
 
         } catch (exception: Exception) {
+
             Result.failure(exception)
         }
     }
 
     override suspend fun logout(): Result<Unit> {
+
         return try {
+
             firebaseAuth.signOut()
+
             Result.success(Unit)
 
         } catch (exception: Exception) {
+
             Result.failure(exception)
         }
     }
 
-    private fun com.google.firebase.auth.FirebaseUser.toAuthUser(): AuthUser {
+    private fun FirebaseUser.toAuthUser(): AuthUser {
+
         return AuthUser(
             uid = uid,
             displayName = displayName,
