@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">PFMS</string>
+
+    <string name="default_web_client_id">175922596134-j875br0esjlqdlrmau7mrpu8jm6gd3m0.apps.googleusercontent.com</string>
+
+    <string name="app_version_label">PFMS Version 1.0.0</string>
+
+    <string name="privacy_policy_title">Privacy Policy</string>
+
+    <string name="privacy_policy_text">
+        PFMS stores your account and financial information securely using Firebase services.
+        Your financial data is associated with your authenticated account and is protected
+        using Firebase Authentication and Firestore security rules.
+    </string>
 </resources>

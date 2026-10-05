@@ -22,5 +22,18 @@ interface AuthRepository {
         email: String
     ): Result<Unit>
 
+    suspend fun signInWithGoogle(
+        idToken: String
+    ): Result<AuthUser>
+
+    suspend fun updateDisplayName(displayName: String): Result<Unit>
+
+    suspend fun updateDefaultPaymentMethod(paymentMethod: String?): Result<Unit>
+    suspend fun updatePassword(newPassword: String): Result<Unit>
+    suspend fun deleteAccount(): Result<Unit>
+    suspend fun reauthenticate(
+        password: String
+    ): Result<Unit>
+
     suspend fun logout(): Result<Unit>
 }

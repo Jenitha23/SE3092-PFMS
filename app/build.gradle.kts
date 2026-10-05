@@ -51,7 +51,14 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
 
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
+
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
