@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "175922596134",
+    "project_id": "se3092-pfms",
+    "storage_bucket": "se3092-pfms.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:175922596134:android:0f56730dcb40380eb759e7",
+        "android_client_info": {
+          "package_name": "com.pfms.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "175922596134-j875br0esjlqdlrmau7mrpu8jm6gd3m0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pfms.app",
+            "certificate_hash": "43e34ed825c73c5ded539fd6f1c00b129c4a7925"
+          }
+        },
+        {
+          "client_id": "175922596134-gs907afmcd6qpi1j3pjjv0amgki30rk9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDf_MOMoP7yjSzr0r0hZNu9PbCpw-Lf0Ks"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "175922596134-gs907afmcd6qpi1j3pjjv0amgki30rk9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
