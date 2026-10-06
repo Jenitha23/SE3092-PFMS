@@ -3,7 +3,8 @@
 
     <string name="default_web_client_id">175922596134-j875br0esjlqdlrmau7mrpu8jm6gd3m0.apps.googleusercontent.com</string>
 
-    <string name="app_version_label">PFMS Version 1.0.0</string>
+    <!-- Filled with SettingsViewModel.appVersion, which reads the real versionName. -->
+    <string name="app_version_format">PFMS Version %1$s</string>
 
     <string name="privacy_policy_title">Privacy Policy</string>
 
