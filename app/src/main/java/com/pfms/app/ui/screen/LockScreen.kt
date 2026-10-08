@@ -76,10 +76,11 @@ fun LockScreen(
         }
     }
 
-    Box(
+    Surface(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
+            .imePadding(),
+        color = MaterialTheme.colorScheme.background
     ) {
         Column(
             modifier = Modifier
