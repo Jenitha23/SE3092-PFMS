@@ -124,7 +124,9 @@ fun PfmsNavGraph(
                 }
             )
         }
-        composable(Routes.Lock)            { LockScreen() }
+        composable(Routes.Lock) {
+            LockScreen(sessionViewModel = sessionViewModel)
+        }
         composable(Routes.Dashboard)       { DashboardScreen() }
         composable(Routes.Settings)        { SettingsScreen() }
     }
