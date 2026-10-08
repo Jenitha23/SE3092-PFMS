@@ -22,8 +22,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
 /**
- * Password field with a visibility toggle icon.
- * Manages its own show/hide state internally.
+ * Password field with vector eye visibility toggle matching Reference UI 1.
  */
 @Composable
 fun PfmsPasswordField(
@@ -43,6 +42,7 @@ fun PfmsPasswordField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
+        placeholder = { Text(label) },
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         singleLine = true,
@@ -58,9 +58,9 @@ fun PfmsPasswordField(
         },
         trailingIcon = {
             IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                Text(
-                    text = if (passwordVisible) "🙈" else "👁",
-                    style = MaterialTheme.typography.bodyLarge
+                EyeVectorIcon(
+                    visible = passwordVisible,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },
@@ -69,7 +69,7 @@ fun PfmsPasswordField(
             imeAction = imeAction
         ),
         keyboardActions = KeyboardActions(onAny = { onImeAction() }),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -84,15 +84,15 @@ fun PfmsPasswordField(
             focusedBorderColor = MaterialTheme.colorScheme.primary,
             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
             errorBorderColor = MaterialTheme.colorScheme.error,
+            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            errorLabelColor = MaterialTheme.colorScheme.error,
             focusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
             unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
             errorLeadingIconColor = MaterialTheme.colorScheme.error,
             focusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
             unfocusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
             errorTrailingIconColor = MaterialTheme.colorScheme.error,
-            focusedLabelColor = MaterialTheme.colorScheme.primary,
-            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            errorLabelColor = MaterialTheme.colorScheme.error,
             focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             focusedSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
