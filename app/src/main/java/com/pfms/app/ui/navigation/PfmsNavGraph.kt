@@ -100,7 +100,16 @@ fun PfmsNavGraph(
         startDestination = Routes.Splash
     ) {
         composable(Routes.Splash)          { SplashScreen() }
-        composable(Routes.Login)           { LoginScreen() }
+        composable(Routes.Login) {
+            LoginScreen(
+                onNavigateToRegister = {
+                    navController.navigate(Routes.Register) { launchSingleTop = true }
+                },
+                onNavigateToForgotPassword = {
+                    navController.navigate(Routes.ForgotPassword) { launchSingleTop = true }
+                }
+            )
+        }
         composable(Routes.Register)        { RegisterScreen() }
         composable(Routes.ForgotPassword)  { ForgotPasswordScreen() }
         composable(Routes.Lock)            { LockScreen() }
