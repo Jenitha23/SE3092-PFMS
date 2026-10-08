@@ -110,8 +110,20 @@ fun PfmsNavGraph(
                 }
             )
         }
-        composable(Routes.Register)        { RegisterScreen() }
-        composable(Routes.ForgotPassword)  { ForgotPasswordScreen() }
+        composable(Routes.Register) {
+            RegisterScreen(
+                onNavigateToLogin = {
+                    navController.popBackStack(Routes.Login, inclusive = false)
+                }
+            )
+        }
+        composable(Routes.ForgotPassword) {
+            ForgotPasswordScreen(
+                onNavigateToLogin = {
+                    navController.popBackStack(Routes.Login, inclusive = false)
+                }
+            )
+        }
         composable(Routes.Lock)            { LockScreen() }
         composable(Routes.Dashboard)       { DashboardScreen() }
         composable(Routes.Settings)        { SettingsScreen() }
