@@ -15,8 +15,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
 /**
- * Styled text field following the PFMS design language.
- * Displays an optional inline error message below the field.
+ * Styled text field matching Reference UI 1:
+ * Rounded 14dp corners, clean typography, outline border, and inline error support.
  */
 @Composable
 fun PfmsTextField(
@@ -35,6 +35,7 @@ fun PfmsTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
+        placeholder = { Text(label) },
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         singleLine = true,
@@ -48,7 +49,7 @@ fun PfmsTextField(
             imeAction = imeAction
         ),
         keyboardActions = KeyboardActions(onAny = { onImeAction() }),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,

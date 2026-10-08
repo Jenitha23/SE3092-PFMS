@@ -2,24 +2,57 @@ package com.pfms.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// PFMS Professional Navy & Slate Palette (Light Theme)
-val NavyPrimary = Color(0xFF1B365D)
-val NavySecondary = Color(0xFF4A6585)
-val NavyTertiary = Color(0xFF0F52BA)
-val NavyContainer = Color(0xFFDCE4EF)
-val OnNavyContainer = Color(0xFF0B1D33)
+// ============================================================================
+// PFMS Modern Fintech Color Palette
+// ============================================================================
 
-// PFMS Accents & Surfaces (Dark Theme)
-val NavyPrimaryDark = Color(0xFFA6C8FF)
-val NavySecondaryDark = Color(0xFFB4C8DF)
-val NavyTertiaryDark = Color(0xFFA5C8FE)
-val NavyContainerDark = Color(0xFF0D2847)
-val OnNavyContainerDark = Color(0xFFDCE4EF)
+// Primary Brand Colors (Emerald & Teal)
+val EmeraldPrimary = Color(0xFF169C7B)
+val EmeraldPrimaryDark = Color(0xFF0E7C67)
+val EmeraldPrimaryLight = Color(0xFFDDF5EE)
+val EmeraldPrimaryAccentDark = Color(0xFF2ED1A2)
 
-// Default template compatibility aliases
-val Purple80 = NavyPrimaryDark
-val PurpleGrey80 = NavySecondaryDark
-val Pink80 = NavyTertiaryDark
-val Purple40 = NavyPrimary
-val PurpleGrey40 = NavySecondary
-val Pink40 = NavyTertiary
+// Neutrals & Surfaces (Light Theme)
+val DarkNavyText = Color(0xFF10213A)
+val SecondaryText = Color(0xFF667085)
+val AppBackground = Color(0xFFF7F9FC)
+val SurfaceCard = Color(0xFFFFFFFF)
+val BorderOutline = Color(0xFFE3E8EF)
+val MutedSurface = Color(0xFFF1F4F8)
+
+// Semantic Accents
+val SuccessEmerald = Color(0xFF169C7B)
+val ErrorExpense = Color(0xFFE84C6A)
+val PurpleAccent = Color(0xFF7A4DD8)
+val OrangeAccent = Color(0xFFF5A340)
+val BlueAccent = Color(0xFF3C91E6)
+
+// Dark Theme Surfaces & Accents
+val DeepNavyBackground = Color(0xFF0B1320)
+val DarkCharcoalSurface = Color(0xFF121D2C)
+val DarkMutedSurface = Color(0xFF1A2638)
+val DarkBorderOutline = Color(0xFF243247)
+val DarkTextPrimary = Color(0xFFF0F4F8)
+val DarkTextSecondary = Color(0xFF9EAAB9)
+
+// ============================================================================
+// Backward-Compatibility Aliases
+// ============================================================================
+val NavyPrimary = EmeraldPrimary
+val NavySecondary = DarkNavyText
+val NavyTertiary = PurpleAccent
+val NavyContainer = EmeraldPrimaryLight
+val OnNavyContainer = EmeraldPrimaryDark
+
+val NavyPrimaryDark = EmeraldPrimaryAccentDark
+val NavySecondaryDark = DarkTextSecondary
+val NavyTertiaryDark = Color(0xFFBCA1F8)
+val NavyContainerDark = EmeraldPrimaryDark
+val OnNavyContainerDark = EmeraldPrimaryLight
+
+val Purple80 = EmeraldPrimaryAccentDark
+val PurpleGrey80 = DarkTextSecondary
+val Pink80 = ErrorExpense
+val Purple40 = EmeraldPrimary
+val PurpleGrey40 = SecondaryText
+val Pink40 = ErrorExpense

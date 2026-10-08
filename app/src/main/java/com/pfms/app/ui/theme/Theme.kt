@@ -12,55 +12,67 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = NavyPrimaryDark,
-    onPrimary = Color(0xFF00315D),
-    primaryContainer = NavyContainerDark,
-    onPrimaryContainer = OnNavyContainerDark,
-    secondary = NavySecondaryDark,
-    onSecondary = Color(0xFF1E3246),
-    tertiary = NavyTertiaryDark,
-    onTertiary = Color(0xFF003062),
-    background = Color(0xFF101216),
-    onBackground = Color(0xFFE2E2E6),
-    surface = Color(0xFF14171D),
-    onSurface = Color(0xFFE2E2E6),
-    surfaceVariant = Color(0xFF232730),
-    onSurfaceVariant = Color(0xFFC4C7D0),
-    outline = Color(0xFF8E9199),
-    outlineVariant = Color(0xFF44474E),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6)
+    primary = EmeraldPrimaryAccentDark,
+    onPrimary = Color(0xFF00382B),
+    primaryContainer = EmeraldPrimaryDark,
+    onPrimaryContainer = EmeraldPrimaryLight,
+    secondary = DarkTextSecondary,
+    onSecondary = DarkNavyText,
+    secondaryContainer = DarkCharcoalSurface,
+    onSecondaryContainer = DarkTextPrimary,
+    tertiary = Color(0xFFBCA1F8),
+    onTertiary = Color(0xFF381478),
+    background = DeepNavyBackground,
+    onBackground = DarkTextPrimary,
+    surface = DarkCharcoalSurface,
+    onSurface = DarkTextPrimary,
+    surfaceVariant = DarkMutedSurface,
+    onSurfaceVariant = DarkTextSecondary,
+    outline = Color(0xFF8692A3),
+    outlineVariant = DarkBorderOutline,
+    error = Color(0xFFFFB2BF),
+    onError = Color(0xFF680017),
+    errorContainer = Color(0xFF8E1734),
+    onErrorContainer = Color(0xFFFFD9DF)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = NavyPrimary,
+    primary = EmeraldPrimary,
     onPrimary = Color.White,
-    primaryContainer = NavyContainer,
-    onPrimaryContainer = OnNavyContainer,
-    secondary = NavySecondary,
+    primaryContainer = EmeraldPrimaryLight,
+    onPrimaryContainer = EmeraldPrimaryDark,
+    secondary = DarkNavyText,
     onSecondary = Color.White,
-    tertiary = NavyTertiary,
+    secondaryContainer = MutedSurface,
+    onSecondaryContainer = DarkNavyText,
+    tertiary = PurpleAccent,
     onTertiary = Color.White,
-    background = Color(0xFFF8F9FA),
-    onBackground = Color(0xFF191C1E),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF191C1E),
-    surfaceVariant = Color(0xFFF0F4F8),
-    onSurfaceVariant = Color(0xFF44474E),
-    outline = Color(0xFF74777F),
-    outlineVariant = Color(0xFFC4C7D0),
-    error = Color(0xFFBA1A1A),
+    background = AppBackground,
+    onBackground = DarkNavyText,
+    surface = SurfaceCard,
+    onSurface = DarkNavyText,
+    surfaceVariant = MutedSurface,
+    onSurfaceVariant = SecondaryText,
+    outline = SecondaryText,
+    outlineVariant = BorderOutline,
+    error = ErrorExpense,
     onError = Color.White,
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002)
+    errorContainer = Color(0xFFFFE8EC),
+    onErrorContainer = Color(0xFF680017)
 )
 
+/**
+ * PFMS Theme wrapper supporting [AppThemeMode] (System Default, Light, Dark).
+ */
 @Composable
 fun PFMSTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Default dynamicColor to false to maintain the PFMS navy brand styling consistently
+    themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    darkTheme: Boolean = when (themeMode) {
+        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+        AppThemeMode.LIGHT -> false
+        AppThemeMode.DARK -> true
+    },
+    // Keep dynamicColor disabled to preserve the fintech brand emerald & navy styling
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {

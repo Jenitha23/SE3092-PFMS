@@ -1,6 +1,7 @@
 package com.pfms.app.ui.screen
 
 import android.app.Activity
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,23 +35,35 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pfms.app.ui.component.AuthTab
 import com.pfms.app.ui.component.ErrorBanner
+import com.pfms.app.ui.component.FinanceIllustration
 import com.pfms.app.ui.component.GoogleSignInButton
+import com.pfms.app.ui.component.LockVectorIcon
+import com.pfms.app.ui.component.MailVectorIcon
 import com.pfms.app.ui.component.PfmsButton
+import com.pfms.app.ui.component.PfmsLogo
 import com.pfms.app.ui.component.PfmsPasswordField
+import com.pfms.app.ui.component.PfmsSegmentedAuthTab
 import com.pfms.app.ui.component.PfmsTextField
+import com.pfms.app.ui.theme.EmeraldPrimary
 import com.pfms.app.viewmodel.AuthViewModel
 
 /**
- * Professional Material 3 login screen for PFMS.
- *
- * - Driven by [AuthViewModel.uiState] for loading / error / field-error states.
- * - Does **not** navigate to Dashboard on success — [com.pfms.app.viewmodel.SessionViewModel.session]
- *   becoming Authenticated triggers that via the session gate in the NavGraph.
- * - [onNavigateToRegister] and [onNavigateToForgotPassword] are plain callbacks so the
- *   screen stays independent of NavController.
+ * Material 3 Authentication Screen matching Reference UI 1 exactly:
+ * - 3-bar rising financial graph logo.
+ * - PFMS / Personal Finance Management branding & "Better decisions. A brighter future." tagline.
+ * - Vector desk illustration with "Small steps. Big goals." speech bubble.
+ * - Segmented "Log In / Sign Up" tab control with active emerald underline indicator.
+ * - Clean 14dp rounded input fields with vector envelope and lock icons.
+ * - Full-width emerald "Log In" button.
+ * - Divider with centered "or".
+ * - Full-width "Continue with Google" button with vector Google logo.
+ * - Centered "Forgot password?" link and bottom "Don't have an account? Sign Up" navigation.
+ * - All backend/ViewModel callbacks and session gate routing strictly preserved.
  */
 @Composable
 fun LoginScreen(
@@ -77,33 +91,83 @@ fun LoginScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(72.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // ── Branding ───────────────────────────────────────────────
+            // ── Top Logo: 3-bar rising chart ───────────────────────────
+            PfmsLogo()
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // ── App Title ──────────────────────────────────────────────
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "PF",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "MS",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = EmeraldPrimary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // ── Subtitle / Tagline ─────────────────────────────────────
             Text(
-                text = "PFMS",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Bold
+                text = "Personal Finance Management",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold
                 ),
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Take control of your finances",
-                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
-            // ── Error banner ───────────────────────────────────────────
+            Text(
+                text = "Better decisions. A brighter future.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ── Finance Illustration ───────────────────────────────────
+            FinanceIllustration()
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Segmented "Log In / Sign Up" Tab ───────────────────────
+            PfmsSegmentedAuthTab(
+                selectedTab = AuthTab.LOGIN,
+                onTabSelected = { tab ->
+                    if (tab == AuthTab.SIGN_UP) {
+                        onNavigateToRegister()
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ── Error Banner ───────────────────────────────────────────
             ErrorBanner(message = uiState.errorMessage)
             if (uiState.errorMessage != null) {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // ── Email field ────────────────────────────────────────────
+            // ── Email Input ────────────────────────────────────────────
             PfmsTextField(
                 value = email,
                 onValueChange = {
@@ -112,19 +176,19 @@ fun LoginScreen(
                         authViewModel.clearMessages()
                     }
                 },
-                label = "Email",
+                label = "Email address",
                 error = uiState.fieldErrors.email,
                 enabled = !uiState.isLoading,
                 keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Next,
                 leadingIcon = {
-                    Text("✉", style = MaterialTheme.typography.bodyLarge)
+                    MailVectorIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // ── Password field ─────────────────────────────────────────
+            // ── Password Input ─────────────────────────────────────────
             PfmsPasswordField(
                 value = password,
                 onValueChange = {
@@ -142,28 +206,13 @@ fun LoginScreen(
                     authViewModel.login(email.trim(), password)
                 },
                 leadingIcon = {
-                    Text("🔒", style = MaterialTheme.typography.bodyLarge)
+                    LockVectorIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             )
 
-            // ── Forgot password link ───────────────────────────────────
-            Box(modifier = Modifier.fillMaxWidth()) {
-                TextButton(
-                    onClick = onNavigateToForgotPassword,
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                    enabled = !uiState.isLoading
-                ) {
-                    Text(
-                        text = "Forgot Password?",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(20.dp))
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // ── Login button ───────────────────────────────────────────
+            // ── Log In Button ──────────────────────────────────────────
             PfmsButton(
                 text = "Log In",
                 onClick = {
@@ -173,16 +222,16 @@ fun LoginScreen(
                 isLoading = uiState.isLoading
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // ── "or" divider ───────────────────────────────────────────
+            // ── Centered "or" Divider ──────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 HorizontalDivider(
                     modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.outlineVariant
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                 )
                 Text(
                     text = "  or  ",
@@ -191,50 +240,66 @@ fun LoginScreen(
                 )
                 HorizontalDivider(
                     modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.outlineVariant
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // ── Google sign-in ─────────────────────────────────────────
+            // ── Continue with Google Button ────────────────────────────
             GoogleSignInButton(
                 onClick = {
                     authViewModel.clearMessages()
-                    // Safely obtain the Activity context — required by Credential Manager.
                     val activity = context as? Activity ?: return@GoogleSignInButton
                     authViewModel.signInWithGoogle(activity)
                 },
                 enabled = !uiState.isLoading
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // ── Register link ──────────────────────────────────────────
+            // ── Centered Forgot Password Link ──────────────────────────
+            Text(
+                text = "Forgot password?",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = EmeraldPrimary,
+                modifier = Modifier
+                    .clickable(enabled = !uiState.isLoading) {
+                        onNavigateToForgotPassword()
+                    }
+                    .padding(8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ── Bottom: "Don't have an account? Sign Up" ───────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Don't have an account?",
+                    text = "Don't have an account? ",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                TextButton(
-                    onClick = onNavigateToRegister,
-                    enabled = !uiState.isLoading
-                ) {
-                    Text(
-                        text = "Create Account",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                Text(
+                    text = "Sign Up",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = EmeraldPrimary,
+                    modifier = Modifier
+                        .clickable(enabled = !uiState.isLoading) {
+                            onNavigateToRegister()
+                        }
+                        .padding(vertical = 4.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 }

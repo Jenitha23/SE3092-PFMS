@@ -27,6 +27,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +43,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -46,11 +52,15 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pfms.app.domain.model.LogoutResult
+import com.pfms.app.ui.component.CreditCardVectorIcon
 import com.pfms.app.ui.component.ErrorBanner
 import com.pfms.app.ui.component.InfoBanner
 import com.pfms.app.ui.component.PfmsButton
 import com.pfms.app.ui.component.PfmsPasswordField
 import com.pfms.app.ui.component.PfmsTextField
+import com.pfms.app.ui.component.UserVectorIcon
+import com.pfms.app.ui.theme.AppThemeMode
+import com.pfms.app.ui.theme.ThemeViewModel
 import com.pfms.app.viewmodel.SessionViewModel
 import com.pfms.app.viewmodel.SettingsViewModel
 
@@ -68,6 +78,7 @@ import com.pfms.app.viewmodel.SettingsViewModel
 fun SettingsScreen(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
+    themeViewModel: ThemeViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit = {}
 ) {
     val uiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
@@ -75,6 +86,7 @@ fun SettingsScreen(
     val profile by settingsViewModel.profile.collectAsStateWithLifecycle()
     val biometricEnabled by settingsViewModel.biometricEnabled.collectAsStateWithLifecycle()
     val logoutResult by sessionViewModel.logoutResult.collectAsStateWithLifecycle()
+    val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -84,6 +96,7 @@ fun SettingsScreen(
     var hasInitializedName by rememberSaveable { mutableStateOf(false) }
 
     var paymentMenuExpanded by remember { mutableStateOf(false) }
+    var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showChangePasswordDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteAccountDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -199,7 +212,7 @@ fun SettingsScreen(
                         label = "Display Name",
                         enabled = !uiState.isLoading,
                         leadingIcon = {
-                            Text("👤", style = MaterialTheme.typography.bodyLarge)
+                            UserVectorIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     )
 
@@ -254,7 +267,7 @@ fun SettingsScreen(
                                     .padding(horizontal = 16.dp, vertical = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("💳", style = MaterialTheme.typography.bodyLarge)
+                                CreditCardVectorIcon(tint = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
                                     text = profile?.defaultPaymentMethod ?: "Select a method",
@@ -324,8 +337,76 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ── Section 3: Security & Account ──────────────────────────
-            SectionHeader(title = "Security & Account")
+            // ── Section 3: Appearance ──────────────────────────────────
+            SectionHeader(title = "Appearance")
+
+            ElevatedCard(
+                onClick = { showThemeDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Current Theme Icon Badge
+                    Surface(
+                        modifier = Modifier.size(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        tonalElevation = 1.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = when (themeMode) {
+                                    AppThemeMode.SYSTEM -> "🌓"
+                                    AppThemeMode.LIGHT -> "☀"
+                                    AppThemeMode.DARK -> "🌙"
+                                },
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Theme",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = themeMode.getDisplayName(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Trailing chevron
+                    Text(
+                        text = "›",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // ── Section 4: Security ────────────────────────────────────
+            SectionHeader(title = "Security")
 
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -366,11 +447,23 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
+            // ── Section 5: Account ─────────────────────────────────────
+            SectionHeader(title = "Account")
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
                     // Log Out
                     OutlinedButton(
                         onClick = {
@@ -413,7 +506,9 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ── Section 4: App Info ─────────────────────────────────────
+            // ── Section 6: About ───────────────────────────────────────
+            SectionHeader(title = "About")
+
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -648,6 +743,73 @@ fun SettingsScreen(
                     enabled = !uiState.isLoading
                 ) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // ── Dialog: Choose Theme ───────────────────────────────────────────
+    if (showThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = {
+                Text(
+                    text = "Choose Theme",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AppThemeMode.entries.forEach { mode ->
+                        val isSelected = themeMode == mode
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    themeViewModel.setThemeMode(mode)
+                                    showThemeDialog = false
+                                },
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        themeViewModel.setThemeMode(mode)
+                                        showThemeDialog = false
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = mode.getDisplayName(),
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                    ),
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThemeDialog = false }) {
+                    Text(
+                        text = "Cancel",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         )
