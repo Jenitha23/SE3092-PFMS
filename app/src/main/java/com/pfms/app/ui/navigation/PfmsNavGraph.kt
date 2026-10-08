@@ -127,7 +127,14 @@ fun PfmsNavGraph(
         composable(Routes.Lock) {
             LockScreen(sessionViewModel = sessionViewModel)
         }
-        composable(Routes.Dashboard)       { DashboardScreen() }
+        composable(Routes.Dashboard) {
+            DashboardScreen(
+                sessionViewModel = sessionViewModel,
+                onNavigateToSettings = {
+                    navController.navigate(Routes.Settings) { launchSingleTop = true }
+                }
+            )
+        }
         composable(Routes.Settings) {
             SettingsScreen(
                 sessionViewModel = sessionViewModel,
