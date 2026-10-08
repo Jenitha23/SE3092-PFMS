@@ -128,6 +128,11 @@ fun PfmsNavGraph(
             LockScreen(sessionViewModel = sessionViewModel)
         }
         composable(Routes.Dashboard)       { DashboardScreen() }
-        composable(Routes.Settings)        { SettingsScreen() }
+        composable(Routes.Settings) {
+            SettingsScreen(
+                sessionViewModel = sessionViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
     }
 }
