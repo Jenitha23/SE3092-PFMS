@@ -34,7 +34,7 @@ class FirestoreLocalDataRepository @Inject constructor(
     }
 
     override suspend fun clearLocalData() {
-        biometricPreferences.setBiometricEnabled(false)
+        biometricPreferences.clearAll()
         CacheClearFlag.request(context) // cache is wiped at next cold start, see CacheClearFlag
     }
 
