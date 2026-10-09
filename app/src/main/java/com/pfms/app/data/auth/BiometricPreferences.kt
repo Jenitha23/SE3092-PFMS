@@ -19,11 +19,29 @@ class BiometricPreferences @Inject constructor(
 ) {
 
     private val biometricEnabledKey = booleanPreferencesKey("biometric_enabled")
+    private val promptShownKey = booleanPreferencesKey("biometric_prompt_shown")
 
     val biometricEnabled: Flow<Boolean> =
         context.biometricDataStore.data.map { preferences ->
             preferences[biometricEnabledKey] ?: false
         }
+
+    /** True once the one-time "Unlock faster?" question has been answered. */
+    val biometricPromptShown: Flow<Boolean> =
+        context.biometricDataStore.data.map { preferences ->
+            preferences[promptShownKey] ?: false
+        }
+
+    suspend fun setBiometricPromptShown(shown: Boolean) {
+        context.biometricDataStore.edit { preferences ->
+            preferences[promptShownKey] = shown
+        }
+    }
+
+    /** Called on logout / account deletion so the next user starts clean. */
+    suspend fun clearAll() {
+        context.biometricDataStore.edit { preferences -> preferences.clear() }
+    }
 
     suspend fun setBiometricEnabled(enabled: Boolean) {
         context.biometricDataStore.edit { preferences ->

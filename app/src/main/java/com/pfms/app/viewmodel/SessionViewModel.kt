@@ -158,7 +158,15 @@ class SessionViewModel @Inject constructor(
      * to sync. The UI shows a confirmation dialog and, if the user insists, calls logout(force = true).
      */
     fun logout(force: Boolean = false) {
-        viewModelScope.launch { _logoutResult.value = logoutUseCase(force) }
+        viewModelScope.launch {
+            val result = logoutUseCase(force)
+            _logoutResult.value = result
+            if (result is LogoutResult.Success) {
+                // Firebase signOut alone does not clear Credential Manager's active Google
+                // credential state. Clear it so the next explicit Google sign-in starts fresh.
+                googleSignInManager.clearCredentialState()
+            }
+        }
     }
 
     fun consumeLogoutResult() {

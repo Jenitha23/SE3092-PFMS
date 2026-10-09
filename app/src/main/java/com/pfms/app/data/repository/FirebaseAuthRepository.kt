@@ -10,6 +10,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
+import com.google.firebase.firestore.SetOptions
 import com.pfms.app.data.firebase.BULK_WRITE_TIMEOUT_MS
 import com.pfms.app.data.firebase.FirestoreCollections
 import com.pfms.app.data.firebase.UserProfileInitializer
@@ -143,13 +144,23 @@ class FirebaseAuthRepository @Inject constructor(
 
         return authCall {
             val user = requireUser()
-            user.updateProfile(userProfileChangeRequest { this.displayName = name }).await()
-            profileDocument(user.uid).update(
+            // Ensure older/partially-created accounts have a profile document before editing it.
+            profileInitializer.ensureInitialised(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
+
+            // Merge avoids failing with NOT_FOUND if a profile document was missing.
+            profileDocument(user.uid).set(
                 mapOf(
+                    "uid" to user.uid,
                     "displayName" to name,
+                    "email" to user.email.orEmpty(),
                     "updatedAt" to FieldValue.serverTimestamp()
-                )
-            ).awaitOnline()
+                ),
+                SetOptions.merge()
+            ).awaitOnline(SETTINGS_WRITE_TIMEOUT_MS)
+
+            // Update Firebase Auth only after Firestore confirms the profile write, so the UI
+            // does not report a failed save after changing just one copy of the name.
+            user.updateProfile(userProfileChangeRequest { this.displayName = name }).await()
         }
     }
 
@@ -162,12 +173,16 @@ class FirebaseAuthRepository @Inject constructor(
 
         return authCall {
             val user = requireUser()
-            profileDocument(user.uid).update(
+            profileInitializer.ensureInitialised(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
+            profileDocument(user.uid).set(
                 mapOf(
+                    "uid" to user.uid,
+                    "email" to user.email.orEmpty(),
                     "defaultPaymentMethod" to paymentMethod,
                     "updatedAt" to FieldValue.serverTimestamp()
-                )
-            ).awaitOnline()
+                ),
+                SetOptions.merge()
+            ).awaitOnline(SETTINGS_WRITE_TIMEOUT_MS)
         }
     }
 
@@ -330,6 +345,7 @@ class FirebaseAuthRepository @Inject constructor(
         const val GOOGLE_FAILED_MESSAGE = "Google sign-in failed. Please try again."
         const val FIREBASE_PROVIDER = "firebase"
         const val DELETE_BATCH_SIZE = 400L
+        const val SETTINGS_WRITE_TIMEOUT_MS = 30_000L
         const val RECENT_LOGIN_WINDOW_SECONDS = 240L // Firebase's window is about 5 minutes
     }
 }

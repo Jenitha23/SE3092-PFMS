@@ -57,6 +57,19 @@ class SettingsViewModel @Inject constructor(
     val biometricEnabled: StateFlow<Boolean> = biometricPreferences.biometricEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /** null until read from disk; the one-time prompt is shown only when this is false. */
+    val biometricPromptShown: StateFlow<Boolean?> = biometricPreferences.biometricPromptShown
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun dismissBiometricPrompt() {
+        viewModelScope.launch { biometricPreferences.setBiometricPromptShown(true) }
+    }
+
+    fun enableBiometricFromPrompt() {
+        setBiometricEnabled(true)
+        dismissBiometricPrompt()
+    }
+
     /** Show the biometric switch as enabled only when this is true. */
     fun isBiometricAvailable(): Boolean = biometricAuthManager.isBiometricAvailable()
 
