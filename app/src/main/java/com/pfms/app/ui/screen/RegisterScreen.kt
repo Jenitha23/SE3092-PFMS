@@ -256,10 +256,11 @@ fun RegisterScreen(
 
             // ── Continue with Google ───────────────────────────────────
             GoogleSignInButton(
+                text = "Sign up with Google",
                 onClick = {
                     authViewModel.clearMessages()
                     val activity = context as? Activity ?: return@GoogleSignInButton
-                    authViewModel.signInWithGoogle(activity)
+                    authViewModel.signUpWithGoogle(activity)
                 },
                 enabled = !uiState.isLoading
             )

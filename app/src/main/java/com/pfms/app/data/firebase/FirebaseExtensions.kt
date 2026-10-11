@@ -64,11 +64,14 @@ internal fun Throwable.toAuthException(): AuthException = when (this) {
         "Invalid email or password.",
         AuthErrorType.INVALID_CREDENTIALS
     )
-    is FirebaseFirestoreException ->
-        if (code == FirebaseFirestoreException.Code.UNAVAILABLE) {
+    is FirebaseFirestoreException -> when (code) {
+        FirebaseFirestoreException.Code.UNAVAILABLE ->
             AuthException(OFFLINE_MESSAGE, AuthErrorType.NETWORK)
-        } else {
-            AuthException("Something went wrong. Please try again.", AuthErrorType.UNKNOWN)
-        }
+        FirebaseFirestoreException.Code.PERMISSION_DENIED -> AuthException(
+            "Permission denied by Firestore. Please check the Firestore security rules for this project.",
+            AuthErrorType.UNKNOWN
+        )
+        else -> AuthException("Something went wrong. Please try again.", AuthErrorType.UNKNOWN)
+    }
     else -> AuthException("Something went wrong. Please try again.", AuthErrorType.UNKNOWN)
 }

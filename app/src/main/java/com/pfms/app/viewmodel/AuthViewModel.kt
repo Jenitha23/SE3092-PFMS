@@ -49,14 +49,21 @@ class AuthViewModel @Inject constructor(
         ) { authRepository.sendPasswordResetEmail(email) }
     }
 
-    /**
-     * @param activityContext an Activity context (Credential Manager needs one to show its sheet).
-     * It is used only for the duration of the call and is never stored.
-     */
+    /** "Continue with Google" on the Log In screen: only succeeds for an already-registered account. */
     fun signInWithGoogle(activityContext: Context) {
         runAuthAction {
             googleSignInManager.getGoogleIdToken(activityContext).fold(
                 onSuccess = { idToken -> authRepository.signInWithGoogle(idToken) },
+                onFailure = { error -> Result.failure<AuthUser>(error) }
+            )
+        }
+    }
+
+    /** "Sign up with Google" on the Sign Up screen: fails with "already registered" for existing accounts. */
+    fun signUpWithGoogle(activityContext: Context) {
+        runAuthAction {
+            googleSignInManager.getGoogleIdToken(activityContext).fold(
+                onSuccess = { idToken -> authRepository.signUpWithGoogle(idToken) },
                 onFailure = { error -> Result.failure<AuthUser>(error) }
             )
         }
