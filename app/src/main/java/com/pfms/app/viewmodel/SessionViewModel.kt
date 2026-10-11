@@ -86,10 +86,16 @@ class SessionViewModel @Inject constructor(
             locked.value = biometricPreferences.biometricEnabled.first()
         }
 
-        // A fresh sign-in (Unauthenticated -> Authenticated) must not ask for a fingerprint.
+        // The lock only exists for an already-signed-in user. While logged out it is always
+        // released, and a fresh sign-in / sign-up (Unauthenticated -> Authenticated), including
+        // Google, must never ask for a fingerprint.
         viewModelScope.launch {
             var previous: SessionState = SessionState.Loading
             session.collect { current ->
+                if (current is SessionState.Unauthenticated) {
+                    locked.value = false
+                    _lockUiState.value = LockUiState()
+                }
                 if (previous is SessionState.Unauthenticated && current is SessionState.Authenticated) {
                     locked.value = false
                 }
@@ -102,7 +108,13 @@ class SessionViewModel @Inject constructor(
 
     /** Call when the app returns from the background after your chosen timeout. */
     fun lockApp() {
-        viewModelScope.launch { locked.value = biometricPreferences.biometricEnabled.first() }
+        // Never arm the lock for a logged-out user (e.g. while the Google account sheet is open).
+        if (session.value !is SessionState.Authenticated) return
+        viewModelScope.launch {
+            val enabled = biometricPreferences.biometricEnabled.first()
+            // Re-check after the suspend point: the user may have logged out or signed in meanwhile.
+            if (session.value is SessionState.Authenticated) locked.value = enabled
+        }
     }
 
     fun unlockWithBiometric(activity: FragmentActivity) {
@@ -162,6 +174,9 @@ class SessionViewModel @Inject constructor(
             val result = logoutUseCase(force)
             _logoutResult.value = result
             if (result is LogoutResult.Success) {
+                // Release the app lock so the next Google / email sign-in or sign-up starts clean.
+                locked.value = false
+                _lockUiState.value = LockUiState()
                 // Firebase signOut alone does not clear Credential Manager's active Google
                 // credential state. Clear it so the next explicit Google sign-in starts fresh.
                 googleSignInManager.clearCredentialState()

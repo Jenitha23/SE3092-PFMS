@@ -22,7 +22,8 @@ import androidx.compose.ui.unit.dp
 fun GoogleSignInButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    text: String = "Continue with Google"
 ) {
     OutlinedButton(
         onClick = onClick,
@@ -39,7 +40,7 @@ fun GoogleSignInButton(
         GoogleLogo()
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = "Continue with Google",
+            text = text,
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontWeight = FontWeight.SemiBold
             ),

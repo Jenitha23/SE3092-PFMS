@@ -21,6 +21,10 @@ class UserProfileInitializer @Inject constructor(
     private val firestore: FirebaseFirestore
 ) {
 
+    /** True when users/{uid} exists on the server, i.e. the account finished registration. */
+    suspend fun profileExists(uid: String): Boolean =
+        firestore.collection(FirestoreCollections.USERS).document(uid).get(Source.SERVER).await().exists()
+
     suspend fun ensureInitialised(uid: String, displayName: String, email: String) {
         val userDoc = firestore.collection(FirestoreCollections.USERS).document(uid)
 

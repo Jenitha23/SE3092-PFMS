@@ -1,5 +1,6 @@
 package com.pfms.app.data.repository
 
+import android.util.Log
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -25,7 +26,10 @@ import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.domain.validation.AuthValidator
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
@@ -39,13 +43,25 @@ class FirebaseAuthRepository @Inject constructor(
     // ------------------------------------------------------------------ session (FR-02)
 
     /** Firebase persists the session on disk, so this emits the stored user after an app restart. */
-    override val currentUser: Flow<AuthUser?> = callbackFlow {
+    private val firebaseUser: Flow<AuthUser?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             trySend(auth.currentUser?.toAuthUser())
         }
         firebaseAuth.addAuthStateListener(listener)
         awaitClose { firebaseAuth.removeAuthStateListener(listener) }
     }
+
+    /**
+     * True while a Google login/sign-up is still being verified (new vs existing account, profile
+     * setup). Firebase reports the user as signed in the moment the credential is accepted; the
+     * session must not expose that user until the checks pass, otherwise the dashboard would flash
+     * and then disappear when we reject or sign out the account.
+     */
+    private val googleCheckInProgress = MutableStateFlow(false)
+
+    override val currentUser: Flow<AuthUser?> =
+        combine(firebaseUser, googleCheckInProgress) { user, checking -> if (checking) null else user }
+            .distinctUntilChanged()
 
     // ------------------------------------------------------------------ FR-01 register
 
@@ -119,18 +135,52 @@ class FirebaseAuthRepository @Inject constructor(
     // ------------------------------------------------------------------ FR-03 Google
 
     override suspend fun signInWithGoogle(idToken: String): Result<AuthUser> =
+        googleAuth(idToken, GoogleIntent.LOGIN)
+
+    override suspend fun signUpWithGoogle(idToken: String): Result<AuthUser> =
+        googleAuth(idToken, GoogleIntent.SIGN_UP)
+
+    private enum class GoogleIntent { LOGIN, SIGN_UP }
+
+    /**
+     * Firebase silently creates an account for any unknown Google user, so "new vs existing" is
+     * decided here from [com.google.firebase.auth.AdditionalUserInfo.isNewUser]:
+     *  - LOGIN + brand-new account  -> delete the account we just created, report "not found".
+     *  - SIGN_UP + finished profile -> sign out, report "already registered".
+     * An Auth account whose profile was never completed (interrupted earlier setup) is finished
+     * rather than rejected, so the user is never locked out of their own Google account.
+     */
+    private suspend fun googleAuth(idToken: String, intent: GoogleIntent): Result<AuthUser> =
         authCall(invalidCredentialsMessage = GOOGLE_FAILED_MESSAGE) {
-            val credential = GoogleAuthProvider.getCredential(idToken, null)
-            val firebaseUser = firebaseAuth.signInWithCredential(credential).await().user
-                ?: throw AuthException(GOOGLE_FAILED_MESSAGE, AuthErrorType.INVALID_CREDENTIALS)
+            googleCheckInProgress.value = true
+            try {
+                val credential = GoogleAuthProvider.getCredential(idToken, null)
+                val authResult = firebaseAuth.signInWithCredential(credential).await()
+                val firebaseUser = authResult.user
+                    ?: throw AuthException(GOOGLE_FAILED_MESSAGE, AuthErrorType.INVALID_CREDENTIALS)
+                val isNewAccount = authResult.additionalUserInfo?.isNewUser == true
 
-            initialiseProfileOrSignOut(
-                firebaseUser,
-                firebaseUser.displayName?.takeIf { it.isNotBlank() }
-                    ?: firebaseUser.email?.substringBefore('@').orEmpty()
-            )
+                when (intent) {
+                    GoogleIntent.LOGIN -> if (isNewAccount) {
+                        discardJustCreatedAccount(firebaseUser)
+                        throw AuthException(ACCOUNT_NOT_FOUND_MESSAGE, AuthErrorType.ACCOUNT_NOT_FOUND)
+                    }
+                    GoogleIntent.SIGN_UP -> if (!isNewAccount && hasCompletedProfile(firebaseUser.uid)) {
+                        firebaseAuth.signOut()
+                        throw AuthException(ACCOUNT_EXISTS_MESSAGE, AuthErrorType.ACCOUNT_EXISTS)
+                    }
+                }
 
-            firebaseUser.toAuthUser()
+                initialiseProfileOrSignOut(
+                    firebaseUser,
+                    firebaseUser.displayName?.takeIf { it.isNotBlank() }
+                        ?: firebaseUser.email?.substringBefore('@').orEmpty()
+                )
+
+                firebaseUser.toAuthUser()
+            } finally {
+                googleCheckInProgress.value = false
+            }
         }
 
     // ------------------------------------------------------------------ FR-06 settings
@@ -277,11 +327,38 @@ class FirebaseAuthRepository @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // Real cause (PERMISSION_DENIED = Firestore rules, NOT_FOUND = database not created...).
+            Log.e("ProfileSetup", "Profile initialisation failed; signing out", e)
             firebaseAuth.signOut()
             throw AuthException(
                 "Your account was created but setup could not finish. Please log in to complete it.",
                 AuthErrorType.PROFILE_SETUP_FAILED
             )
+        }
+    }
+
+    private suspend fun hasCompletedProfile(uid: String): Boolean = try {
+        profileInitializer.profileExists(uid)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.e("GoogleAuth", "Could not check whether the profile exists; signing out", e)
+        firebaseAuth.signOut()
+        throw AuthException(
+            "We could not verify your account. Please check your connection and try again.",
+            AuthErrorType.PROFILE_SETUP_FAILED
+        )
+    }
+
+    /** Removes the Auth account that signInWithCredential just auto-created for a LOGIN attempt. */
+    private suspend fun discardJustCreatedAccount(user: FirebaseUser) {
+        try {
+            user.delete().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("GoogleAuth", "Could not delete the auto-created account; signing out", e)
+            firebaseAuth.signOut()
         }
     }
 
@@ -323,6 +400,7 @@ class FirebaseAuthRepository @Inject constructor(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        Log.w("AuthRepo", "Auth call failed", e)
         val mapped = e.toAuthException()
         Result.failure(
             if (invalidCredentialsMessage != null && mapped.type == AuthErrorType.INVALID_CREDENTIALS) {
@@ -343,6 +421,10 @@ class FirebaseAuthRepository @Inject constructor(
 
     private companion object {
         const val GOOGLE_FAILED_MESSAGE = "Google sign-in failed. Please try again."
+        const val ACCOUNT_NOT_FOUND_MESSAGE =
+            "No account found for this Google account. Please sign up first."
+        const val ACCOUNT_EXISTS_MESSAGE =
+            "This Google account is already registered. Please log in instead."
         const val FIREBASE_PROVIDER = "firebase"
         const val DELETE_BATCH_SIZE = 400L
         const val SETTINGS_WRITE_TIMEOUT_MS = 30_000L

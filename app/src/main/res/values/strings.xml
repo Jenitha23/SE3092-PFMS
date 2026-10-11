@@ -1,7 +1,9 @@
 <resources>
     <string name="app_name">PFMS</string>
 
-    <string name="default_web_client_id">175922596134-j875br0esjlqdlrmau7mrpu8jm6gd3m0.apps.googleusercontent.com</string>
+    <!-- Must be the *Web application* OAuth client (client_type 3 in google-services.json),
+         NOT the Android client. Credential Manager / Firebase reject the Android client ID here. -->
+    <string name="default_web_client_id">175922596134-gs907afmcd6qpi1j3pjjv0amgki30rk9.apps.googleusercontent.com</string>
 
     <!-- Filled with SettingsViewModel.appVersion, which reads the real versionName. -->
     <string name="app_version_format">PFMS Version %1$s</string>

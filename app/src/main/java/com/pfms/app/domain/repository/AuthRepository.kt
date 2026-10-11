@@ -16,7 +16,11 @@ interface AuthRepository {
     /** Always succeeds for well-formed emails, so it cannot be used to discover registered users. */
     suspend fun sendPasswordResetEmail(email: String): Result<Unit>
 
+    /** Log in with Google. Fails with ACCOUNT_NOT_FOUND (and creates nothing) if this Google account never signed up. */
     suspend fun signInWithGoogle(idToken: String): Result<AuthUser>
+
+    /** Sign up with Google. Fails with ACCOUNT_EXISTS (and signs out) if this Google account is already registered. */
+    suspend fun signUpWithGoogle(idToken: String): Result<AuthUser>
 
     suspend fun updateDisplayName(displayName: String): Result<Unit>
 
