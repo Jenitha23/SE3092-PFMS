@@ -77,7 +77,8 @@ import com.pfms.app.viewmodel.SettingsViewModel
 fun DashboardScreen(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToIncome: () -> Unit = {}
 ) {
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
     val profile by settingsViewModel.profile.collectAsStateWithLifecycle()
@@ -123,7 +124,7 @@ fun DashboardScreen(
                         icon = { IncomeNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
                         label = "Income",
                         isActive = false,
-                        onClick = null
+                        onClick = onNavigateToIncome
                     )
 
                     // Expenses Tab

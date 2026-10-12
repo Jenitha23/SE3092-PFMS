@@ -9,4 +9,7 @@ object Routes {
     const val Lock = "lock"
     const val Dashboard = "dashboard"
     const val Settings = "settings"
+
+    // Income Management
+    const val IncomeList = "income_list"
 }

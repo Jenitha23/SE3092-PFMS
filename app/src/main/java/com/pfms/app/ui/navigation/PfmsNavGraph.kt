@@ -25,6 +25,12 @@ import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.viewmodel.AppLockState
 import com.pfms.app.viewmodel.SessionViewModel
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import com.pfms.app.ui.screen.income.IncomeListScreen
 
 /**
  * Root composable that hosts the navigation graph and the session gate.
@@ -127,19 +133,78 @@ fun PfmsNavGraph(
         composable(Routes.Lock) {
             LockScreen(sessionViewModel = sessionViewModel)
         }
+
         composable(Routes.Dashboard) {
             DashboardScreen(
                 sessionViewModel = sessionViewModel,
                 onNavigateToSettings = {
-                    navController.navigate(Routes.Settings) { launchSingleTop = true }
+                    navController.navigate(Routes.Settings) {
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToIncome = {
+                    navController.navigate(Routes.IncomeList) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
+
         composable(Routes.Settings) {
             SettingsScreen(
                 sessionViewModel = sessionViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }
+
+
+        composable(Routes.IncomeList) {
+            var showFormMessage by remember {
+                mutableStateOf(false)
+            }
+
+            IncomeListScreen(
+                incomes = emptyList(),
+                onAddIncome = {
+                    showFormMessage = true
+                },
+                onEditIncome = { _ ->
+                    showFormMessage = true
+                },
+                onDeleteIncome = { _ ->
+                    // Connected to ViewModel in the CRUD step.
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+
+            if (showFormMessage) {
+                AlertDialog(
+                    onDismissRequest = {
+                        showFormMessage = false
+                    },
+                    title = {
+                        Text("Add Income")
+                    },
+                    text = {
+                        Text(
+                            "The income entry form will be " +
+                                    "implemented in the next step."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showFormMessage = false
+                            }
+                        ) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+        }
+
     }
 }
