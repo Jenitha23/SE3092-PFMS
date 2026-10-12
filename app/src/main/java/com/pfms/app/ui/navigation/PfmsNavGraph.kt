@@ -25,6 +25,7 @@ import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.viewmodel.AppLockState
 import com.pfms.app.viewmodel.SessionViewModel
+import com.pfms.app.ui.screen.income.IncomeFormScreen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -166,7 +167,9 @@ fun PfmsNavGraph(
             IncomeListScreen(
                 incomes = emptyList(),
                 onAddIncome = {
-                    showFormMessage = true
+                    navController.navigate(Routes.AddIncome) {
+                        launchSingleTop = true
+                    }
                 },
                 onEditIncome = { _ ->
                     showFormMessage = true
@@ -205,6 +208,55 @@ fun PfmsNavGraph(
                 )
             }
         }
+
+
+        composable(Routes.AddIncome) {
+
+            var showPendingMessage by remember {
+                mutableStateOf(false)
+            }
+
+            IncomeFormScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onSave = { input ->
+                    // Temporary UI integration.
+                    // Input will be passed to IncomeViewModel
+                    // when repository persistence is connected.
+                    showPendingMessage = true
+                }
+            )
+
+            if (showPendingMessage) {
+                AlertDialog(
+                    onDismissRequest = {
+                        showPendingMessage = false
+                    },
+                    title = {
+                        Text("Form Validation Successful")
+                    },
+                    text = {
+                        Text(
+                            "Your income details are valid. " +
+                                    "Saving records will be enabled " +
+                                    "after the Income ViewModel and " +
+                                    "repository are connected."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showPendingMessage = false
+                            }
+                        ) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+        }
+
 
     }
 }

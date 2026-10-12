@@ -12,4 +12,5 @@ object Routes {
 
     // Income Management
     const val IncomeList = "income_list"
+    const val AddIncome = "add_income"
 }
