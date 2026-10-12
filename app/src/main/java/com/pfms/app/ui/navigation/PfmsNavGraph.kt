@@ -18,6 +18,8 @@ import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.pfms.app.domain.model.Income
+import java.math.BigDecimal
 
 import com.pfms.app.domain.model.SessionState
 import com.pfms.app.ui.screen.DashboardScreen
@@ -47,6 +49,7 @@ import com.pfms.app.viewmodel.SessionViewModel
  * - Income Management
  * - Recurring Salary
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PfmsNavGraph(
     sessionViewModel: SessionViewModel = hiltViewModel()
@@ -152,6 +155,37 @@ fun PfmsNavGraph(
         }
     }
 
+    // In-memory income list for testing Member 1 & 2 flows
+    // until Member 3 completes Firestore repository sync.
+    val demoIncomes = remember {
+        mutableStateListOf<Income>(
+            Income(
+                id = "sample-freelance-1",
+                userId = "test-user",
+                amountMinor = 5000000L, // 50,000 LKR
+                currency = "LKR",
+                source = "Freelance",
+                receivedDate = "2026-10-10",
+                note = "Landing page design",
+                projectName = "Acme Corp Web App",
+                paymentStatus = "Expected",
+                createdAt = System.currentTimeMillis() - 86400000
+            ),
+            Income(
+                id = "sample-crypto-1",
+                userId = "test-user",
+                amountMinor = 1500000L, // 15,000 LKR
+                currency = "LKR",
+                source = "Crypto",
+                receivedDate = "2026-10-09",
+                note = "ETH staking payout",
+                cryptoType = "Gain",
+                cryptoAsset = "ETH",
+                createdAt = System.currentTimeMillis() - 172800000
+            )
+        )
+    }
+
     // -----------------------------------------
     // NAVIGATION HOST
     // -----------------------------------------
@@ -160,6 +194,7 @@ fun PfmsNavGraph(
         navController = navController,
         startDestination = Routes.Splash
     ) {
+
 
         // -------------------------------------
         // SPLASH
@@ -296,36 +331,61 @@ fun PfmsNavGraph(
 
         composable(Routes.IncomeList) {
 
-            IncomeListScreen(
+            // Calculate Member 2 freelance summary
+            val pendingFreelance = demoIncomes.filter { 
+                it.source == "Freelance" && it.paymentStatus == "Expected" 
+            }
+            val pendingCount = pendingFreelance.size
+            val pendingTotal = pendingFreelance.sumOf { 
+                it.amountLkrMinor ?: it.amountMinor 
+            }
 
-                // Temporary empty list until
-                // Member 3 implements repository.
-                incomes = emptyList(),
+            // Calculate Member 2 crypto summary
+            val cryptoGains = demoIncomes.filter { it.source == "Crypto" && it.cryptoType == "Gain" }
+                .sumOf { it.amountLkrMinor ?: it.amountMinor }
+            val cryptoLosses = demoIncomes.filter { it.source == "Crypto" && it.cryptoType == "Loss" }
+                .sumOf { it.amountLkrMinor ?: it.amountMinor }
+
+            // Member 2: Realized Income excludes unpaid freelance and deducts crypto losses
+            val nonCryptoRealized = demoIncomes.filter {
+                if (it.source == "Freelance") it.paymentStatus == "Received"
+                else it.source != "Crypto"
+            }.sumOf { it.amountLkrMinor ?: it.amountMinor }
+
+            val totalRealized = nonCryptoRealized + cryptoGains - cryptoLosses
+
+            IncomeListScreen(
+                incomes = demoIncomes.toList(),
+
+                totalRealizedIncomeMinor = totalRealized,
+                totalPendingFreelanceMinor = pendingTotal,
+                pendingFreelanceCount = pendingCount,
+                cryptoGainsMinor = cryptoGains,
+                cryptoLossesMinor = cryptoLosses,
+                netCryptoMinor = cryptoGains - cryptoLosses,
+                ytdNetCryptoMinor = cryptoGains - cryptoLosses,
 
                 onAddIncome = {
-
-                    navController.navigate(
-                        Routes.AddIncome
-                    ) {
+                    navController.navigate(Routes.AddIncome) {
                         launchSingleTop = true
                     }
                 },
 
                 onEditIncome = { incomeId ->
-
-                    navController.navigate(
-                        Routes.editIncome(incomeId)
-                    ) {
+                    navController.navigate(Routes.editIncome(incomeId)) {
                         launchSingleTop = true
                     }
                 },
 
-                onDeleteIncome = { _ ->
+                onDeleteIncome = { incomeId ->
+                    demoIncomes.removeAll { it.id == incomeId }
+                },
 
-                    // Future integration:
-                    // IncomeViewModel.deleteIncome()
-                    //
-                    // Requires repository implementation.
+                onMarkFreelanceReceived = { incomeId ->
+                    val index = demoIncomes.indexOfFirst { it.id == incomeId }
+                    if (index != -1) {
+                        demoIncomes[index] = demoIncomes[index].copy(paymentStatus = "Received")
+                    }
                 },
 
                 onBack = {
@@ -333,10 +393,7 @@ fun PfmsNavGraph(
                 },
 
                 onRecurringSalary = {
-
-                    navController.navigate(
-                        Routes.SalaryTemplate
-                    ) {
+                    navController.navigate(Routes.SalaryTemplate) {
                         launchSingleTop = true
                     }
                 }
@@ -349,146 +406,100 @@ fun PfmsNavGraph(
 
         composable(Routes.AddIncome) {
 
-            var showPendingMessage by remember {
-                mutableStateOf(false)
-            }
-
             IncomeFormScreen(
-
                 onBack = {
                     navController.popBackStack()
                 },
 
-                onSave = { _ ->
+                onSave = { input ->
+                    val parsedBigDecimal = input.amount.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                    val minor = parsedBigDecimal.multiply(BigDecimal(100)).toLong()
+                    val id = java.util.UUID.randomUUID().toString()
 
-                    // Temporary integration.
-                    // No income record is persisted.
-                    showPendingMessage = true
+                    val newIncome = Income(
+                        id = id,
+                        userId = (session as? SessionState.Authenticated)?.user?.uid ?: "user-1",
+                        amountMinor = minor,
+                        currency = input.currency,
+                        source = input.source,
+                        receivedDate = input.receivedDate,
+                        note = input.note,
+                        exchangeRate = input.exchangeRate,
+                        exchangeRateDate = input.exchangeRateDate,
+                        amountLkrMinor = input.amountLkrMinor,
+                        projectName = input.projectName,
+                        paymentStatus = input.paymentStatus,
+                        cryptoType = input.cryptoType,
+                        cryptoAsset = input.cryptoAsset,
+                        createdAt = System.currentTimeMillis()
+                    )
+
+                    demoIncomes.add(0, newIncome)
+                    navController.popBackStack()
                 }
             )
-
-            if (showPendingMessage) {
-
-                AlertDialog(
-
-                    onDismissRequest = {
-                        showPendingMessage = false
-                    },
-
-                    title = {
-                        Text("Form Validation Successful")
-                    },
-
-                    text = {
-                        Text(
-                            "Your income details are valid. " +
-                                    "Saving will be enabled when " +
-                                    "the IncomeRepository is connected. " +
-                                    "No income record has been saved."
-                        )
-                    },
-
-                    confirmButton = {
-
-                        TextButton(
-                            onClick = {
-                                showPendingMessage = false
-                            }
-                        ) {
-                            Text("OK")
-                        }
-                    }
-                )
-            }
         }
 
         // -------------------------------------
-        // EDIT INCOME - STEP 11
+        // EDIT INCOME
         // -------------------------------------
 
         composable(
             route = Routes.EditIncome,
-
             arguments = listOf(
                 navArgument("incomeId") {
                     type = NavType.StringType
                 }
             )
-
         ) { backStackEntry ->
+            val incomeId = backStackEntry.arguments?.getString("incomeId")
+            val incomeItem = demoIncomes.find { it.id == incomeId }
 
-            val incomeId =
-                backStackEntry.arguments
-                    ?.getString("incomeId")
-
-            // Member 3 has not implemented
-            // getIncomeById() yet.
-            //
-            // We must not display a blank form
-            // and accidentally overwrite an entry.
-
-            Scaffold(
-
-                topBar = {
-
-                    TextButton(
-                        onClick = {
-                            navController.popBackStack()
+            if (incomeItem != null) {
+                IncomeFormScreen(
+                    initialIncome = incomeItem,
+                    onBack = {
+                        navController.popBackStack()
+                    },
+                    onSave = { input ->
+                        val parsedBigDecimal = input.amount.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                        val minor = parsedBigDecimal.multiply(BigDecimal(100)).toLong()
+                        val index = demoIncomes.indexOfFirst { it.id == incomeId }
+                        if (index != -1) {
+                            demoIncomes[index] = incomeItem.copy(
+                                amountMinor = minor,
+                                currency = input.currency,
+                                source = input.source,
+                                receivedDate = input.receivedDate,
+                                note = input.note,
+                                exchangeRate = input.exchangeRate,
+                                exchangeRateDate = input.exchangeRateDate,
+                                amountLkrMinor = input.amountLkrMinor,
+                                projectName = input.projectName,
+                                paymentStatus = input.paymentStatus,
+                                cryptoType = input.cryptoType,
+                                cryptoAsset = input.cryptoAsset,
+                                updatedAt = System.currentTimeMillis()
+                            )
                         }
-                    ) {
-                        Text("Back")
+                        navController.popBackStack()
                     }
-                }
-
-            ) { paddingValues ->
-
-                Column(
-
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .padding(24.dp),
-
-                    verticalArrangement =
-                        Arrangement.Center,
-
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-
-                ) {
-
-                    Text(
-                        text = "Edit Income",
-                        style = MaterialTheme
-                            .typography.headlineSmall
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(12.dp)
-                    )
-
-                    Text(
-                        text = if (incomeId.isNullOrBlank()) {
-                            "Invalid income record."
-                        } else {
-                            "Income editing will be " +
-                                    "available once the " +
-                                    "repository is connected."
-                        },
-                        style = MaterialTheme
-                            .typography.bodyMedium
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(20.dp)
-                    )
-
-                    OutlinedButton(
-                        onClick = {
-                            navController.popBackStack()
-                        }
-                    ) {
-                        Text("Return to Income")
+                )
+            } else {
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("Income Not Found") },
+                            navigationIcon = {
+                                TextButton(onClick = { navController.popBackStack() }) {
+                                    Text("Back")
+                                }
+                            }
+                        )
+                    }
+                ) { padding ->
+                    Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("This income record was not found.")
                     }
                 }
             }
