@@ -171,8 +171,10 @@ fun PfmsNavGraph(
                         launchSingleTop = true
                     }
                 },
-                onEditIncome = { _ ->
-                    showFormMessage = true
+                onEditIncome = { incomeId ->
+                    navController.navigate(
+                        Routes.editIncome(incomeId)
+                    )
                 },
                 onDeleteIncome = { _ ->
                     // Connected to ViewModel in the CRUD step.
