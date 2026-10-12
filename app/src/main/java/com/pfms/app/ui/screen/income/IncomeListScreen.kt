@@ -26,7 +26,8 @@ fun IncomeListScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    onRecurringSalary: () -> Unit = {}
 ) {
     var incomeToDelete by remember {
         mutableStateOf<Income?>(null)
@@ -82,6 +83,40 @@ fun IncomeListScreen(
             )
 
             Spacer(modifier = Modifier.height(20.dp))
+
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Recurring Salary",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Set your usual salary and confirm " +
+                                "the actual amount received each month.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedButton(
+                        onClick = onRecurringSalary,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Manage Salary Template")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
 
             if (errorMessage != null) {
                 Text(
