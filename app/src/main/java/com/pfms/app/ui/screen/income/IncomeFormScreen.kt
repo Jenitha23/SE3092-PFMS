@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -25,11 +24,6 @@ import com.pfms.app.domain.model.Income
 import com.pfms.app.ui.theme.DarkNavyText
 import com.pfms.app.ui.theme.EmeraldPrimary
 import com.pfms.app.ui.theme.SecondaryText
-import com.pfms.app.data.exchange.ExchangeRateResult
-import com.pfms.app.data.exchange.ExchangeRateService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.Instant
@@ -45,9 +39,6 @@ data class IncomeFormInput(
     val currency: String,
     val receivedDate: String,
     val note: String,
-    val exchangeRate: String? = null,
-    val exchangeRateDate: String? = null,
-    val amountLkrMinor: Long? = null,
     val projectName: String? = null,
     val paymentStatus: String = "Received",
     val cryptoType: String? = null,
@@ -83,10 +74,10 @@ fun IncomeFormScreen(
     rateFetchError: String? = null,
     isManualRateMode: Boolean = false,
     onFetchExchangeRate: (String) -> Unit = {},
-    onSetManualRate: (String) -> Boolean = { false },
+    onSetManualRate: (String, String) -> Boolean = { _, _ -> false },
+    onEnableManualRate: () -> Unit = {},
     onClearExchangeRate: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     val isEditMode = initialIncome != null
 
     // 1. Income source
@@ -142,21 +133,12 @@ fun IncomeFormScreen(
     // Member 2: Date picker state
     var showDatePicker by remember { mutableStateOf(false) }
 
-    // Member 2: Internal fallback exchange-rate state (used when not driven by external ViewModel)
-    var localExchangeRate by rememberSaveable { mutableStateOf<String?>(initialIncome?.exchangeRate) }
-    var localExchangeRateDate by rememberSaveable { mutableStateOf<String?>(initialIncome?.exchangeRateDate) }
-    var localIsRateFetching by remember { mutableStateOf(false) }
-    var localRateFetchError by remember { mutableStateOf<String?>(null) }
-    var localIsManualMode by rememberSaveable { mutableStateOf(false) }
-
-    val coroutineScope = rememberCoroutineScope()
-    val exchangeRateService = remember { ExchangeRateService() }
-
-    val activeExchangeRate = exchangeRate ?: localExchangeRate?.let { runCatching { BigDecimal(it) }.getOrNull() }
-    val activeExchangeRateDate = exchangeRateDate ?: localExchangeRateDate
-    val activeIsRateFetching = isRateFetching || localIsRateFetching
-    val activeRateFetchError = rateFetchError ?: localRateFetchError
-    val activeIsManualMode = isManualRateMode || localIsManualMode
+    // Source of truth for exchange rates is IncomeViewModel, not the Composable.
+    val activeExchangeRate = exchangeRate
+    val activeExchangeRateDate = exchangeRateDate
+    val activeIsRateFetching = isRateFetching
+    val activeRateFetchError = rateFetchError
+    val activeIsManualMode = isManualRateMode
 
     var manualRateInput by rememberSaveable { mutableStateOf("") }
     var amountError by remember { mutableStateOf<String?>(null) }
@@ -662,12 +644,9 @@ fun IncomeFormScreen(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(12.dp))
                                     .clickable {
-                                        currency = cur
-                                        if (cur == "LKR") {
+                                        if (currency != cur) {
+                                            currency = cur
                                             onClearExchangeRate()
-                                            localExchangeRate = null
-                                            localIsManualMode = false
-                                            localRateFetchError = null
                                         }
                                     }
                             ) {
@@ -777,40 +756,7 @@ fun IncomeFormScreen(
                         }.getOrDefault(false)
 
                         Button(
-                            onClick = {
-                                onFetchExchangeRate(receivedDate)
-                                // Self-contained rate fetch fallback when no external ViewModel is actively controlling rate state
-                                localIsRateFetching = true
-                                localRateFetchError = null
-                                coroutineScope.launch {
-                                    val result = withContext(Dispatchers.IO) {
-                                        try {
-                                            val entryDate = LocalDate.parse(receivedDate)
-                                            val today = LocalDate.now(ZoneId.of("Asia/Colombo"))
-                                            if (entryDate < today) {
-                                                exchangeRateService.fetchHistoricalRate(receivedDate)
-                                            } else {
-                                                exchangeRateService.fetchLatestRate()
-                                            }
-                                        } catch (e: Exception) {
-                                            exchangeRateService.fetchLatestRate()
-                                        }
-                                    }
-                                    localIsRateFetching = false
-                                    when (result) {
-                                        is ExchangeRateResult.Success -> {
-                                            localExchangeRate = result.rate.toPlainString()
-                                            localExchangeRateDate = result.rateDate
-                                            localRateFetchError = null
-                                            localIsManualMode = false
-                                        }
-                                        is ExchangeRateResult.Failure -> {
-                                            localRateFetchError = result.message
-                                            localIsManualMode = true
-                                        }
-                                    }
-                                }
-                            },
+                            onClick = { onFetchExchangeRate(receivedDate) },
                             enabled = !activeIsRateFetching,
                             colors = ButtonDefaults.buttonColors(containerColor = brandEmerald),
                             shape = RoundedCornerShape(12.dp),
@@ -900,6 +846,10 @@ fun IncomeFormScreen(
                             )
                         }
 
+                        TextButton(onClick = onEnableManualRate, enabled = !isSaving) {
+                            Text("Enter exchange rate manually")
+                        }
+
                         // Manual fallback entry
                         if (activeIsManualMode || activeRateFetchError != null) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -928,18 +878,7 @@ fun IncomeFormScreen(
 
                                     Button(
                                         onClick = {
-                                            val handled = onSetManualRate(manualRateInput)
-                                            if (!handled) {
-                                                val parsed = manualRateInput.trim().toBigDecimalOrNull()
-                                                if (parsed != null && parsed > BigDecimal.ZERO) {
-                                                    localExchangeRate = parsed.toPlainString()
-                                                    localExchangeRateDate = "Manual"
-                                                    localRateFetchError = null
-                                                    localIsManualMode = true
-                                                } else {
-                                                    localRateFetchError = "Please enter a valid rate (e.g. 305.50)"
-                                                }
-                                            }
+                                            onSetManualRate(manualRateInput, receivedDate)
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = brandEmerald),
                                         shape = RoundedCornerShape(12.dp)
@@ -947,19 +886,6 @@ fun IncomeFormScreen(
                                         Text("Apply")
                                     }
                                 }
-                            }
-                        } else {
-                            TextButton(
-                                onClick = {
-                                    localIsManualMode = true
-                                    localExchangeRate = null
-                                    onClearExchangeRate()
-                                }
-                            ) {
-                                Text(
-                                    text = "Enter rate manually instead",
-                                    style = MaterialTheme.typography.bodySmall.copy(color = brandEmerald)
-                                )
                             }
                         }
                     }
@@ -1053,7 +979,6 @@ fun IncomeFormScreen(
                                                 receivedDate = selectedLocalDate.toString()
                                                 if (currency == "USD") {
                                                     onClearExchangeRate()
-                                                    localExchangeRate = null
                                                 }
                                             }
                                             showDatePicker = false
@@ -1134,12 +1059,14 @@ fun IncomeFormScreen(
                     if (!validAmount) {
                         amountError = "Enter a valid positive amount with up to 2 decimal places."
                     } else {
-                        val convertedLkrMinor = if (currency == "USD" && activeExchangeRate != null) {
-                            com.pfms.app.domain.usecase.CurrencyConverter.convertUsdToLkrMinor(
-                                amountUsdMinor = (value.toBigDecimal().multiply(BigDecimal(100))).toLong(),
-                                exchangeRate = activeExchangeRate
-                            )
-                        } else null
+                        if (currency == "USD" && (activeExchangeRate == null || activeIsRateFetching)) {
+                            amountError = "Fetch or enter the exchange rate before saving."
+                            return@Button
+                        }
+                        if (source == "Freelance" && projectName.isBlank()) {
+                            amountError = "Enter a freelance project/client name."
+                            return@Button
+                        }
 
                         onSave(
                             IncomeFormInput(
@@ -1148,9 +1075,6 @@ fun IncomeFormScreen(
                                 currency = currency,
                                 receivedDate = receivedDate,
                                 note = note.trim(),
-                                exchangeRate = if (currency == "USD") activeExchangeRate?.toPlainString() else null,
-                                exchangeRateDate = if (currency == "USD") activeExchangeRateDate else null,
-                                amountLkrMinor = convertedLkrMinor,
                                 projectName = if (source == "Freelance") projectName.trim() else null,
                                 paymentStatus = if (source == "Freelance") paymentStatus else "Received",
                                 cryptoType = if (source == "Crypto") cryptoType else null,
