@@ -41,6 +41,9 @@ data class IncomeUiState(
     val rateFetchError: String? = null,
     val isManualRateMode: Boolean = false,
 
+    // Member 2: Realized income (excluding unpaid freelance, including crypto P&L).
+    val totalRealizedIncomeMinor: Long = 0L,
+
     // Member 2: Freelance summary.
     val totalPendingFreelanceMinor: Long = 0L,
     val pendingFreelanceCount: Int = 0,
@@ -96,6 +99,7 @@ class IncomeViewModel(
                         errorMessage = null
                     )
                     // Recalculate Member 2 summaries whenever data changes.
+                    recalculateRealizedIncome(sorted)
                     recalculateFreelanceSummary(sorted)
                     recalculateCryptoSummary(sorted)
                 }
@@ -129,21 +133,28 @@ class IncomeViewModel(
                     if (entryDate >= today) {
                         exchangeRateService.fetchLatestRate()
                     } else {
-                        // Backdated entry → try historical rate first.
+                        // Backdated entry → historical rate only.
+                        // If historical fails, force manual mode
+                        // instead of silently using today's rate.
                         val historical =
                             exchangeRateService.fetchHistoricalRate(
                                 receivedDate
                             )
                         if (historical is ExchangeRateResult.Failure) {
-                            // Fall back to latest if historical fails.
-                            exchangeRateService.fetchLatestRate()
+                            ExchangeRateResult.Failure(
+                                "Historical rate for $receivedDate " +
+                                "is unavailable. Please enter " +
+                                "the rate manually."
+                            )
                         } else {
                             historical
                         }
                     }
                 } catch (e: Exception) {
-                    // Bad date format – just fetch latest.
-                    exchangeRateService.fetchLatestRate()
+                    ExchangeRateResult.Failure(
+                        "Invalid date format. Please enter " +
+                        "the rate manually."
+                    )
                 }
             }
 
@@ -608,6 +619,51 @@ class IncomeViewModel(
         }
     }
 
+    /**
+     * Returns the LKR-equivalent amount for totals.
+     * For LKR entries, returns amountMinor.
+     * For USD entries with a stored conversion, returns amountLkrMinor.
+     * For USD entries WITHOUT a stored conversion, returns 0L
+     * (prevents treating raw USD cents as LKR cents).
+     */
+    private fun Income.lkrAmount(): Long {
+        return when {
+            currency == "LKR" -> amountMinor
+            amountLkrMinor != null -> amountLkrMinor
+            else -> 0L  // Unconverted USD – exclude from LKR totals.
+        }
+    }
+
+    /**
+     * Calculates realized net income:
+     *   (non-crypto received income) + crypto gains – crypto losses.
+     * Excludes unpaid freelance invoices (paymentStatus == "Expected").
+     */
+    private fun recalculateRealizedIncome(
+        records: List<Income>
+    ) {
+        val nonCryptoRealized = records.filter {
+            if (it.source == "Freelance") {
+                it.paymentStatus == "Received"
+            } else {
+                it.source != "Crypto"
+            }
+        }.sumOf { it.lkrAmount() }
+
+        val cryptoGains = records.filter {
+            it.source == "Crypto" && it.cryptoType == "Gain"
+        }.sumOf { it.lkrAmount() }
+
+        val cryptoLosses = records.filter {
+            it.source == "Crypto" && it.cryptoType == "Loss"
+        }.sumOf { it.lkrAmount() }
+
+        _uiState.value = _uiState.value.copy(
+            totalRealizedIncomeMinor =
+                nonCryptoRealized + cryptoGains - cryptoLosses
+        )
+    }
+
     private fun recalculateFreelanceSummary(
         records: List<Income>
     ) {
@@ -615,9 +671,7 @@ class IncomeViewModel(
             it.source == "Freelance" &&
                     it.paymentStatus == "Expected"
         }
-        val totalPending = pending.sumOf {
-            it.amountLkrMinor ?: it.amountMinor
-        }
+        val totalPending = pending.sumOf { it.lkrAmount() }
         _uiState.value = _uiState.value.copy(
             totalPendingFreelanceMinor = totalPending,
             pendingFreelanceCount = pending.size
@@ -636,14 +690,10 @@ class IncomeViewModel(
         }
         val gains = cryptoRecords.filter {
             it.cryptoType == "Gain"
-        }.sumOf {
-            it.amountLkrMinor ?: it.amountMinor
-        }
+        }.sumOf { it.lkrAmount() }
         val losses = cryptoRecords.filter {
             it.cryptoType == "Loss"
-        }.sumOf {
-            it.amountLkrMinor ?: it.amountMinor
-        }
+        }.sumOf { it.lkrAmount() }
 
         // Year-to-date (YTD) calculation.
         val currentYear = LocalDate.now(
@@ -655,14 +705,10 @@ class IncomeViewModel(
         }
         val ytdGains = ytdRecords.filter {
             it.cryptoType == "Gain"
-        }.sumOf {
-            it.amountLkrMinor ?: it.amountMinor
-        }
+        }.sumOf { it.lkrAmount() }
         val ytdLosses = ytdRecords.filter {
             it.cryptoType == "Loss"
-        }.sumOf {
-            it.amountLkrMinor ?: it.amountMinor
-        }
+        }.sumOf { it.lkrAmount() }
 
         _uiState.value = _uiState.value.copy(
             cryptoGainsMinor = gains,
