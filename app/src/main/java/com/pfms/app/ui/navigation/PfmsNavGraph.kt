@@ -331,26 +331,36 @@ fun PfmsNavGraph(
 
         composable(Routes.IncomeList) {
 
-            // Calculate Member 2 freelance summary
-            val pendingFreelance = demoIncomes.filter { 
-                it.source == "Freelance" && it.paymentStatus == "Expected" 
-            }
-            val pendingCount = pendingFreelance.size
-            val pendingTotal = pendingFreelance.sumOf { 
-                it.amountLkrMinor ?: it.amountMinor 
+            // Member 2: Helper — LKR-equivalent for totals.
+            // For LKR entries: amountMinor.
+            // For USD entries with conversion: amountLkrMinor.
+            // For USD entries WITHOUT conversion: 0L (not LKR).
+            fun Income.lkrAmount(): Long = when {
+                currency == "LKR" -> amountMinor
+                amountLkrMinor != null -> amountLkrMinor
+                else -> 0L
             }
 
+            // Calculate Member 2 freelance summary
+            val pendingFreelance = demoIncomes.filter {
+                it.source == "Freelance" && it.paymentStatus == "Expected"
+            }
+            val pendingCount = pendingFreelance.size
+            val pendingTotal = pendingFreelance.sumOf { it.lkrAmount() }
+
             // Calculate Member 2 crypto summary
-            val cryptoGains = demoIncomes.filter { it.source == "Crypto" && it.cryptoType == "Gain" }
-                .sumOf { it.amountLkrMinor ?: it.amountMinor }
-            val cryptoLosses = demoIncomes.filter { it.source == "Crypto" && it.cryptoType == "Loss" }
-                .sumOf { it.amountLkrMinor ?: it.amountMinor }
+            val cryptoGains = demoIncomes
+                .filter { it.source == "Crypto" && it.cryptoType == "Gain" }
+                .sumOf { it.lkrAmount() }
+            val cryptoLosses = demoIncomes
+                .filter { it.source == "Crypto" && it.cryptoType == "Loss" }
+                .sumOf { it.lkrAmount() }
 
             // Member 2: Realized Income excludes unpaid freelance and deducts crypto losses
             val nonCryptoRealized = demoIncomes.filter {
                 if (it.source == "Freelance") it.paymentStatus == "Received"
                 else it.source != "Crypto"
-            }.sumOf { it.amountLkrMinor ?: it.amountMinor }
+            }.sumOf { it.lkrAmount() }
 
             val totalRealized = nonCryptoRealized + cryptoGains - cryptoLosses
 
