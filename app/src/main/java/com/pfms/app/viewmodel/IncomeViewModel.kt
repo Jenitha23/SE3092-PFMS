@@ -2,6 +2,10 @@
 package com.pfms.app.viewmodel
 
 import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import com.pfms.app.domain.usecase.IncomeSummaryCalculator
+import kotlinx.coroutines.Job
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.data.exchange.ExchangeRateResult
 import com.pfms.app.data.exchange.ExchangeRateService
@@ -43,6 +47,7 @@ data class IncomeUiState(
 
     // Member 2: Realized income (excluding unpaid freelance, including crypto P&L).
     val totalRealizedIncomeMinor: Long = 0L,
+    val monthlyRealizedIncomeMinor: Long = 0L,
 
     // Member 2: Freelance summary.
     val totalPendingFreelanceMinor: Long = 0L,
@@ -57,7 +62,8 @@ data class IncomeUiState(
     val ytdNetCryptoMinor: Long = 0L
 )
 
-class IncomeViewModel(
+@HiltViewModel
+class IncomeViewModel @Inject constructor(
     private val incomeRepository: IncomeRepository,
     private val authRepository: AuthRepository,
     private val exchangeRateService: ExchangeRateService
@@ -66,6 +72,9 @@ class IncomeViewModel(
     private val _uiState = MutableStateFlow(IncomeUiState())
     val uiState: StateFlow<IncomeUiState> =
         _uiState.asStateFlow()
+
+    private var rateJob: Job? = null
+    private var rateForEntryDate: String? = null
 
     init {
         observeIncome()
@@ -99,9 +108,21 @@ class IncomeViewModel(
                         errorMessage = null
                     )
                     // Recalculate Member 2 summaries whenever data changes.
-                    recalculateRealizedIncome(sorted)
-                    recalculateFreelanceSummary(sorted)
-                    recalculateCryptoSummary(sorted)
+                    val summary = IncomeSummaryCalculator.calculate(
+                        sorted, LocalDate.now(ZoneId.of("Asia/Colombo"))
+                    )
+                    _uiState.value = _uiState.value.copy(
+                        totalRealizedIncomeMinor = summary.realizedMinor,
+                        monthlyRealizedIncomeMinor = summary.monthlyRealizedMinor,
+                        totalPendingFreelanceMinor = summary.pendingFreelanceMinor,
+                        pendingFreelanceCount = summary.pendingFreelanceCount,
+                        cryptoGainsMinor = summary.cryptoGainsMinor,
+                        cryptoLossesMinor = summary.cryptoLossesMinor,
+                        netCryptoMinor = summary.netCryptoMinor,
+                        ytdCryptoGainsMinor = summary.ytdCryptoGainsMinor,
+                        ytdCryptoLossesMinor = summary.ytdCryptoLossesMinor,
+                        ytdNetCryptoMinor = summary.ytdNetCryptoMinor
+                    )
                 }
         }
     }
@@ -116,62 +137,51 @@ class IncomeViewModel(
      * historical rate for backdated entries (SRS requirement).
      */
     fun fetchExchangeRate(receivedDate: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isRateFetching = true,
-                rateFetchError = null,
-                isManualRateMode = false
-            )
-
+        clearExchangeRate()
+        rateForEntryDate = receivedDate
+        rateJob = viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRateFetching = true)
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val entryDate = LocalDate.parse(receivedDate)
-                    val today = LocalDate.now(
-                        ZoneId.of("Asia/Colombo")
-                    )
-
-                    if (entryDate >= today) {
-                        exchangeRateService.fetchLatestRate()
-                    } else {
-                        // Backdated entry → historical rate only.
-                        // If historical fails, force manual mode
-                        // instead of silently using today's rate.
-                        val historical =
-                            exchangeRateService.fetchHistoricalRate(
-                                receivedDate
-                            )
-                        if (historical is ExchangeRateResult.Failure) {
-                            ExchangeRateResult.Failure(
-                                "Historical rate for $receivedDate " +
-                                "is unavailable. Please enter " +
-                                "the rate manually."
-                            )
-                        } else {
-                            historical
-                        }
+                    val entry = LocalDate.parse(receivedDate)
+                    val today = LocalDate.now(ZoneId.of("Asia/Colombo"))
+                    when {
+                        entry.isAfter(today) -> ExchangeRateResult.Failure(
+                            "A future exchange rate is unavailable. Enter an estimated manual rate."
+                        )
+                        entry.isBefore(today) -> exchangeRateService.fetchHistoricalRate(receivedDate)
+                        else -> exchangeRateService.fetchLatestRate()
                     }
-                } catch (e: Exception) {
-                    ExchangeRateResult.Failure(
-                        "Invalid date format. Please enter " +
-                        "the rate manually."
-                    )
+                } catch (_: Exception) {
+                    ExchangeRateResult.Failure("Unable to retrieve this date's rate. Enter it manually.")
                 }
             }
-
+            // A change to date/currency invalidates requests already in progress.
+            if (rateForEntryDate != receivedDate) return@launch
             when (result) {
                 is ExchangeRateResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        exchangeRate = result.rate,
-                        exchangeRateDate = result.rateDate,
-                        isRateFetching = false,
-                        rateFetchError = null,
-                        isManualRateMode = false
-                    )
+                    val validDate = runCatching { LocalDate.parse(result.rateDate) }.getOrNull()
+                    val entry = runCatching { LocalDate.parse(receivedDate) }.getOrNull()
+                    val today = LocalDate.now(ZoneId.of("Asia/Colombo"))
+                    // Never accept a historical response from a different date.
+                    if (result.rate <= BigDecimal.ZERO || (entry != null && entry < today && validDate != entry)) {
+                        _uiState.value = _uiState.value.copy(
+                            exchangeRate = null, exchangeRateDate = null,
+                            isRateFetching = false, isManualRateMode = true,
+                            rateFetchError = "Exact historical rate unavailable. Enter a manual rate."
+                        )
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            exchangeRate = result.rate,
+                            exchangeRateDate = result.rateDate,
+                            isRateFetching = false, rateFetchError = null, isManualRateMode = false
+                        )
+                    }
                 }
                 is ExchangeRateResult.Failure -> {
                     _uiState.value = _uiState.value.copy(
-                        isRateFetching = false,
-                        rateFetchError = result.message,
+                        exchangeRate = null, exchangeRateDate = null,
+                        isRateFetching = false, rateFetchError = result.message,
                         isManualRateMode = true
                     )
                 }
@@ -179,42 +189,49 @@ class IncomeViewModel(
         }
     }
 
-    /**
-     * Manually set the exchange rate when the API is unavailable.
-     * Validates that the rate is a positive number.
-     */
-    fun setManualExchangeRate(rateString: String): Boolean {
-        return try {
-            val rate = BigDecimal(rateString.trim())
-            if (rate <= BigDecimal.ZERO) {
-                showError(
-                    "Exchange rate must be a positive number."
+    fun enableManualRate() {
+        _uiState.value = _uiState.value.copy(isManualRateMode = true)
+    }
+
+    /** A manual rate is associated with the income's selected date, never today's date. */
+    fun setManualExchangeRate(rateString: String, receivedDate: String): Boolean {
+        val rate = rateString.trim().toBigDecimalOrNull()
+        if (rate == null || rate <= BigDecimal.ZERO ||
+            runCatching { LocalDate.parse(receivedDate) }.isFailure) {
+            showError("Enter a valid positive exchange rate and date.")
+            return false
+        }
+        rateJob?.cancel()
+        rateForEntryDate = receivedDate
+        _uiState.value = _uiState.value.copy(
+            exchangeRate = rate, exchangeRateDate = receivedDate,
+            rateFetchError = null, isRateFetching = false, isManualRateMode = true,
+            errorMessage = null
+        )
+        return true
+    }
+
+    /** Show an existing conversion when editing, without fetching a new rate. */
+    fun loadExistingRate(income: Income) {
+        clearExchangeRate()
+        if (income.currency == "USD") {
+            val rate = income.exchangeRate?.toBigDecimalOrNull()
+            if (rate != null && rate > BigDecimal.ZERO) {
+                rateForEntryDate = income.receivedDate
+                _uiState.value = _uiState.value.copy(
+                    exchangeRate = rate, exchangeRateDate = income.exchangeRateDate,
+                    isManualRateMode = false
                 )
-                return false
             }
-            _uiState.value = _uiState.value.copy(
-                exchangeRate = rate,
-                exchangeRateDate = LocalDate.now(
-                    ZoneId.of("Asia/Colombo")
-                ).toString(),
-                rateFetchError = null,
-                isManualRateMode = true
-            )
-            true
-        } catch (e: Exception) {
-            showError("Enter a valid exchange rate.")
-            false
         }
     }
 
-    /** Clear exchange rate state (e.g. when user switches from USD to LKR). */
     fun clearExchangeRate() {
+        rateJob?.cancel()
+        rateForEntryDate = null
         _uiState.value = _uiState.value.copy(
-            exchangeRate = null,
-            exchangeRateDate = null,
-            isRateFetching = false,
-            rateFetchError = null,
-            isManualRateMode = false
+            exchangeRate = null, exchangeRateDate = null,
+            isRateFetching = false, rateFetchError = null, isManualRateMode = false
         )
     }
 
@@ -291,9 +308,15 @@ class IncomeViewModel(
                 return@launch
             }
 
+            if (source == "Freelance" && paymentStatus !in listOf("Expected", "Received")) {
+                showError("Invalid freelance payment status.")
+                return@launch
+            }
+
             // Member 2: USD conversion – exchange rate required.
             if (currency == "USD" &&
-                _uiState.value.exchangeRate == null
+                (_uiState.value.exchangeRate == null ||
+                    rateForEntryDate != receivedDate || _uiState.value.isRateFetching)
             ) {
                 showError(
                     "Exchange rate is required for " +
@@ -489,49 +512,50 @@ class IncomeViewModel(
                     error("Access denied")
                 }
 
-                // Detect if conversion inputs changed.
-                val conversionChanged =
-                    existingIncome.amountMinor != amountMinor ||
-                            existingIncome.currency != currency ||
-                            existingIncome.receivedDate != receivedDate
+                // Reuse the original rate for amount-only edits; require a valid
+                // selected-date rate when currency/date changes. Preserve all fields
+                // for note-only/status-only edits.
+                val dateChanged = existingIncome.receivedDate != receivedDate
+                val currencyChanged = existingIncome.currency != currency
+                val sameConversion = existingIncome.amountMinor == amountMinor &&
+                    !dateChanged && !currencyChanged
+                val selectedRate = _uiState.value.exchangeRate
+                    ?.takeIf { rateForEntryDate == receivedDate && !_uiState.value.isRateFetching }
+                val savedRate = existingIncome.exchangeRate?.toBigDecimalOrNull()
+                    ?.takeIf { it > BigDecimal.ZERO && !dateChanged && !currencyChanged }
 
-                // Member 2: Resolve exchange rate & LKR amount.
-                val exchangeRate = _uiState.value.exchangeRate
                 val amountLkrMinor: Long?
                 val storedRate: String?
                 val storedRateDate: String?
-
                 when {
                     currency == "LKR" -> {
                         amountLkrMinor = amountMinor
                         storedRate = null
                         storedRateDate = null
                     }
-                    // New rate available from UI → use it.
-                    currency == "USD" && exchangeRate != null -> {
-                        amountLkrMinor =
-                            CurrencyConverter.convertUsdToLkrMinor(
-                                amountMinor,
-                                exchangeRate
-                            )
-                        storedRate = exchangeRate.toPlainString()
-                        storedRateDate =
-                            _uiState.value.exchangeRateDate
+                    currency == "USD" -> {
+                        val rate = selectedRate ?: savedRate
+                        if (rate == null || rate <= BigDecimal.ZERO) {
+                            showError("Fetch or enter a rate for the selected income date before saving.")
+                            _uiState.value = _uiState.value.copy(isSaving = false)
+                            return@launch
+                        }
+                        val changedRate = selectedRate != null &&
+                            (selectedRate.compareTo(savedRate ?: BigDecimal.ZERO) != 0 ||
+                                _uiState.value.exchangeRateDate != existingIncome.exchangeRateDate)
+                        if (sameConversion && !changedRate && existingIncome.amountLkrMinor != null) {
+                            amountLkrMinor = existingIncome.amountLkrMinor
+                            storedRate = existingIncome.exchangeRate
+                            storedRateDate = existingIncome.exchangeRateDate
+                        } else {
+                            amountLkrMinor = CurrencyConverter.convertUsdToLkrMinor(amountMinor, rate)
+                            storedRate = rate.toPlainString()
+                            storedRateDate = if (selectedRate != null)
+                                _uiState.value.exchangeRateDate ?: receivedDate
+                            else existingIncome.exchangeRateDate
+                        }
                     }
-                    // Nothing changed → keep the existing stored rate.
-                    !conversionChanged -> {
-                        amountLkrMinor =
-                            existingIncome.amountLkrMinor
-                        storedRate = existingIncome.exchangeRate
-                        storedRateDate =
-                            existingIncome.exchangeRateDate
-                    }
-                    // Conversion changed but no new rate → null out.
-                    else -> {
-                        amountLkrMinor = null
-                        storedRate = null
-                        storedRateDate = null
-                    }
+                    else -> error("Unsupported currency")
                 }
 
                 val updatedIncome = existingIncome.copy(
@@ -601,7 +625,8 @@ class IncomeViewModel(
                 val income =
                     incomeRepository.getIncomeById(incomeId)
                         ?: return@launch
-                if (income.source == "Freelance" &&
+                val uid = authRepository.currentUser.first()?.uid ?: return@launch
+                if (income.userId == uid && income.source == "Freelance" &&
                     income.paymentStatus == "Expected"
                 ) {
                     incomeRepository.updateIncome(
@@ -619,107 +644,6 @@ class IncomeViewModel(
         }
     }
 
-    /**
-     * Returns the LKR-equivalent amount for totals.
-     * For LKR entries, returns amountMinor.
-     * For USD entries with a stored conversion, returns amountLkrMinor.
-     * For USD entries WITHOUT a stored conversion, returns 0L
-     * (prevents treating raw USD cents as LKR cents).
-     */
-    private fun Income.lkrAmount(): Long {
-        return when {
-            currency == "LKR" -> amountMinor
-            amountLkrMinor != null -> amountLkrMinor
-            else -> 0L  // Unconverted USD – exclude from LKR totals.
-        }
-    }
-
-    /**
-     * Calculates realized net income:
-     *   (non-crypto received income) + crypto gains – crypto losses.
-     * Excludes unpaid freelance invoices (paymentStatus == "Expected").
-     */
-    private fun recalculateRealizedIncome(
-        records: List<Income>
-    ) {
-        val nonCryptoRealized = records.filter {
-            if (it.source == "Freelance") {
-                it.paymentStatus == "Received"
-            } else {
-                it.source != "Crypto"
-            }
-        }.sumOf { it.lkrAmount() }
-
-        val cryptoGains = records.filter {
-            it.source == "Crypto" && it.cryptoType == "Gain"
-        }.sumOf { it.lkrAmount() }
-
-        val cryptoLosses = records.filter {
-            it.source == "Crypto" && it.cryptoType == "Loss"
-        }.sumOf { it.lkrAmount() }
-
-        _uiState.value = _uiState.value.copy(
-            totalRealizedIncomeMinor =
-                nonCryptoRealized + cryptoGains - cryptoLosses
-        )
-    }
-
-    private fun recalculateFreelanceSummary(
-        records: List<Income>
-    ) {
-        val pending = records.filter {
-            it.source == "Freelance" &&
-                    it.paymentStatus == "Expected"
-        }
-        val totalPending = pending.sumOf { it.lkrAmount() }
-        _uiState.value = _uiState.value.copy(
-            totalPendingFreelanceMinor = totalPending,
-            pendingFreelanceCount = pending.size
-        )
-    }
-
-    // ═════════════════════════════════════════════════════
-    // MEMBER 2 – PHASE 3: CRYPTO SUMMARY (FR-09)
-    // ═════════════════════════════════════════════════════
-
-    private fun recalculateCryptoSummary(
-        records: List<Income>
-    ) {
-        val cryptoRecords = records.filter {
-            it.source == "Crypto"
-        }
-        val gains = cryptoRecords.filter {
-            it.cryptoType == "Gain"
-        }.sumOf { it.lkrAmount() }
-        val losses = cryptoRecords.filter {
-            it.cryptoType == "Loss"
-        }.sumOf { it.lkrAmount() }
-
-        // Year-to-date (YTD) calculation.
-        val currentYear = LocalDate.now(
-            ZoneId.of("Asia/Colombo")
-        ).year.toString()
-
-        val ytdRecords = cryptoRecords.filter {
-            it.receivedDate.startsWith(currentYear)
-        }
-        val ytdGains = ytdRecords.filter {
-            it.cryptoType == "Gain"
-        }.sumOf { it.lkrAmount() }
-        val ytdLosses = ytdRecords.filter {
-            it.cryptoType == "Loss"
-        }.sumOf { it.lkrAmount() }
-
-        _uiState.value = _uiState.value.copy(
-            cryptoGainsMinor = gains,
-            cryptoLossesMinor = losses,
-            netCryptoMinor = gains - losses,
-            ytdCryptoGainsMinor = ytdGains,
-            ytdCryptoLossesMinor = ytdLosses,
-            ytdNetCryptoMinor = ytdGains - ytdLosses
-        )
-    }
-
     // ═════════════════════════════════════════════════════
     // DELETE / UTILITY (Member 1 – preserved)
     // ═════════════════════════════════════════════════════
@@ -734,6 +658,10 @@ class IncomeViewModel(
                 )
             }
         }
+    }
+
+    fun clearFormError() {
+        _uiState.value = _uiState.value.copy(errorMessage = null)
     }
 
     fun clearSaveSuccess() {
