@@ -71,6 +71,10 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     implementation(libs.navigation.compose)
 
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
     testImplementation(libs.junit)
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
