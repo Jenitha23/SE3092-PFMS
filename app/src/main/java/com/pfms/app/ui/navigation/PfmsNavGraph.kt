@@ -1,4 +1,3 @@
-
 package com.pfms.app.ui.navigation
 
 import androidx.compose.foundation.layout.*
@@ -31,6 +30,10 @@ import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.ui.screen.income.IncomeFormScreen
 import com.pfms.app.ui.screen.income.IncomeListScreen
 import com.pfms.app.ui.screen.income.SalaryTemplateScreen
+
+import com.pfms.app.ui.screen.expense.ExpenseListScreen
+import com.pfms.app.ui.screen.expense.ExpenseFormScreen
+import com.pfms.app.ui.screen.expense.QuickAddExpenseSheet
 
 import com.pfms.app.viewmodel.AppLockState
 import com.pfms.app.viewmodel.IncomeViewModel
@@ -278,6 +281,12 @@ fun PfmsNavGraph(
                     ) {
                         launchSingleTop = true
                     }
+                },
+
+                onNavigateToExpenses = {
+                    navController.navigate(Routes.ExpenseList) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -476,6 +485,82 @@ fun PfmsNavGraph(
                         }
                     }
                 )
+            }
+        }
+
+        // =====================================
+        // MEMBER 1 - EXPENSE UI NAVIGATION
+        // =====================================
+        // WARNING: ExpenseRepository is not implemented/bound yet.
+        // These routes provide navigation previews only; NO expense
+        // data is persisted here. Do not inject ExpenseViewModel until
+        // Member 3 supplies a concrete repository and Hilt binding.
+        composable(Routes.ExpenseList) {
+            var showQuickAdd by remember { mutableStateOf(false) }
+            val integrationMessage =
+                "Expense categories and storage are not connected yet. " +
+                        "Saving will be enabled after repository integration."
+
+            ExpenseListScreen(
+                expenses = emptyList(),
+                isLoading = false,
+                isDeleting = false,
+                onAddExpense = { navController.navigate(Routes.AddExpense) },
+                onQuickAdd = { showQuickAdd = true },
+                onEditExpense = { id -> navController.navigate(Routes.editExpense(id)) },
+                onDeleteExpense = {}, // Disabled until repository integration
+                onBack = { navController.popBackStack() },
+                errorMessage = integrationMessage
+            )
+
+            if (showQuickAdd) {
+                QuickAddExpenseSheet(
+                    categories = emptyList(),
+                    defaultPaymentMethod =
+                        com.pfms.app.domain.model.ExpensePaymentMethod.CASH,
+                    isSaving = false,
+                    onSave = { _, _, _, _ -> }, // Disabled: no categories
+                    onDismiss = { showQuickAdd = false },
+                    errorMessage = integrationMessage
+                )
+            }
+        }
+
+        composable(Routes.AddExpense) {
+            ExpenseFormScreen(
+                initialExpense = null,
+                categories = emptyList(),
+                isSaving = false,
+                onSave = {}, // Disabled: no categories or storage
+                onBack = { navController.popBackStack() },
+                errorMessage =
+                    "Expense categories and storage are not connected yet. " +
+                            "No expense will be saved."
+            )
+        }
+
+        composable(
+            route = Routes.EditExpense,
+            arguments = listOf(
+                navArgument("expenseId") { type = NavType.StringType }
+            )
+        ) {
+            // No persisted expense can be retrieved until Member 3
+            // supplies the repository; show a clear message instead.
+            Scaffold { padding ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Edit Expense", style = MaterialTheme.typography.headlineSmall)
+                    Text("Editing is unavailable until expense storage is connected.")
+                    TextButton(onClick = { navController.popBackStack() }) {
+                        Text("Back")
+                    }
+                }
             }
         }
     }

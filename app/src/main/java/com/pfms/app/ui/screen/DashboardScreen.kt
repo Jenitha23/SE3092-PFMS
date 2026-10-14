@@ -78,7 +78,8 @@ fun DashboardScreen(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToIncome: () -> Unit = {}
+    onNavigateToIncome: () -> Unit = {},
+    onNavigateToExpenses: () -> Unit = {}
 ) {
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
     val profile by settingsViewModel.profile.collectAsStateWithLifecycle()
@@ -132,7 +133,7 @@ fun DashboardScreen(
                         icon = { ExpensesNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
                         label = "Expenses",
                         isActive = false,
-                        onClick = null
+                        onClick = onNavigateToExpenses
                     )
 
                     // Goals Tab
@@ -832,7 +833,7 @@ fun DashboardScreen(
             text = {
                 Text(
                     "You have offline financial entries that have not synced with the cloud yet. " +
-                    "Logging out will discard unsaved local changes. Do you still want to log out?"
+                            "Logging out will discard unsaved local changes. Do you still want to log out?"
                 )
             },
             confirmButton = {
