@@ -52,8 +52,8 @@ class ExchangeRateServiceTest {
     }
 
     @Test
-    fun `fetchHistoricalRate returns a rate for a past date`() {
-        val result = service.fetchHistoricalRate("2024-01-15")
+    fun `fetchHistoricalRate returns a rate for a past date when available`() {
+        val result = service.fetchHistoricalRate("2026-10-10")
 
         assertTrue(
             "Expected Success but got: $result",
@@ -65,6 +65,16 @@ class ExchangeRateServiceTest {
         assertTrue(
             "Historical rate should be positive",
             success.rate > BigDecimal.ZERO
+        )
+    }
+
+    @Test
+    fun `fetchHistoricalRate returns Failure without silent fallback when unavailable`() {
+        val result = service.fetchHistoricalRate("2010-01-01")
+
+        assertTrue(
+            "Expected Failure for unavailable historical date but got: $result",
+            result is ExchangeRateResult.Failure
         )
     }
 }

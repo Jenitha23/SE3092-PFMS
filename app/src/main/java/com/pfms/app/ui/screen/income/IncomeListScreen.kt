@@ -36,6 +36,7 @@ fun IncomeListScreen(
     onRecurringSalary: () -> Unit = {},
     // Member 2: Realized Net Income summary
     totalRealizedIncomeMinor: Long = 0L,
+    monthlyRealizedIncomeMinor: Long = 0L,
     // Member 2: Freelance summary
     totalPendingFreelanceMinor: Long = 0L,
     pendingFreelanceCount: Int = 0,
@@ -163,6 +164,13 @@ fun IncomeListScreen(
                             style = MaterialTheme.typography.headlineLarge.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 color = brandEmerald
+                            )
+                        )
+
+                        Text(
+                            text = "This month's realized net: ${formatLkrAmount(monthlyRealizedIncomeMinor)}",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold, color = textPrimary
                             )
                         )
 

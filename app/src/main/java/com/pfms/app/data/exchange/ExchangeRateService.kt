@@ -81,8 +81,10 @@ class ExchangeRateService @Inject constructor() {
             return cdnResult
         }
 
-        // Fall back to latest rate
-        return fetchLatestRate()
+        // Never silently fall back to today's rate for a historical entry.
+        return ExchangeRateResult.Failure(
+            "Historical rate for $date is unavailable. Please enter the rate manually."
+        )
     }
 
     private fun fetchFromOpenErApi(url: String): ExchangeRateResult {
