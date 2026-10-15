@@ -5,8 +5,9 @@ import com.pfms.app.domain.model.SalaryTemplate
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import javax.inject.Inject
 
-class SalaryReminderUseCase {
+class SalaryReminderUseCase @Inject constructor() {
 
     private val colomboZone =
         ZoneId.of("Asia/Colombo")

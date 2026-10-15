@@ -17,6 +17,7 @@ object Routes {
     fun editIncome(incomeId: String): String =
         "edit_income/${android.net.Uri.encode(incomeId)}"
     const val SalaryTemplate = "salary_template"
+    const val IncomeAnalytics = "income_analytics"
 
     // Expense Management — Member 1
     const val ExpenseList = "expense_list"

@@ -4,9 +4,12 @@ import com.pfms.app.data.repository.FirebaseAuthRepository
 import com.pfms.app.data.repository.FirestoreIncomeRepository
 import com.pfms.app.data.repository.FirestoreLocalDataRepository
 import com.pfms.app.data.repository.FirestoreUserRepository
+import com.pfms.app.data.repository.OfflineFirstIncomeRepository
+import com.pfms.app.data.repository.SalaryTemplateRepositoryImpl
 import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.domain.repository.IncomeRepository
 import com.pfms.app.domain.repository.LocalDataRepository
+import com.pfms.app.domain.repository.SalaryTemplateRepository
 import com.pfms.app.domain.repository.UserRepository
 import dagger.Binds
 import dagger.Module
@@ -33,4 +36,13 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindLocalDataRepository(repository: FirestoreLocalDataRepository): LocalDataRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindIncomeRepository(repository: OfflineFirstIncomeRepository): IncomeRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSalaryTemplateRepository(repository: SalaryTemplateRepositoryImpl): SalaryTemplateRepository
 }
+

@@ -27,6 +27,7 @@ import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.SplashScreen
 
+import com.pfms.app.ui.screen.income.IncomeAnalyticsScreen
 import com.pfms.app.ui.screen.income.IncomeFormScreen
 import com.pfms.app.ui.screen.income.IncomeListScreen
 import com.pfms.app.ui.screen.income.SalaryTemplateScreen
@@ -41,6 +42,7 @@ import com.pfms.app.ui.screen.expense.ExpenseQuickAddContent
 
 import com.pfms.app.viewmodel.AppLockState
 import com.pfms.app.viewmodel.IncomeViewModel
+import com.pfms.app.viewmodel.SalaryViewModel
 import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
 
@@ -61,6 +63,7 @@ import com.pfms.app.viewmodel.SessionViewModel
 fun PfmsNavGraph(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     incomeViewModel: IncomeViewModel = hiltViewModel(),
+    salaryViewModel: SalaryViewModel = hiltViewModel()
     // Supply a real, Hilt-backed ExpenseViewModel only after
     // ExpenseRepository implementation/binding exists.
     expenseViewModel: ExpenseViewModel? = null
@@ -173,6 +176,8 @@ fun PfmsNavGraph(
             }
         }
     }
+
+
 
     // -----------------------------------------
     // NAVIGATION HOST
@@ -291,6 +296,11 @@ fun PfmsNavGraph(
                     }
                 },
 
+                onNavigateToAnalytics = {
+
+                    navController.navigate(
+                        Routes.IncomeAnalytics
+                    ) {
                 onNavigateToExpenses = {
                     navController.navigate(Routes.ExpenseList) {
                         launchSingleTop = true
@@ -324,6 +334,64 @@ fun PfmsNavGraph(
         // -------------------------------------
 
         composable(Routes.IncomeList) {
+            val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
+
+            // Member 2: Realized Income excludes unpaid freelance and deducts crypto losses
+            val nonCryptoRealized = incomeState.incomes.filter {
+                if (it.source == "Freelance") it.paymentStatus == "Received"
+                else it.source != "Crypto"
+            }.sumOf { it.amountLkrMinor ?: it.amountMinor }
+
+            val totalRealized = nonCryptoRealized + incomeState.cryptoGainsMinor - incomeState.cryptoLossesMinor
+
+            IncomeListScreen(
+                incomes = incomeState.incomes,
+                isLoading = incomeState.isLoading,
+                errorMessage = incomeState.errorMessage,
+
+                totalRealizedIncomeMinor = totalRealized,
+                totalPendingFreelanceMinor = incomeState.totalPendingFreelanceMinor,
+                pendingFreelanceCount = incomeState.pendingFreelanceCount,
+                cryptoGainsMinor = incomeState.cryptoGainsMinor,
+                cryptoLossesMinor = incomeState.cryptoLossesMinor,
+                netCryptoMinor = incomeState.netCryptoMinor,
+                ytdNetCryptoMinor = incomeState.ytdNetCryptoMinor,
+
+                onAddIncome = {
+                    navController.navigate(Routes.AddIncome) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onEditIncome = { incomeId ->
+                    navController.navigate(Routes.editIncome(incomeId)) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onDeleteIncome = { incomeId ->
+                    incomeViewModel.deleteIncome(incomeId)
+                },
+
+                onMarkFreelanceReceived = { incomeId ->
+                    incomeViewModel.markFreelanceAsReceived(incomeId)
+                },
+
+                onBack = {
+                    navController.popBackStack()
+                },
+
+                onRecurringSalary = {
+                    navController.navigate(Routes.SalaryTemplate) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onNavigateToAnalytics = {
+                    navController.navigate(Routes.IncomeAnalytics) {
+                        launchSingleTop = true
+                    }
+                }
             IncomeListScreen(
                 incomes = incomeUiState.incomes,
                 isLoading = incomeUiState.isLoading,
@@ -347,6 +415,50 @@ fun PfmsNavGraph(
 
         // ADD INCOME – all validation and persistence happens in ViewModel.
         composable(Routes.AddIncome) {
+            val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
+
+            LaunchedEffect(incomeState.saveSuccessful) {
+                if (incomeState.saveSuccessful) {
+                    incomeViewModel.clearSaveSuccess()
+                    navController.popBackStack()
+                }
+            }
+
+            IncomeFormScreen(
+                onBack = {
+                    incomeViewModel.clearExchangeRate()
+                    navController.popBackStack()
+                },
+
+                onSave = { input ->
+                    incomeViewModel.addIncome(
+                        amount = input.amount,
+                        currency = input.currency,
+                        source = input.source,
+                        receivedDate = input.receivedDate,
+                        note = input.note,
+                        projectName = input.projectName,
+                        paymentStatus = input.paymentStatus,
+                        cryptoType = input.cryptoType,
+                        cryptoAsset = input.cryptoAsset
+                    )
+                },
+                isSaving = incomeState.isSaving,
+                errorMessage = incomeState.errorMessage,
+                exchangeRate = incomeState.exchangeRate,
+                exchangeRateDate = incomeState.exchangeRateDate,
+                isRateFetching = incomeState.isRateFetching,
+                rateFetchError = incomeState.rateFetchError,
+                isManualRateMode = incomeState.isManualRateMode,
+                onFetchExchangeRate = { date ->
+                    incomeViewModel.fetchExchangeRate(date)
+                },
+                onSetManualRate = { rate ->
+                    incomeViewModel.setManualExchangeRate(rate)
+                },
+                onClearExchangeRate = {
+                    incomeViewModel.clearExchangeRate()
+                }
             LaunchedEffect(Unit) {
                 incomeViewModel.clearFormError()
                 incomeViewModel.clearExchangeRate()
@@ -381,6 +493,57 @@ fun PfmsNavGraph(
             route = Routes.EditIncome,
             arguments = listOf(navArgument("incomeId") { type = NavType.StringType })
         ) { backStackEntry ->
+            val incomeId = backStackEntry.arguments?.getString("incomeId")
+            val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
+            val incomeItem = incomeState.incomes.find { it.id == incomeId }
+
+            LaunchedEffect(incomeState.saveSuccessful) {
+                if (incomeState.saveSuccessful) {
+                    incomeViewModel.clearSaveSuccess()
+                    navController.popBackStack()
+                }
+            }
+
+            if (incomeItem != null) {
+                IncomeFormScreen(
+                    initialIncome = incomeItem,
+                    onBack = {
+                        incomeViewModel.clearExchangeRate()
+                        navController.popBackStack()
+                    },
+                    onSave = { input ->
+                        incomeViewModel.updateIncome(
+                            incomeId = incomeItem.id,
+                            amount = input.amount,
+                            currency = input.currency,
+                            source = input.source,
+                            receivedDate = input.receivedDate,
+                            note = input.note,
+                            projectName = input.projectName,
+                            paymentStatus = input.paymentStatus,
+                            cryptoType = input.cryptoType,
+                            cryptoAsset = input.cryptoAsset
+                        )
+                    },
+                    isSaving = incomeState.isSaving,
+                    errorMessage = incomeState.errorMessage,
+                    exchangeRate = incomeState.exchangeRate,
+                    exchangeRateDate = incomeState.exchangeRateDate,
+                    isRateFetching = incomeState.isRateFetching,
+                    rateFetchError = incomeState.rateFetchError,
+                    isManualRateMode = incomeState.isManualRateMode,
+                    onFetchExchangeRate = { date ->
+                        incomeViewModel.fetchExchangeRate(date)
+                    },
+                    onSetManualRate = { rate ->
+                        incomeViewModel.setManualExchangeRate(rate)
+                    },
+                    onClearExchangeRate = {
+                        incomeViewModel.clearExchangeRate()
+                    }
+                )
+            } else if (!incomeState.isLoading) {
+                Scaffold(
             val id = backStackEntry.arguments?.getString("incomeId")
             val item = incomeUiState.incomes.firstOrNull { it.id == id }
             LaunchedEffect(item?.id) {
@@ -439,61 +602,38 @@ fun PfmsNavGraph(
         // -------------------------------------
 
         composable(Routes.SalaryTemplate) {
+            val salaryState by salaryViewModel.uiState.collectAsStateWithLifecycle()
 
-            var showPendingMessage by remember {
-                mutableStateOf(false)
+            LaunchedEffect(salaryState.operationSuccessful) {
+                if (salaryState.operationSuccessful) {
+                    salaryViewModel.clearSuccess()
+                    navController.popBackStack()
+                }
             }
 
             SalaryTemplateScreen(
-
-                initialTemplate = null,
-
+                initialTemplate = salaryState.template,
+                isSaving = salaryState.isSaving,
+                errorMessage = salaryState.errorMessage,
                 onBack = {
                     navController.popBackStack()
                 },
-
-                onSaveTemplate = { _ ->
-
-                    // Member 3 will implement
-                    // salary template persistence.
-                    showPendingMessage = true
+                onSaveTemplate = { amount ->
+                    salaryViewModel.saveSalaryTemplate(amount)
                 }
             )
+        }
 
-            if (showPendingMessage) {
+        // -------------------------------------
+        // INCOME ANALYTICS (MEMBER 3)
+        // -------------------------------------
 
-                AlertDialog(
-
-                    onDismissRequest = {
-                        showPendingMessage = false
-                    },
-
-                    title = {
-                        Text("Storage Integration Pending")
-                    },
-
-                    text = {
-                        Text(
-                            "The salary template form is ready, " +
-                                    "but saving is not available yet. " +
-                                    "Room and Firebase integration " +
-                                    "must be completed first. " +
-                                    "No salary template has been saved."
-                        )
-                    },
-
-                    confirmButton = {
-
-                        TextButton(
-                            onClick = {
-                                showPendingMessage = false
-                            }
-                        ) {
-                            Text("OK")
-                        }
-                    }
-                )
-            }
+        composable(Routes.IncomeAnalytics) {
+            IncomeAnalyticsScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
         }
 
         // =====================================

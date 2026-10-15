@@ -1,6 +1,7 @@
 package com.pfms.app.ui.screen.income
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pfms.app.domain.model.Income
+import com.pfms.app.ui.component.InsightsNavIcon
 import com.pfms.app.ui.theme.DarkNavyText
 import com.pfms.app.ui.theme.EmeraldPrimary
 import com.pfms.app.ui.theme.SecondaryText
@@ -46,7 +48,9 @@ fun IncomeListScreen(
     netCryptoMinor: Long = 0L,
     ytdNetCryptoMinor: Long = 0L,
     // Member 2: Mark freelance as received
-    onMarkFreelanceReceived: (String) -> Unit = {}
+    onMarkFreelanceReceived: (String) -> Unit = {},
+    // Member 3: Income Analytics navigation
+    onNavigateToAnalytics: () -> Unit = {}
 ) {
     var incomeToDelete by remember {
         mutableStateOf<Income?>(null)
@@ -81,6 +85,11 @@ fun IncomeListScreen(
                             color = brandEmerald,
                             fontSize = 15.sp
                         )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onNavigateToAnalytics) {
+                        InsightsNavIcon(modifier = Modifier.size(22.dp), tint = brandEmerald)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -221,6 +230,41 @@ fun IncomeListScreen(
                                     )
                                 )
                             }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = borderLight
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onNavigateToAnalytics() }
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                InsightsNavIcon(modifier = Modifier.size(18.dp), tint = brandEmerald)
+                                Text(
+                                    text = "View Income Analytics & Trends",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = brandEmerald
+                                    )
+                                )
+                            }
+                            Text(
+                                text = "→",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = brandEmerald
+                                )
+                            )
                         }
                     }
                 }

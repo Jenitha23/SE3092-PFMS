@@ -79,6 +79,7 @@ fun DashboardScreen(
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit = {},
     onNavigateToIncome: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {}
     onNavigateToExpenses: () -> Unit = {}
 ) {
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
@@ -144,12 +145,12 @@ fun DashboardScreen(
                         onClick = null
                     )
 
-                    // Insights Tab
+                    // Insights Tab (Income Analytics)
                     DashboardBottomTab(
                         icon = { InsightsNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
                         label = "Insights",
                         isActive = false,
-                        onClick = null
+                        onClick = onNavigateToAnalytics
                     )
                 }
             }

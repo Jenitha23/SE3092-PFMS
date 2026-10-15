@@ -6,4 +6,7 @@ import kotlinx.coroutines.flow.Flow
 interface UserRepository {
     /** Real-time profile of the signed-in user; null while signed out or not yet created. */
     fun observeProfile(): Flow<UserProfile?>
+
+    /** Updates the signed-in user's estimated monthly income (in minor units). Pass null to clear. */
+    suspend fun updateEstimatedMonthlyIncome(amountMinor: Long?): Result<Unit>
 }
