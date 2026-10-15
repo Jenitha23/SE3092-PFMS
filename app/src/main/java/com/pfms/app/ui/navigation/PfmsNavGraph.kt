@@ -30,6 +30,7 @@ import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.SplashScreen
 
+import com.pfms.app.ui.screen.income.IncomeAnalyticsScreen
 import com.pfms.app.ui.screen.income.IncomeFormScreen
 import com.pfms.app.ui.screen.income.IncomeListScreen
 import com.pfms.app.ui.screen.income.SalaryTemplateScreen
@@ -301,6 +302,15 @@ fun PfmsNavGraph(
                     ) {
                         launchSingleTop = true
                     }
+                },
+
+                onNavigateToAnalytics = {
+
+                    navController.navigate(
+                        Routes.IncomeAnalytics
+                    ) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -394,6 +404,12 @@ fun PfmsNavGraph(
 
                 onRecurringSalary = {
                     navController.navigate(Routes.SalaryTemplate) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onNavigateToAnalytics = {
+                    navController.navigate(Routes.IncomeAnalytics) {
                         launchSingleTop = true
                     }
                 }
@@ -565,6 +581,18 @@ fun PfmsNavGraph(
                     }
                 )
             }
+        }
+
+        // -------------------------------------
+        // INCOME ANALYTICS (MEMBER 3)
+        // -------------------------------------
+
+        composable(Routes.IncomeAnalytics) {
+            IncomeAnalyticsScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }

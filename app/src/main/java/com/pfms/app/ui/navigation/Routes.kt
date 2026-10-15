@@ -21,5 +21,6 @@ object Routes {
 
 
     const val SalaryTemplate = "salary_template"
+    const val IncomeAnalytics = "income_analytics"
 
 }
