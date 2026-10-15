@@ -23,6 +23,9 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+
 // ─────────────────────────────────────────────────────────
 // UI State
 // ─────────────────────────────────────────────────────────
@@ -54,7 +57,8 @@ data class IncomeUiState(
     val ytdNetCryptoMinor: Long = 0L
 )
 
-class IncomeViewModel(
+@HiltViewModel
+class IncomeViewModel @Inject constructor(
     private val incomeRepository: IncomeRepository,
     private val authRepository: AuthRepository,
     private val exchangeRateService: ExchangeRateService

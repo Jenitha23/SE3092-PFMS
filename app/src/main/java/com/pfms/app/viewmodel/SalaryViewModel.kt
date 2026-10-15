@@ -15,6 +15,8 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 data class SalaryUiState(
     val template: SalaryTemplate? = null,
@@ -25,7 +27,8 @@ data class SalaryUiState(
     val operationSuccessful: Boolean = false
 )
 
-class SalaryViewModel(
+@HiltViewModel
+class SalaryViewModel @Inject constructor(
     private val repository: SalaryTemplateRepository,
     private val reminderUseCase: SalaryReminderUseCase
 ) : ViewModel() {
