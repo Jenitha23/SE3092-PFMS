@@ -34,9 +34,14 @@ import com.pfms.app.ui.screen.income.SalaryTemplateScreen
 import com.pfms.app.ui.screen.expense.ExpenseListScreen
 import com.pfms.app.ui.screen.expense.ExpenseFormScreen
 import com.pfms.app.ui.screen.expense.QuickAddExpenseSheet
+import com.pfms.app.ui.screen.expense.ExpenseDevelopmentCategories
+import com.pfms.app.ui.screen.expense.ExpenseListContent
+import com.pfms.app.ui.screen.expense.ExpenseFormContent
+import com.pfms.app.ui.screen.expense.ExpenseQuickAddContent
 
 import com.pfms.app.viewmodel.AppLockState
 import com.pfms.app.viewmodel.IncomeViewModel
+import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
 
 /**
@@ -55,7 +60,10 @@ import com.pfms.app.viewmodel.SessionViewModel
 @Composable
 fun PfmsNavGraph(
     sessionViewModel: SessionViewModel = hiltViewModel(),
-    incomeViewModel: IncomeViewModel = hiltViewModel()
+    incomeViewModel: IncomeViewModel = hiltViewModel(),
+    // Supply a real, Hilt-backed ExpenseViewModel only after
+    // ExpenseRepository implementation/binding exists.
+    expenseViewModel: ExpenseViewModel? = null
 ) {
 
     val navController = rememberNavController()
@@ -489,54 +497,111 @@ fun PfmsNavGraph(
         }
 
         // =====================================
-        // MEMBER 1 - EXPENSE UI NAVIGATION
+        // MEMBER 1 - EXPENSE MANAGEMENT
         // =====================================
-        // WARNING: ExpenseRepository is not implemented/bound yet.
-        // These routes provide navigation previews only; NO expense
-        // data is persisted here. Do not inject ExpenseViewModel until
-        // Member 3 supplies a concrete repository and Hilt binding.
+        // With expenseViewModel == null, navigation previews are shown
+        // with no save/delete action. Supplying a backed ViewModel
+        // enables the connected screens without rewriting the routes.
         composable(Routes.ExpenseList) {
             var showQuickAdd by remember { mutableStateOf(false) }
-            val integrationMessage =
-                "Expense categories and storage are not connected yet. " +
-                        "Saving will be enabled after repository integration."
+            val categories = ExpenseDevelopmentCategories.categories
+            val vm = expenseViewModel
 
-            ExpenseListScreen(
-                expenses = emptyList(),
-                isLoading = false,
-                isDeleting = false,
-                onAddExpense = { navController.navigate(Routes.AddExpense) },
-                onQuickAdd = { showQuickAdd = true },
-                onEditExpense = { id -> navController.navigate(Routes.editExpense(id)) },
-                onDeleteExpense = {}, // Disabled until repository integration
-                onBack = { navController.popBackStack() },
-                errorMessage = integrationMessage
-            )
-
-            if (showQuickAdd) {
-                QuickAddExpenseSheet(
-                    categories = emptyList(),
-                    defaultPaymentMethod =
-                        com.pfms.app.domain.model.ExpensePaymentMethod.CASH,
-                    isSaving = false,
-                    onSave = { _, _, _, _ -> }, // Disabled: no categories
-                    onDismiss = { showQuickAdd = false },
-                    errorMessage = integrationMessage
+            if (vm != null) {
+                ExpenseListContent(
+                    viewModel = vm,
+                    onAddExpense = { navController.navigate(Routes.AddExpense) },
+                    onQuickAdd = {
+                        vm.clearSuccess()
+                        vm.clearError()
+                        showQuickAdd = true
+                    },
+                    onEditExpense = { id ->
+                        navController.navigate(Routes.editExpense(id))
+                    },
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    }
                 )
+
+                if (showQuickAdd) {
+                    ExpenseQuickAddContent(
+                        viewModel = vm,
+                        categories = categories,
+                        onDismiss = { showQuickAdd = false },
+                        onSaveSuccess = { showQuickAdd = false }
+                    )
+                }
+            } else {
+                val pending = "Expense storage is not connected yet. Saving is unavailable."
+                ExpenseListScreen(
+                    expenses = emptyList(),
+                    isLoading = false,
+                    isDeleting = false,
+                    onAddExpense = { navController.navigate(Routes.AddExpense) },
+                    onQuickAdd = { showQuickAdd = true },
+                    onEditExpense = { id ->
+                        navController.navigate(Routes.editExpense(id))
+                    },
+                    onDeleteExpense = {},
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    errorMessage = pending
+                )
+                if (showQuickAdd) {
+                    QuickAddExpenseSheet(
+                        categories = categories,
+                        defaultPaymentMethod =
+                            com.pfms.app.domain.model.ExpensePaymentMethod.CASH,
+                        isSaving = false,
+                        onSave = { _, _, _, _ -> },
+                        onDismiss = { showQuickAdd = false },
+                        errorMessage = pending
+                    )
+                }
             }
         }
 
         composable(Routes.AddExpense) {
-            ExpenseFormScreen(
-                initialExpense = null,
-                categories = emptyList(),
-                isSaving = false,
-                onSave = {}, // Disabled: no categories or storage
-                onBack = { navController.popBackStack() },
-                errorMessage =
-                    "Expense categories and storage are not connected yet. " +
-                            "No expense will be saved."
-            )
+            val vm = expenseViewModel
+            if (vm != null) {
+                ExpenseFormContent(
+                    viewModel = vm,
+                    categories = ExpenseDevelopmentCategories.categories,
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    onSaveSuccess = { navController.popBackStack() }
+                )
+            } else {
+                ExpenseFormScreen(
+                    initialExpense = null,
+                    categories = ExpenseDevelopmentCategories.categories,
+                    isSaving = false,
+                    onSave = {},
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    errorMessage = "Expense storage is not connected yet. Nothing will be saved."
+                )
+            }
         }
 
         composable(
@@ -544,21 +609,37 @@ fun PfmsNavGraph(
             arguments = listOf(
                 navArgument("expenseId") { type = NavType.StringType }
             )
-        ) {
-            // No persisted expense can be retrieved until Member 3
-            // supplies the repository; show a clear message instead.
-            Scaffold { padding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Edit Expense", style = MaterialTheme.typography.headlineSmall)
-                    Text("Editing is unavailable until expense storage is connected.")
-                    TextButton(onClick = { navController.popBackStack() }) {
-                        Text("Back")
+        ) { entry ->
+            val vm = expenseViewModel
+            val expenseId = entry.arguments?.getString("expenseId")
+            if (vm != null && expenseId != null) {
+                ExpenseFormContent(
+                    viewModel = vm,
+                    expenseId = expenseId,
+                    categories = ExpenseDevelopmentCategories.categories,
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    onSaveSuccess = { navController.popBackStack() }
+                )
+            } else {
+                Scaffold { padding ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Edit Expense", style = MaterialTheme.typography.headlineSmall)
+                        Text("Editing requires the shared expense repository.")
+                        TextButton(onClick = { navController.popBackStack() }) {
+                            Text("Back")
+                        }
                     }
                 }
             }

@@ -1,4 +1,3 @@
-
 package com.pfms.app.ui.screen.expense
 
 import androidx.compose.foundation.layout.*
@@ -99,12 +98,19 @@ fun ExpenseFormScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        TextButton(onClick = onBack) {
-            Text("Back")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onBack) {
+                Text("← Back")
+            }
         }
 
         Text(

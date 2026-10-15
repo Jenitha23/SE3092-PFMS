@@ -1,4 +1,3 @@
-
 package com.pfms.app.viewmodel
 
 import androidx.lifecycle.ViewModel
@@ -34,6 +33,8 @@ data class ExpenseFormData(
     val note: String = ""
 )
 
+enum class ExpenseOperation { ADD, UPDATE, DELETE }
+
 data class ExpenseUiState(
     val expenses: List<Expense> = emptyList(),
     val isLoading: Boolean = true,
@@ -42,6 +43,7 @@ data class ExpenseUiState(
     val pendingDuplicate: Expense? = null,
     val errorMessage: String? = null,
     val operationSuccessful: Boolean = false,
+    val successfulOperation: ExpenseOperation? = null,
     val lastUsedPaymentMethod: ExpensePaymentMethod =
         ExpensePaymentMethod.CASH
 )
@@ -186,7 +188,8 @@ class ExpenseViewModel(
         _uiState.value = _uiState.value.copy(
             isSaving = true,
             errorMessage = null,
-            operationSuccessful = false
+            operationSuccessful = false,
+            successfulOperation = null
         )
 
         viewModelScope.launch {
@@ -268,6 +271,7 @@ class ExpenseViewModel(
                 isSaving = false,
                 pendingDuplicate = null,
                 operationSuccessful = true,
+                successfulOperation = ExpenseOperation.ADD,
                 errorMessage = null,
                 lastUsedPaymentMethod =
                     expense.paymentMethod
@@ -318,7 +322,8 @@ class ExpenseViewModel(
         _uiState.value = _uiState.value.copy(
             isSaving = true,
             errorMessage = null,
-            operationSuccessful = false
+            operationSuccessful = false,
+            successfulOperation = null
         )
 
         viewModelScope.launch {
@@ -361,6 +366,7 @@ class ExpenseViewModel(
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     operationSuccessful = true,
+                    successfulOperation = ExpenseOperation.UPDATE,
                     lastUsedPaymentMethod =
                         updated.paymentMethod
                 )
@@ -390,7 +396,8 @@ class ExpenseViewModel(
         _uiState.value = _uiState.value.copy(
             isDeleting = true,
             errorMessage = null,
-            operationSuccessful = false
+            operationSuccessful = false,
+            successfulOperation = null
         )
 
         viewModelScope.launch {
@@ -399,7 +406,8 @@ class ExpenseViewModel(
 
                 _uiState.value = _uiState.value.copy(
                     isDeleting = false,
-                    operationSuccessful = true
+                    operationSuccessful = true,
+                    successfulOperation = ExpenseOperation.DELETE
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -418,7 +426,8 @@ class ExpenseViewModel(
 
     fun clearSuccess() {
         _uiState.value = _uiState.value.copy(
-            operationSuccessful = false
+            operationSuccessful = false,
+            successfulOperation = null
         )
     }
 
