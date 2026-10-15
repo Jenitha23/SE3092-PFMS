@@ -58,4 +58,21 @@ class UserProfileTest {
         val b = UserProfile("uid-1", "A", "a@a.com")
         assertEquals(a, b)
     }
+
+    @Test
+    fun `default estimatedMonthlyIncomeMinor is null`() {
+        val profile = UserProfile(uid = "uid-1", displayName = "Test", email = "t@t.com")
+        assertNull(profile.estimatedMonthlyIncomeMinor)
+    }
+
+    @Test
+    fun `custom estimatedMonthlyIncomeMinor is preserved`() {
+        val profile = UserProfile(
+            uid = "uid-1",
+            displayName = "Test",
+            email = "t@t.com",
+            estimatedMonthlyIncomeMinor = 15000000L
+        )
+        assertEquals(15000000L, profile.estimatedMonthlyIncomeMinor)
+    }
 }

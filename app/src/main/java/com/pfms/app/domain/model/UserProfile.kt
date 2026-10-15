@@ -5,5 +5,6 @@ data class UserProfile(
     val displayName: String,
     val email: String,
     val baseCurrency: String = "LKR",
-    val defaultPaymentMethod: String? = null
+    val defaultPaymentMethod: String? = null,
+    val estimatedMonthlyIncomeMinor: Long? = null
 )

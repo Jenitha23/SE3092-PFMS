@@ -10,6 +10,7 @@ import com.pfms.app.domain.model.analytics.MonthlyIncomeSummary
 import com.pfms.app.domain.model.analytics.RegularVariableIncome
 import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.domain.repository.IncomeRepository
+import com.pfms.app.domain.repository.UserRepository
 import com.pfms.app.domain.usecase.analytics.GetIncomeAnalyticsUseCase
 import com.pfms.app.domain.usecase.analytics.GetIncomeEstimationComparisonUseCase
 import com.pfms.app.domain.usecase.analytics.GetIncomeTrendsUseCase
@@ -46,13 +47,13 @@ data class IncomeAnalyticsUiState(
  * Architecture Principles:
  * - Pure calculation boundary: All formulas are delegated to Phase 6 analytics use cases.
  * - Reactive: Observes [IncomeRepository.observeIncome] and recomputes analytics on changes.
- * - In-memory estimated income: The project currently does not persist estimated monthly income;
- *   estimates are maintained in UI state for evaluation against actual trailing averages.
+ * - Persistent estimate: Stored per authenticated user via [UserRepository] profile persistence.
  */
 @HiltViewModel
 class IncomeAnalyticsViewModel @Inject constructor(
     private val incomeRepository: IncomeRepository,
     private val authRepository: AuthRepository,
+    private val userRepository: UserRepository,
     private val getMonthlyIncomeSummaryUseCase: GetMonthlyIncomeSummaryUseCase,
     private val getRegularVsVariableIncomeUseCase: GetRegularVsVariableIncomeUseCase,
     private val getIncomeTrendsUseCase: GetIncomeTrendsUseCase,
@@ -73,9 +74,10 @@ class IncomeAnalyticsViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 authRepository.currentUser,
-                incomeRepository.observeIncome()
-            ) { user, records ->
-                Pair(user, records)
+                incomeRepository.observeIncome(),
+                userRepository.observeProfile()
+            ) { user, records, profile ->
+                Triple(user, records, profile)
             }
                 .catch {
                     _uiState.update {
@@ -85,7 +87,7 @@ class IncomeAnalyticsViewModel @Inject constructor(
                         )
                     }
                 }
-                .collect { (user, records) ->
+                .collect { (user, records, profile) ->
                     if (user == null) {
                         currentIncomes = emptyList()
                         _uiState.update {
@@ -96,15 +98,20 @@ class IncomeAnalyticsViewModel @Inject constructor(
                                 trendPoints = emptyList(),
                                 analyticsSummary = null,
                                 estimationComparison = null,
+                                estimatedMonthlyIncomeMinor = null,
                                 errorMessage = null
                             )
                         }
                     } else {
                         currentIncomes = records
+                        val estimate = profile?.estimatedMonthlyIncomeMinor
+                        _uiState.update {
+                            it.copy(estimatedMonthlyIncomeMinor = estimate)
+                        }
                         recalculateAnalytics(
                             records = records,
                             month = _uiState.value.selectedMonth,
-                            estimatedIncome = _uiState.value.estimatedMonthlyIncomeMinor
+                            estimatedIncome = estimate
                         )
                     }
                 }
@@ -129,8 +136,7 @@ class IncomeAnalyticsViewModel @Inject constructor(
     }
 
     /**
-     * Sets user-entered estimated monthly income.
-     * Note: Persistence wiring is deferred; this estimate is maintained in UI state.
+     * Sets user-entered estimated monthly income and persists it for the current user.
      */
     fun setEstimatedMonthlyIncome(amountMinor: Long) {
         if (amountMinor < 0L) {
@@ -150,8 +156,20 @@ class IncomeAnalyticsViewModel @Inject constructor(
             month = _uiState.value.selectedMonth,
             estimatedIncome = amountMinor
         )
+
+        viewModelScope.launch {
+            val result = userRepository.updateEstimatedMonthlyIncome(amountMinor)
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(errorMessage = "Failed to save estimated income: ${result.exceptionOrNull()?.message ?: "Unknown error"}")
+                }
+            }
+        }
     }
 
+    /**
+     * Clears user-entered estimated monthly income and removes it from persistent profile storage.
+     */
     fun clearEstimatedMonthlyIncome() {
         _uiState.update {
             it.copy(
@@ -164,6 +182,15 @@ class IncomeAnalyticsViewModel @Inject constructor(
             month = _uiState.value.selectedMonth,
             estimatedIncome = null
         )
+
+        viewModelScope.launch {
+            val result = userRepository.updateEstimatedMonthlyIncome(null)
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(errorMessage = "Failed to clear estimated income: ${result.exceptionOrNull()?.message ?: "Unknown error"}")
+                }
+            }
+        }
     }
 
     fun clearError() {

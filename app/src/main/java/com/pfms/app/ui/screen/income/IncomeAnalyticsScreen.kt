@@ -634,6 +634,14 @@ fun EstimationComparisonSection(
     var inputAmount by rememberSaveable { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(currentEstimateMinor) {
+        if (currentEstimateMinor != null) {
+            inputAmount = String.format(Locale.US, "%.2f", currentEstimateMinor / 100.0)
+        } else {
+            inputAmount = ""
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = SurfaceCard,
