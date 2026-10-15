@@ -1,6 +1,6 @@
 package com.pfms.app.ui.navigation
 
-/** Type-safe route constants for the PFMS navigation graph. */
+/** Centralized route names for the PFMS navigation graph. */
 object Routes {
     const val Splash = "splash"
     const val Login = "login"
@@ -14,13 +14,15 @@ object Routes {
     const val IncomeList = "income_list"
     const val AddIncome = "add_income"
     const val EditIncome = "edit_income/{incomeId}"
-
-    fun editIncome(incomeId: String): String {
-        return "edit_income/${android.net.Uri.encode(incomeId)}"
-    }
-
-
+    fun editIncome(incomeId: String): String =
+        "edit_income/${android.net.Uri.encode(incomeId)}"
     const val SalaryTemplate = "salary_template"
     const val IncomeAnalytics = "income_analytics"
 
+    // Expense Management — Member 1
+    const val ExpenseList = "expense_list"
+    const val AddExpense = "add_expense"
+    const val EditExpense = "edit_expense/{expenseId}"
+    fun editExpense(expenseId: String): String =
+        "edit_expense/${android.net.Uri.encode(expenseId)}"
 }

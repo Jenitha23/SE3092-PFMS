@@ -1,6 +1,7 @@
 package com.pfms.app.di
 
 import com.pfms.app.data.repository.FirebaseAuthRepository
+import com.pfms.app.data.repository.FirestoreIncomeRepository
 import com.pfms.app.data.repository.FirestoreLocalDataRepository
 import com.pfms.app.data.repository.FirestoreUserRepository
 import com.pfms.app.data.repository.OfflineFirstIncomeRepository
@@ -27,6 +28,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindUserRepository(repository: FirestoreUserRepository): UserRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindIncomeRepository(repository: FirestoreIncomeRepository): IncomeRepository
 
     @Binds
     @Singleton

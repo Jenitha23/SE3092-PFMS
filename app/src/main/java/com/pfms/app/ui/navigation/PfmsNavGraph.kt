@@ -1,4 +1,3 @@
-
 package com.pfms.app.ui.navigation
 
 import androidx.compose.foundation.layout.*
@@ -18,6 +17,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+
 import com.pfms.app.domain.model.SessionState
 import com.pfms.app.ui.screen.DashboardScreen
 import com.pfms.app.ui.screen.ForgotPasswordScreen
@@ -32,9 +32,18 @@ import com.pfms.app.ui.screen.income.IncomeFormScreen
 import com.pfms.app.ui.screen.income.IncomeListScreen
 import com.pfms.app.ui.screen.income.SalaryTemplateScreen
 
+import com.pfms.app.ui.screen.expense.ExpenseListScreen
+import com.pfms.app.ui.screen.expense.ExpenseFormScreen
+import com.pfms.app.ui.screen.expense.QuickAddExpenseSheet
+import com.pfms.app.ui.screen.expense.ExpenseDevelopmentCategories
+import com.pfms.app.ui.screen.expense.ExpenseListContent
+import com.pfms.app.ui.screen.expense.ExpenseFormContent
+import com.pfms.app.ui.screen.expense.ExpenseQuickAddContent
+
 import com.pfms.app.viewmodel.AppLockState
 import com.pfms.app.viewmodel.IncomeViewModel
 import com.pfms.app.viewmodel.SalaryViewModel
+import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
 
 /**
@@ -55,6 +64,9 @@ fun PfmsNavGraph(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     incomeViewModel: IncomeViewModel = hiltViewModel(),
     salaryViewModel: SalaryViewModel = hiltViewModel()
+    // Supply a real, Hilt-backed ExpenseViewModel only after
+    // ExpenseRepository implementation/binding exists.
+    expenseViewModel: ExpenseViewModel? = null
 ) {
 
     val navController = rememberNavController()
@@ -64,6 +76,14 @@ fun PfmsNavGraph(
 
     val lockState by sessionViewModel.lockState
         .collectAsStateWithLifecycle()
+    val incomeUiState by incomeViewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(incomeUiState.saveSuccessful) {
+        if (incomeUiState.saveSuccessful) {
+            incomeViewModel.clearSaveSuccess()
+            navController.popBackStack()
+        }
+    }
 
     // -----------------------------------------
     // LIFECYCLE-AWARE APP LOCK
@@ -281,6 +301,8 @@ fun PfmsNavGraph(
                     navController.navigate(
                         Routes.IncomeAnalytics
                     ) {
+                onNavigateToExpenses = {
+                    navController.navigate(Routes.ExpenseList) {
                         launchSingleTop = true
                     }
                 }
@@ -370,13 +392,28 @@ fun PfmsNavGraph(
                         launchSingleTop = true
                     }
                 }
+            IncomeListScreen(
+                incomes = incomeUiState.incomes,
+                isLoading = incomeUiState.isLoading,
+                errorMessage = incomeUiState.errorMessage,
+                totalRealizedIncomeMinor = incomeUiState.totalRealizedIncomeMinor,
+                monthlyRealizedIncomeMinor = incomeUiState.monthlyRealizedIncomeMinor,
+                totalPendingFreelanceMinor = incomeUiState.totalPendingFreelanceMinor,
+                pendingFreelanceCount = incomeUiState.pendingFreelanceCount,
+                cryptoGainsMinor = incomeUiState.cryptoGainsMinor,
+                cryptoLossesMinor = incomeUiState.cryptoLossesMinor,
+                netCryptoMinor = incomeUiState.netCryptoMinor,
+                ytdNetCryptoMinor = incomeUiState.ytdNetCryptoMinor,
+                onAddIncome = { navController.navigate(Routes.AddIncome) },
+                onEditIncome = { id -> navController.navigate(Routes.editIncome(id)) },
+                onDeleteIncome = incomeViewModel::deleteIncome,
+                onMarkFreelanceReceived = incomeViewModel::markFreelanceAsReceived,
+                onBack = { navController.popBackStack() },
+                onRecurringSalary = { navController.navigate(Routes.SalaryTemplate) }
             )
         }
 
-        // -------------------------------------
-        // ADD INCOME
-        // -------------------------------------
-
+        // ADD INCOME – all validation and persistence happens in ViewModel.
         composable(Routes.AddIncome) {
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
 
@@ -422,20 +459,39 @@ fun PfmsNavGraph(
                 onClearExchangeRate = {
                     incomeViewModel.clearExchangeRate()
                 }
+            LaunchedEffect(Unit) {
+                incomeViewModel.clearFormError()
+                incomeViewModel.clearExchangeRate()
+            }
+            IncomeFormScreen(
+                onBack = { navController.popBackStack() },
+                onSave = { input ->
+                    incomeViewModel.addIncome(
+                        amount = input.amount, currency = input.currency,
+                        source = input.source, receivedDate = input.receivedDate,
+                        note = input.note, projectName = input.projectName,
+                        paymentStatus = input.paymentStatus,
+                        cryptoType = input.cryptoType, cryptoAsset = input.cryptoAsset
+                    )
+                },
+                isSaving = incomeUiState.isSaving,
+                errorMessage = incomeUiState.errorMessage,
+                exchangeRate = incomeUiState.exchangeRate,
+                exchangeRateDate = incomeUiState.exchangeRateDate,
+                isRateFetching = incomeUiState.isRateFetching,
+                rateFetchError = incomeUiState.rateFetchError,
+                isManualRateMode = incomeUiState.isManualRateMode,
+                onFetchExchangeRate = incomeViewModel::fetchExchangeRate,
+                onSetManualRate = incomeViewModel::setManualExchangeRate,
+                onEnableManualRate = incomeViewModel::enableManualRate,
+                onClearExchangeRate = incomeViewModel::clearExchangeRate
             )
         }
 
-        // -------------------------------------
-        // EDIT INCOME
-        // -------------------------------------
-
+        // EDIT INCOME – retains the conversion metadata on note/status-only edits.
         composable(
             route = Routes.EditIncome,
-            arguments = listOf(
-                navArgument("incomeId") {
-                    type = NavType.StringType
-                }
-            )
+            arguments = listOf(navArgument("incomeId") { type = NavType.StringType })
         ) { backStackEntry ->
             val incomeId = backStackEntry.arguments?.getString("incomeId")
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
@@ -488,19 +544,54 @@ fun PfmsNavGraph(
                 )
             } else if (!incomeState.isLoading) {
                 Scaffold(
+            val id = backStackEntry.arguments?.getString("incomeId")
+            val item = incomeUiState.incomes.firstOrNull { it.id == id }
+            LaunchedEffect(item?.id) {
+                if (item != null) {
+                    incomeViewModel.clearFormError()
+                    incomeViewModel.loadExistingRate(item)
+                }
+            }
+            when {
+                item != null -> IncomeFormScreen(
+                    initialIncome = item,
+                    onBack = { navController.popBackStack() },
+                    onSave = { input ->
+                        incomeViewModel.updateIncome(
+                            incomeId = item.id, amount = input.amount,
+                            currency = input.currency, source = input.source,
+                            receivedDate = input.receivedDate, note = input.note,
+                            projectName = input.projectName, paymentStatus = input.paymentStatus,
+                            cryptoType = input.cryptoType, cryptoAsset = input.cryptoAsset
+                        )
+                    },
+                    isSaving = incomeUiState.isSaving,
+                    errorMessage = incomeUiState.errorMessage,
+                    exchangeRate = incomeUiState.exchangeRate,
+                    exchangeRateDate = incomeUiState.exchangeRateDate,
+                    isRateFetching = incomeUiState.isRateFetching,
+                    rateFetchError = incomeUiState.rateFetchError,
+                    isManualRateMode = incomeUiState.isManualRateMode,
+                    onFetchExchangeRate = incomeViewModel::fetchExchangeRate,
+                    onSetManualRate = incomeViewModel::setManualExchangeRate,
+                    onEnableManualRate = incomeViewModel::enableManualRate,
+                    onClearExchangeRate = incomeViewModel::clearExchangeRate
+                )
+                else -> Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text("Income Not Found") },
+                            title = { Text(if (incomeUiState.isLoading) "Loading Income" else "Income Not Found") },
                             navigationIcon = {
-                                TextButton(onClick = { navController.popBackStack() }) {
-                                    Text("Back")
-                                }
+                                TextButton(onClick = { navController.popBackStack() }) { Text("Back") }
                             }
                         )
                     }
                 ) { padding ->
-                    Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("This income record was not found.")
+                    Box(
+                        modifier = Modifier.padding(padding).fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (incomeUiState.isLoading) "Loading..." else "This income record was not found.")
                     }
                 }
             }
@@ -543,6 +634,155 @@ fun PfmsNavGraph(
                     navController.popBackStack()
                 }
             )
+        }
+
+        // =====================================
+        // MEMBER 1 - EXPENSE MANAGEMENT
+        // =====================================
+        // With expenseViewModel == null, navigation previews are shown
+        // with no save/delete action. Supplying a backed ViewModel
+        // enables the connected screens without rewriting the routes.
+        composable(Routes.ExpenseList) {
+            var showQuickAdd by remember { mutableStateOf(false) }
+            val categories = ExpenseDevelopmentCategories.categories
+            val vm = expenseViewModel
+
+            if (vm != null) {
+                ExpenseListContent(
+                    viewModel = vm,
+                    onAddExpense = { navController.navigate(Routes.AddExpense) },
+                    onQuickAdd = {
+                        vm.clearSuccess()
+                        vm.clearError()
+                        showQuickAdd = true
+                    },
+                    onEditExpense = { id ->
+                        navController.navigate(Routes.editExpense(id))
+                    },
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    }
+                )
+
+                if (showQuickAdd) {
+                    ExpenseQuickAddContent(
+                        viewModel = vm,
+                        categories = categories,
+                        onDismiss = { showQuickAdd = false },
+                        onSaveSuccess = { showQuickAdd = false }
+                    )
+                }
+            } else {
+                val pending = "Expense storage is not connected yet. Saving is unavailable."
+                ExpenseListScreen(
+                    expenses = emptyList(),
+                    isLoading = false,
+                    isDeleting = false,
+                    onAddExpense = { navController.navigate(Routes.AddExpense) },
+                    onQuickAdd = { showQuickAdd = true },
+                    onEditExpense = { id ->
+                        navController.navigate(Routes.editExpense(id))
+                    },
+                    onDeleteExpense = {},
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    errorMessage = pending
+                )
+                if (showQuickAdd) {
+                    QuickAddExpenseSheet(
+                        categories = categories,
+                        defaultPaymentMethod =
+                            com.pfms.app.domain.model.ExpensePaymentMethod.CASH,
+                        isSaving = false,
+                        onSave = { _, _, _, _ -> },
+                        onDismiss = { showQuickAdd = false },
+                        errorMessage = pending
+                    )
+                }
+            }
+        }
+
+        composable(Routes.AddExpense) {
+            val vm = expenseViewModel
+            if (vm != null) {
+                ExpenseFormContent(
+                    viewModel = vm,
+                    categories = ExpenseDevelopmentCategories.categories,
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    onSaveSuccess = { navController.popBackStack() }
+                )
+            } else {
+                ExpenseFormScreen(
+                    initialExpense = null,
+                    categories = ExpenseDevelopmentCategories.categories,
+                    isSaving = false,
+                    onSave = {},
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    errorMessage = "Expense storage is not connected yet. Nothing will be saved."
+                )
+            }
+        }
+
+        composable(
+            route = Routes.EditExpense,
+            arguments = listOf(
+                navArgument("expenseId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val vm = expenseViewModel
+            val expenseId = entry.arguments?.getString("expenseId")
+            if (vm != null && expenseId != null) {
+                ExpenseFormContent(
+                    viewModel = vm,
+                    expenseId = expenseId,
+                    categories = ExpenseDevelopmentCategories.categories,
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.Dashboard) {
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                    onSaveSuccess = { navController.popBackStack() }
+                )
+            } else {
+                Scaffold { padding ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Edit Expense", style = MaterialTheme.typography.headlineSmall)
+                        Text("Editing requires the shared expense repository.")
+                        TextButton(onClick = { navController.popBackStack() }) {
+                            Text("Back")
+                        }
+                    }
+                }
+            }
         }
     }
 }
