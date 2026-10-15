@@ -1,7 +1,8 @@
-
 package com.pfms.app.ui.screen.expense
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,7 +51,10 @@ fun QuickAddExpenseSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement =
                 Arrangement.spacedBy(12.dp)
         ) {
@@ -153,7 +157,7 @@ fun QuickAddExpenseSheet(
                 Text("Cancel")
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
         }
     }
 }

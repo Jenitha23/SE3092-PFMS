@@ -1,4 +1,3 @@
-
 package com.pfms.app.ui.screen.expense
 
 import androidx.compose.foundation.layout.*
@@ -33,12 +32,14 @@ fun ExpenseListScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onBack) {
                     Text("Back")
                 }
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Expenses",
                     style = MaterialTheme.typography.titleLarge
@@ -59,6 +60,7 @@ fun ExpenseListScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
+                .padding(top = 8.dp)
         ) {
             Button(
                 onClick = onAddExpense,
