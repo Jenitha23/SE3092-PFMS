@@ -269,6 +269,56 @@ class SalaryTemplateRepositoryImplTest {
         assertEquals("2026-10", templateCaptor.firstValue.lastConfirmedMonth)
         assertEquals(30000000L, templateCaptor.firstValue.amountMinor)
     }
+
+    @Test
+    fun `syncPendingTemplate processes PENDING_INSERT and marks SYNCED`() = runTest {
+        val pendingTemplate = SalaryTemplateEntity(
+            id = "tpl-1",
+            userId = "user-123",
+            amountMinor = 25000000L,
+            currency = "LKR",
+            paymentDay = 25,
+            lastConfirmedMonth = "2026-09",
+            syncStatus = SyncStatus.PENDING_INSERT
+        )
+        whenever(salaryTemplateDao.getPendingSync("user-123")).thenReturn(listOf(pendingTemplate))
+
+        val result = repository.syncPendingTemplate()
+
+        assertTrue(result.isSuccess)
+        verify(salaryTemplateRemoteDataSource).upsertSalaryTemplate(eq("user-123"), any())
+        verify(salaryTemplateDao).updateSyncStatus("user-123", SyncStatus.SYNCED)
+    }
+
+    @Test
+    fun `syncPendingTemplate returns failure and retains pending state when remote fails`() = runTest {
+        val pendingTemplate = SalaryTemplateEntity(
+            id = "tpl-1",
+            userId = "user-123",
+            amountMinor = 25000000L,
+            currency = "LKR",
+            paymentDay = 25,
+            lastConfirmedMonth = "2026-09",
+            syncStatus = SyncStatus.PENDING_UPDATE
+        )
+        whenever(salaryTemplateDao.getPendingSync("user-123")).thenReturn(listOf(pendingTemplate))
+        whenever(salaryTemplateRemoteDataSource.upsertSalaryTemplate(eq("user-123"), any()))
+            .thenThrow(RuntimeException("Network failure"))
+
+        val result = repository.syncPendingTemplate()
+
+        assertTrue(result.isFailure)
+        verify(salaryTemplateDao, never()).updateSyncStatus("user-123", SyncStatus.SYNCED)
+    }
+
+    @Test
+    fun `syncPendingTemplate returns success when pending queue is empty`() = runTest {
+        whenever(salaryTemplateDao.getPendingSync("user-123")).thenReturn(emptyList())
+
+        val result = repository.syncPendingTemplate()
+
+        assertTrue(result.isSuccess)
+    }
 }
 
 

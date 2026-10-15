@@ -5,6 +5,7 @@ import com.pfms.app.data.local.entity.SyncStatus
 import com.pfms.app.data.local.mapper.toDomain
 import com.pfms.app.data.local.mapper.toEntity
 import com.pfms.app.data.remote.firestore.IncomeRemoteDataSource
+import com.pfms.app.data.sync.IncomePendingSyncable
 import com.pfms.app.domain.model.AuthUser
 import com.pfms.app.domain.model.Income
 import com.pfms.app.domain.repository.AuthRepository
@@ -35,7 +36,7 @@ class OfflineFirstIncomeRepository @Inject constructor(
     private val incomeDao: IncomeDao,
     private val incomeRemoteDataSource: IncomeRemoteDataSource,
     private val authRepository: AuthRepository
-) : IncomeRepository {
+) : IncomeRepository, IncomePendingSyncable {
 
     private suspend fun requireUser(): AuthUser {
         val user = authRepository.currentUser.first()
@@ -163,11 +164,12 @@ class OfflineFirstIncomeRepository @Inject constructor(
      * Synchronizes all locally queued pending changes for the authenticated user to Firestore.
      * Failed records remain in their pending state for subsequent retry attempts.
      */
-    suspend fun syncPendingIncome(): Result<Int> = withContext(Dispatchers.IO) {
+    override suspend fun syncPendingIncome(): Result<Int> = withContext(Dispatchers.IO) {
         try {
             val user = requireUser()
             val pendingList = incomeDao.getPendingSync(user.uid)
             var syncedCount = 0
+            var failureException: Exception? = null
 
             for (record in pendingList) {
                 try {
@@ -187,9 +189,14 @@ class OfflineFirstIncomeRepository @Inject constructor(
                     }
                 } catch (e: Exception) {
                     // Record remains in pending state for next sync pass
+                    failureException = e
                 }
             }
-            Result.success(syncedCount)
+            if (failureException != null) {
+                Result.failure(failureException)
+            } else {
+                Result.success(syncedCount)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -254,6 +254,90 @@ class OfflineFirstIncomeRepositoryTest {
         assertEquals("inc-1", list[0].id)
     }
 
+    @Test
+    fun `syncPendingIncome processes PENDING_INSERT and PENDING_UPDATE and marks SYNCED`() = runTest {
+        val pendingInsert = IncomeEntity(
+            id = "inc-1",
+            userId = "user-123",
+            amountMinor = 50000L,
+            currency = "LKR",
+            source = "Bonus",
+            syncStatus = SyncStatus.PENDING_INSERT,
+            isDeleted = false
+        )
+        val pendingUpdate = IncomeEntity(
+            id = "inc-2",
+            userId = "user-123",
+            amountMinor = 80000L,
+            currency = "LKR",
+            source = "Freelance",
+            syncStatus = SyncStatus.PENDING_UPDATE,
+            isDeleted = false
+        )
+        whenever(incomeDao.getPendingSync("user-123")).thenReturn(listOf(pendingInsert, pendingUpdate))
+
+        val result = repository.syncPendingIncome()
+
+        assertTrue(result.isSuccess)
+        assertEquals(2, result.getOrNull())
+        verify(incomeRemoteDataSource).upsertIncome(eq("user-123"), eq(pendingInsert.toDomain()))
+        verify(incomeRemoteDataSource).upsertIncome(eq("user-123"), eq(pendingUpdate.toDomain()))
+        verify(incomeDao).updateSyncStatus("user-123", "inc-1", SyncStatus.SYNCED)
+        verify(incomeDao).updateSyncStatus("user-123", "inc-2", SyncStatus.SYNCED)
+    }
+
+    @Test
+    fun `syncPendingIncome processes PENDING_DELETE and hard deletes locally`() = runTest {
+        val pendingDelete = IncomeEntity(
+            id = "inc-3",
+            userId = "user-123",
+            amountMinor = 10000L,
+            currency = "LKR",
+            source = "Investment",
+            syncStatus = SyncStatus.PENDING_DELETE,
+            isDeleted = true
+        )
+        whenever(incomeDao.getPendingSync("user-123")).thenReturn(listOf(pendingDelete))
+
+        val result = repository.syncPendingIncome()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        verify(incomeRemoteDataSource).deleteIncome("user-123", "inc-3")
+        verify(incomeDao).hardDeleteIncome("user-123", "inc-3")
+    }
+
+    @Test
+    fun `syncPendingIncome returns failure and preserves pending state when remote call fails`() = runTest {
+        val pendingInsert = IncomeEntity(
+            id = "inc-4",
+            userId = "user-123",
+            amountMinor = 25000L,
+            currency = "LKR",
+            source = "Gift",
+            syncStatus = SyncStatus.PENDING_INSERT,
+            isDeleted = false
+        )
+        whenever(incomeDao.getPendingSync("user-123")).thenReturn(listOf(pendingInsert))
+        whenever(incomeRemoteDataSource.upsertIncome(eq("user-123"), any()))
+            .thenThrow(RuntimeException("Firestore offline"))
+
+        val result = repository.syncPendingIncome()
+
+        assertTrue(result.isFailure)
+        verify(incomeDao, never()).updateSyncStatus(eq("user-123"), eq("inc-4"), any())
+    }
+
+    @Test
+    fun `syncPendingIncome returns success zero when pending queue is empty`() = runTest {
+        whenever(incomeDao.getPendingSync("user-123")).thenReturn(emptyList())
+
+        val result = repository.syncPendingIncome()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull())
+    }
+
     private fun existingIncomeEntityToDomain(entity: IncomeEntity): Income {
         return entity.toDomain()
     }

@@ -9,6 +9,7 @@ import com.pfms.app.data.local.mapper.toDomain
 import com.pfms.app.data.local.mapper.toEntity
 import com.pfms.app.data.remote.firestore.IncomeRemoteDataSource
 import com.pfms.app.data.remote.firestore.SalaryTemplateRemoteDataSource
+import com.pfms.app.data.sync.SalaryTemplatePendingSyncable
 import com.pfms.app.domain.model.AuthUser
 import com.pfms.app.domain.model.Income
 import com.pfms.app.domain.model.SalaryTemplate
@@ -44,7 +45,7 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
     private val incomeRemoteDataSource: IncomeRemoteDataSource,
     private val database: PfmsDatabase,
     private val authRepository: AuthRepository
-) : SalaryTemplateRepository {
+) : SalaryTemplateRepository, SalaryTemplatePendingSyncable {
 
     internal var transactionRunner: suspend (suspend () -> Unit) -> Unit = { block ->
         database.withTransaction(block)
@@ -193,10 +194,12 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
     /**
      * Synchronizes any pending template updates to Firestore.
      */
-    suspend fun syncPendingTemplate(): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun syncPendingTemplate(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val user = requireUser()
             val pendingList = salaryTemplateDao.getPendingSync(user.uid)
+            var failureException: Exception? = null
+
             for (record in pendingList) {
                 try {
                     when (record.syncStatus) {
@@ -213,9 +216,14 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
                     }
                 } catch (e: Exception) {
                     // Retains pending state
+                    failureException = e
                 }
             }
-            Result.success(Unit)
+            if (failureException != null) {
+                Result.failure(failureException)
+            } else {
+                Result.success(Unit)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
