@@ -79,7 +79,7 @@ fun DashboardScreen(
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit = {},
     onNavigateToIncome: () -> Unit = {},
-    onNavigateToAnalytics: () -> Unit = {}
+    onNavigateToAnalytics: () -> Unit = {},
     onNavigateToExpenses: () -> Unit = {}
 ) {
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
