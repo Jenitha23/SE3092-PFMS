@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +36,7 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ExpenseReminderPermission() {
@@ -91,6 +93,8 @@ private fun CategoriesScreenContent(vm: AdvancedExpenseViewModel, onBack: () -> 
     var classification by remember { mutableStateOf(ExpenseClassification.DISCRETIONARY) }
     var editingCategory by remember { mutableStateOf<ExpenseCategory?>(null) }
     var categoryToArchive by remember { mutableStateOf<ExpenseCategory?>(null) }
+    val activeListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     val activeCategories = categories.filter { !it.archived }.sortedWith(compareBy<ExpenseCategory> { it.custom }.thenBy { it.name })
     val archivedCategories = categories.filter { it.archived }.sortedBy { it.name }
@@ -144,6 +148,7 @@ private fun CategoriesScreenContent(vm: AdvancedExpenseViewModel, onBack: () -> 
             if (selectedTab == 0) {
                 // Active Categories Tab
                 LazyColumn(
+                    state = activeListState,
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)
@@ -242,6 +247,7 @@ private fun CategoriesScreenContent(vm: AdvancedExpenseViewModel, onBack: () -> 
                                             editingCategory = cat
                                             name = cat.name
                                             classification = cat.classification
+                                            scope.launch { activeListState.animateScrollToItem(0) }
                                         }) {
                                             ExpenseIcon(ExpenseSymbol.EDIT, Modifier.size(19.dp), MaterialTheme.colorScheme.primary)
                                         }

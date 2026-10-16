@@ -15,6 +15,7 @@ import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
 import com.pfms.app.domain.model.*
+import com.pfms.app.data.model.DefaultFinancialData
 import com.pfms.app.domain.repository.AdvancedExpenseRepository
 import com.pfms.app.ui.screen.expense.CategoriesScreen
 import com.pfms.app.ui.screen.expense.RecurringExpensesScreen
@@ -146,6 +147,33 @@ class ExpenseScreenIntegrationTest {
             assertEquals("Learning", repo.categoryRows.value.single { it.custom }.name)
             assertFalse(repo.categoryRows.value.single { it.custom }.archived)
         }
+    }
+
+    @Test fun editingCategoryBelowDefaultsBringsFormIntoView() {
+        val repo = MemoryExpenses().apply {
+            categoryRows.value = DefaultFinancialData.expenseCategories.map {
+                ExpenseCategory(it.id, it.name, ExpenseClassification.valueOf(it.classification.uppercase()))
+            } + ExpenseCategory("books", "Books", ExpenseClassification.DISCRETIONARY, custom = true)
+        }
+        val vm = AdvancedExpenseViewModel(repo)
+        setScreen { MaterialTheme { CategoriesScreen(vm) {} } }
+
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Edit Books"))
+        compose.onNodeWithContentDescription("Edit Books").performClick()
+        // Do not scroll here: tapping Edit must reveal the form for the user.
+        compose.onNodeWithText("Edit Category: Books").assertIsDisplayed()
+        compose.onNode(hasSetTextAction()).assertIsDisplayed().performTextReplacement("Learning")
+        closeKeyboard()
+        compose.onNodeWithText("Save Changes").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals("Learning", repo.categoryRows.value.single { it.id == "books" }.name)
+        }
+
+        // Editing the same category again must also return to the form.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Edit Learning"))
+        compose.onNodeWithContentDescription("Edit Learning").performClick()
+        compose.onNodeWithText("Edit Category: Learning").assertIsDisplayed()
+        compose.onNode(hasSetTextAction()).assertTextContains("Learning")
     }
 
     @Test fun cancelledSubscriptionCanBeResumedAndCountedAgain() {
