@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.pfms.app.data.local.entity.SavingsGoalEntity
@@ -58,6 +59,36 @@ interface SavingsGoalDao {
      */
     @Upsert
     suspend fun upsertAll(entities: List<SavingsGoalEntity>)
+
+    /**
+     * Atomically validates that no active goal exists for this user before inserting,
+     * ensuring exactly one active goal can exist even under concurrent execution.
+     */
+    @Transaction
+    suspend fun insertActiveGoalGuarded(entity: SavingsGoalEntity) {
+        if (entity.status == "ACTIVE" && !entity.isDeleted) {
+            val existingActive = getActiveGoal(entity.userId)
+            if (existingActive != null) {
+                throw IllegalStateException("An active savings goal already exists")
+            }
+        }
+        upsertGoal(entity)
+    }
+
+    /**
+     * Atomically validates that no other active goal exists for this user before updating/reactivating,
+     * ensuring one-active-goal invariant is preserved.
+     */
+    @Transaction
+    suspend fun updateActiveGoalGuarded(entity: SavingsGoalEntity) {
+        if (entity.status == "ACTIVE" && !entity.isDeleted) {
+            val existingActive = getActiveGoal(entity.userId)
+            if (existingActive != null && existingActive.id != entity.id) {
+                throw IllegalStateException("An active savings goal already exists")
+            }
+        }
+        upsertGoal(entity)
+    }
 
     /**
      * Soft-deletes a goal by marking isDeleted = 1 and setting syncStatus to PENDING_DELETE.

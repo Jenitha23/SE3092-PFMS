@@ -442,6 +442,34 @@ class FakeSavingsGoalDao : SavingsGoalDao {
         emit()
     }
 
+    private val lock = Any()
+
+    override suspend fun insertActiveGoalGuarded(entity: SavingsGoalEntity) {
+        synchronized(lock) {
+            if (entity.status == "ACTIVE" && !entity.isDeleted) {
+                val existingActive = storage.values.firstOrNull { it.userId == entity.userId && it.status == "ACTIVE" && !it.isDeleted }
+                if (existingActive != null) {
+                    throw IllegalStateException("An active savings goal already exists")
+                }
+            }
+            storage[entity.id] = entity
+            emit()
+        }
+    }
+
+    override suspend fun updateActiveGoalGuarded(entity: SavingsGoalEntity) {
+        synchronized(lock) {
+            if (entity.status == "ACTIVE" && !entity.isDeleted) {
+                val existingActive = storage.values.firstOrNull { it.userId == entity.userId && it.status == "ACTIVE" && !it.isDeleted }
+                if (existingActive != null && existingActive.id != entity.id) {
+                    throw IllegalStateException("An active savings goal already exists")
+                }
+            }
+            storage[entity.id] = entity
+            emit()
+        }
+    }
+
     override suspend fun markGoalDeleted(
         userId: String,
         goalId: String,
