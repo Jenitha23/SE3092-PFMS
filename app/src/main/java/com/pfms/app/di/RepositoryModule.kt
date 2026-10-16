@@ -18,11 +18,18 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+import com.pfms.app.data.repository.FirestoreExpenseRepository
+import com.pfms.app.domain.repository.ExpenseRepository
+
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
     @Binds @Singleton
     abstract fun bindAdvancedExpenseRepository(repository: FirestoreAdvancedExpenseRepository): AdvancedExpenseRepository
+
+    @Binds @Singleton
+    abstract fun bindExpenseRepository(repository: FirestoreExpenseRepository): ExpenseRepository
+
 
     @Binds
     @Singleton
