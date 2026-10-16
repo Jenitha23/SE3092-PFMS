@@ -13,13 +13,18 @@ import com.pfms.app.viewmodel.ExpenseViewModel
 fun ExpenseFormContent(
     viewModel: ExpenseViewModel,
     expenseId: String? = null,
+    isRepeating: Boolean = false,
     categories: List<ExpenseCategoryOption>,
     onBack: () -> Unit,
-    onSaveSuccess: () -> Unit
+    onSaveSuccess: () -> Unit,
+    onManageRecurring: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val editing = expenseId != null
+    val editing = expenseId != null && !isRepeating
     val existing = uiState.expenses.firstOrNull { it.id == expenseId }
+    val formCategories = if (editing && existing != null && categories.none { it.id == existing.categoryId }) {
+        categories + ExpenseCategoryOption(existing.categoryId, existing.categoryName, existing.classification)
+    } else categories
 
     // Prevent a success/error from a previous destination affecting this form.
     LaunchedEffect(expenseId) {
@@ -40,13 +45,16 @@ fun ExpenseFormContent(
         editing && existing == null -> Text("Expense record not found.")
         else -> ExpenseFormScreen(
             initialExpense = existing,
-            categories = categories,
+            categories = formCategories,
             isSaving = uiState.isSaving,
             errorMessage = uiState.errorMessage,
             defaultPaymentMethod = uiState.lastUsedPaymentMethod,
+            isRepeating = isRepeating,
+            pastExpenses = uiState.expenses,
+            onManageRecurring = onManageRecurring,
             onBack = onBack,
             onSave = { form ->
-                if (expenseId != null) {
+                if (editing && expenseId != null) {
                     viewModel.updateExpense(expenseId, form)
                 } else {
                     viewModel.addExpense(form)

@@ -43,6 +43,10 @@ import com.pfms.app.ui.screen.expense.ExpenseQuickAddContent
 import com.pfms.app.viewmodel.AppLockState
 import com.pfms.app.viewmodel.IncomeViewModel
 import com.pfms.app.viewmodel.SalaryViewModel
+import com.pfms.app.viewmodel.AdvancedExpenseViewModel
+import com.pfms.app.ui.screen.expense.CategoriesScreen
+import com.pfms.app.ui.screen.expense.RecurringExpensesScreen
+import com.pfms.app.ui.screen.expense.ExpenseReminderPermission
 import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
 
@@ -63,11 +67,13 @@ import com.pfms.app.viewmodel.SessionViewModel
 fun PfmsNavGraph(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     incomeViewModel: IncomeViewModel = hiltViewModel(),
-    salaryViewModel: SalaryViewModel = hiltViewModel()
-    // Supply a real, Hilt-backed ExpenseViewModel only after
-    // ExpenseRepository implementation/binding exists.
-    expenseViewModel: ExpenseViewModel? = null
+    salaryViewModel: SalaryViewModel = hiltViewModel(),
+    expenseViewModel: ExpenseViewModel = hiltViewModel(),
+    pendingReminderRoute: String? = null,
+    onReminderConsumed: () -> Unit = {}
 ) {
+
+    val advancedExpenseViewModel: AdvancedExpenseViewModel = hiltViewModel()
 
     val navController = rememberNavController()
 
@@ -183,6 +189,15 @@ fun PfmsNavGraph(
     // NAVIGATION HOST
     // -----------------------------------------
 
+    // Consume reminder destinations only after authentication and app unlock.
+    LaunchedEffect(pendingReminderRoute, targetRoute) {
+        val destination = Routes.reminderDestination(pendingReminderRoute)
+        if (destination != null && targetRoute == Routes.Dashboard) {
+            navController.navigate(destination) { launchSingleTop = true }
+            onReminderConsumed()
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Routes.Splash
@@ -297,10 +312,13 @@ fun PfmsNavGraph(
                 },
 
                 onNavigateToAnalytics = {
-
                     navController.navigate(
                         Routes.IncomeAnalytics
                     ) {
+                        launchSingleTop = true
+                    }
+                },
+
                 onNavigateToExpenses = {
                     navController.navigate(Routes.ExpenseList) {
                         launchSingleTop = true
@@ -392,28 +410,13 @@ fun PfmsNavGraph(
                         launchSingleTop = true
                     }
                 }
-            IncomeListScreen(
-                incomes = incomeUiState.incomes,
-                isLoading = incomeUiState.isLoading,
-                errorMessage = incomeUiState.errorMessage,
-                totalRealizedIncomeMinor = incomeUiState.totalRealizedIncomeMinor,
-                monthlyRealizedIncomeMinor = incomeUiState.monthlyRealizedIncomeMinor,
-                totalPendingFreelanceMinor = incomeUiState.totalPendingFreelanceMinor,
-                pendingFreelanceCount = incomeUiState.pendingFreelanceCount,
-                cryptoGainsMinor = incomeUiState.cryptoGainsMinor,
-                cryptoLossesMinor = incomeUiState.cryptoLossesMinor,
-                netCryptoMinor = incomeUiState.netCryptoMinor,
-                ytdNetCryptoMinor = incomeUiState.ytdNetCryptoMinor,
-                onAddIncome = { navController.navigate(Routes.AddIncome) },
-                onEditIncome = { id -> navController.navigate(Routes.editIncome(id)) },
-                onDeleteIncome = incomeViewModel::deleteIncome,
-                onMarkFreelanceReceived = incomeViewModel::markFreelanceAsReceived,
-                onBack = { navController.popBackStack() },
-                onRecurringSalary = { navController.navigate(Routes.SalaryTemplate) }
             )
         }
 
-        // ADD INCOME – all validation and persistence happens in ViewModel.
+        // -------------------------------------
+        // ADD INCOME
+        // -------------------------------------
+
         composable(Routes.AddIncome) {
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
 
@@ -453,45 +456,25 @@ fun PfmsNavGraph(
                 onFetchExchangeRate = { date ->
                     incomeViewModel.fetchExchangeRate(date)
                 },
-                onSetManualRate = { rate ->
-                    incomeViewModel.setManualExchangeRate(rate)
-                },
+                onSetManualRate = incomeViewModel::setManualExchangeRate,
+                onEnableManualRate = incomeViewModel::enableManualRate,
                 onClearExchangeRate = {
                     incomeViewModel.clearExchangeRate()
                 }
-            LaunchedEffect(Unit) {
-                incomeViewModel.clearFormError()
-                incomeViewModel.clearExchangeRate()
-            }
-            IncomeFormScreen(
-                onBack = { navController.popBackStack() },
-                onSave = { input ->
-                    incomeViewModel.addIncome(
-                        amount = input.amount, currency = input.currency,
-                        source = input.source, receivedDate = input.receivedDate,
-                        note = input.note, projectName = input.projectName,
-                        paymentStatus = input.paymentStatus,
-                        cryptoType = input.cryptoType, cryptoAsset = input.cryptoAsset
-                    )
-                },
-                isSaving = incomeUiState.isSaving,
-                errorMessage = incomeUiState.errorMessage,
-                exchangeRate = incomeUiState.exchangeRate,
-                exchangeRateDate = incomeUiState.exchangeRateDate,
-                isRateFetching = incomeUiState.isRateFetching,
-                rateFetchError = incomeUiState.rateFetchError,
-                isManualRateMode = incomeUiState.isManualRateMode,
-                onFetchExchangeRate = incomeViewModel::fetchExchangeRate,
-                onSetManualRate = incomeViewModel::setManualExchangeRate,
-                onEnableManualRate = incomeViewModel::enableManualRate,
-                onClearExchangeRate = incomeViewModel::clearExchangeRate
             )
         }
 
-        // EDIT INCOME – retains the conversion metadata on note/status-only edits.
+        // -------------------------------------
+        // EDIT INCOME
+        // -------------------------------------
+
         composable(
             route = Routes.EditIncome,
-            arguments = listOf(navArgument("incomeId") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("incomeId") {
+                    type = NavType.StringType
+                }
+            )
         ) { backStackEntry ->
             val incomeId = backStackEntry.arguments?.getString("incomeId")
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
@@ -535,63 +518,27 @@ fun PfmsNavGraph(
                     onFetchExchangeRate = { date ->
                         incomeViewModel.fetchExchangeRate(date)
                     },
-                    onSetManualRate = { rate ->
-                        incomeViewModel.setManualExchangeRate(rate)
-                    },
+                    onSetManualRate = incomeViewModel::setManualExchangeRate,
+                    onEnableManualRate = incomeViewModel::enableManualRate,
                     onClearExchangeRate = {
                         incomeViewModel.clearExchangeRate()
                     }
                 )
             } else if (!incomeState.isLoading) {
                 Scaffold(
-            val id = backStackEntry.arguments?.getString("incomeId")
-            val item = incomeUiState.incomes.firstOrNull { it.id == id }
-            LaunchedEffect(item?.id) {
-                if (item != null) {
-                    incomeViewModel.clearFormError()
-                    incomeViewModel.loadExistingRate(item)
-                }
-            }
-            when {
-                item != null -> IncomeFormScreen(
-                    initialIncome = item,
-                    onBack = { navController.popBackStack() },
-                    onSave = { input ->
-                        incomeViewModel.updateIncome(
-                            incomeId = item.id, amount = input.amount,
-                            currency = input.currency, source = input.source,
-                            receivedDate = input.receivedDate, note = input.note,
-                            projectName = input.projectName, paymentStatus = input.paymentStatus,
-                            cryptoType = input.cryptoType, cryptoAsset = input.cryptoAsset
-                        )
-                    },
-                    isSaving = incomeUiState.isSaving,
-                    errorMessage = incomeUiState.errorMessage,
-                    exchangeRate = incomeUiState.exchangeRate,
-                    exchangeRateDate = incomeUiState.exchangeRateDate,
-                    isRateFetching = incomeUiState.isRateFetching,
-                    rateFetchError = incomeUiState.rateFetchError,
-                    isManualRateMode = incomeUiState.isManualRateMode,
-                    onFetchExchangeRate = incomeViewModel::fetchExchangeRate,
-                    onSetManualRate = incomeViewModel::setManualExchangeRate,
-                    onEnableManualRate = incomeViewModel::enableManualRate,
-                    onClearExchangeRate = incomeViewModel::clearExchangeRate
-                )
-                else -> Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text(if (incomeUiState.isLoading) "Loading Income" else "Income Not Found") },
+                            title = { Text("Income Not Found") },
                             navigationIcon = {
-                                TextButton(onClick = { navController.popBackStack() }) { Text("Back") }
+                                TextButton(onClick = { navController.popBackStack() }) {
+                                    Text("Back")
+                                }
                             }
                         )
                     }
                 ) { padding ->
-                    Box(
-                        modifier = Modifier.padding(padding).fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(if (incomeUiState.isLoading) "Loading..." else "This income record was not found.")
+                    Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("This income record was not found.")
                     }
                 }
             }
@@ -636,6 +583,22 @@ fun PfmsNavGraph(
             )
         }
 
+        // Member 2 feature screens
+        composable(Routes.Categories) {
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            CategoriesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() })
+        }
+        composable(Routes.RecurringExpenses) {
+            ExpenseReminderPermission()
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            RecurringExpensesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() })
+        }
+        composable(Routes.Subscriptions) {
+            ExpenseReminderPermission()
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            RecurringExpensesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() }, subscriptionsOnly = true)
+        }
+
         // =====================================
         // MEMBER 1 - EXPENSE MANAGEMENT
         // =====================================
@@ -644,12 +607,23 @@ fun PfmsNavGraph(
         // enables the connected screens without rewriting the routes.
         composable(Routes.ExpenseList) {
             var showQuickAdd by remember { mutableStateOf(false) }
-            val categories = ExpenseDevelopmentCategories.categories
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            val categoryState by advancedExpenseViewModel.categories.collectAsStateWithLifecycle()
+            val categories = categoryState.filter { !it.archived }.map {
+                com.pfms.app.ui.screen.expense.ExpenseCategoryOption(it.id, it.name, it.classification)
+            }
             val vm = expenseViewModel
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f)) {
 
             if (vm != null) {
                 ExpenseListContent(
                     viewModel = vm,
+                    onCategories = { navController.navigate(Routes.Categories) },
+                    onRecurring = { navController.navigate(Routes.RecurringExpenses) },
+                    onSubscriptions = { navController.navigate(Routes.Subscriptions) },
+                    onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
+                    onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
                     onAddExpense = { navController.navigate(Routes.AddExpense) },
                     onQuickAdd = {
                         vm.clearSuccess()
@@ -658,6 +632,9 @@ fun PfmsNavGraph(
                     },
                     onEditExpense = { id ->
                         navController.navigate(Routes.editExpense(id))
+                    },
+                    onRepeatExpense = { id ->
+                        navController.navigate(Routes.repeatExpense(id))
                     },
                     onBack = {
                         if (!navController.popBackStack()) {
@@ -709,14 +686,22 @@ fun PfmsNavGraph(
                     )
                 }
             }
+                }
+            }
         }
 
         composable(Routes.AddExpense) {
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            val categoryState by advancedExpenseViewModel.categories.collectAsStateWithLifecycle()
+            val activeCategoryOptions = categoryState.filter { !it.archived }.map {
+                com.pfms.app.ui.screen.expense.ExpenseCategoryOption(it.id, it.name, it.classification)
+            }
             val vm = expenseViewModel
             if (vm != null) {
                 ExpenseFormContent(
                     viewModel = vm,
-                    categories = ExpenseDevelopmentCategories.categories,
+                    categories = activeCategoryOptions,
+                    onManageRecurring = { navController.navigate(Routes.RecurringExpenses) },
                     onBack = {
                         if (!navController.popBackStack()) {
                             navController.navigate(Routes.Dashboard) {
@@ -729,7 +714,7 @@ fun PfmsNavGraph(
             } else {
                 ExpenseFormScreen(
                     initialExpense = null,
-                    categories = ExpenseDevelopmentCategories.categories,
+                    categories = activeCategoryOptions,
                     isSaving = false,
                     onSave = {},
                     onBack = {
@@ -750,13 +735,19 @@ fun PfmsNavGraph(
                 navArgument("expenseId") { type = NavType.StringType }
             )
         ) { entry ->
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            val categoryState by advancedExpenseViewModel.categories.collectAsStateWithLifecycle()
+            val activeCategoryOptions = categoryState.filter { !it.archived }.map {
+                com.pfms.app.ui.screen.expense.ExpenseCategoryOption(it.id, it.name, it.classification)
+            }
             val vm = expenseViewModel
             val expenseId = entry.arguments?.getString("expenseId")
             if (vm != null && expenseId != null) {
                 ExpenseFormContent(
                     viewModel = vm,
                     expenseId = expenseId,
-                    categories = ExpenseDevelopmentCategories.categories,
+                    categories = activeCategoryOptions,
+                    onManageRecurring = { navController.navigate(Routes.RecurringExpenses) },
                     onBack = {
                         if (!navController.popBackStack()) {
                             navController.navigate(Routes.Dashboard) {
@@ -782,6 +773,40 @@ fun PfmsNavGraph(
                         }
                     }
                 }
+            }
+        }
+
+        composable(
+            route = Routes.RepeatExpense,
+            arguments = listOf(
+                navArgument("expenseId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            val categoryState by advancedExpenseViewModel.categories.collectAsStateWithLifecycle()
+            val activeCategoryOptions = categoryState.filter { !it.archived }.map {
+                com.pfms.app.ui.screen.expense.ExpenseCategoryOption(it.id, it.name, it.classification)
+            }
+            val vm = expenseViewModel
+            val expenseId = entry.arguments?.getString("expenseId")
+            if (vm != null && expenseId != null) {
+                ExpenseFormContent(
+                    viewModel = vm,
+                    expenseId = expenseId,
+                    isRepeating = true,
+                    categories = activeCategoryOptions,
+                    onManageRecurring = { navController.navigate(Routes.RecurringExpenses) },
+                    onBack = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.ExpenseList)
+                        }
+                    },
+                    onSaveSuccess = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(Routes.ExpenseList)
+                        }
+                    }
+                )
             }
         }
     }
