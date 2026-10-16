@@ -10,6 +10,8 @@ import com.pfms.app.domain.repository.IncomeRepository
 import com.pfms.app.domain.repository.LocalDataRepository
 import com.pfms.app.domain.repository.SalaryTemplateRepository
 import com.pfms.app.domain.repository.UserRepository
+import com.pfms.app.data.repository.FirestoreAdvancedExpenseRepository
+import com.pfms.app.domain.repository.AdvancedExpenseRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -19,6 +21,8 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
+    @Binds @Singleton
+    abstract fun bindAdvancedExpenseRepository(repository: FirestoreAdvancedExpenseRepository): AdvancedExpenseRepository
 
     @Binds
     @Singleton
