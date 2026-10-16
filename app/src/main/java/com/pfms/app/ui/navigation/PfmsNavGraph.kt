@@ -63,7 +63,7 @@ import com.pfms.app.viewmodel.SessionViewModel
 fun PfmsNavGraph(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     incomeViewModel: IncomeViewModel = hiltViewModel(),
-    salaryViewModel: SalaryViewModel = hiltViewModel()
+    salaryViewModel: SalaryViewModel = hiltViewModel(),
     // Supply a real, Hilt-backed ExpenseViewModel only after
     // ExpenseRepository implementation/binding exists.
     expenseViewModel: ExpenseViewModel? = null
@@ -301,6 +301,10 @@ fun PfmsNavGraph(
                     navController.navigate(
                         Routes.IncomeAnalytics
                     ) {
+                        launchSingleTop = true
+                    }
+                },
+
                 onNavigateToExpenses = {
                     navController.navigate(Routes.ExpenseList) {
                         launchSingleTop = true
@@ -392,24 +396,6 @@ fun PfmsNavGraph(
                         launchSingleTop = true
                     }
                 }
-            IncomeListScreen(
-                incomes = incomeUiState.incomes,
-                isLoading = incomeUiState.isLoading,
-                errorMessage = incomeUiState.errorMessage,
-                totalRealizedIncomeMinor = incomeUiState.totalRealizedIncomeMinor,
-                monthlyRealizedIncomeMinor = incomeUiState.monthlyRealizedIncomeMinor,
-                totalPendingFreelanceMinor = incomeUiState.totalPendingFreelanceMinor,
-                pendingFreelanceCount = incomeUiState.pendingFreelanceCount,
-                cryptoGainsMinor = incomeUiState.cryptoGainsMinor,
-                cryptoLossesMinor = incomeUiState.cryptoLossesMinor,
-                netCryptoMinor = incomeUiState.netCryptoMinor,
-                ytdNetCryptoMinor = incomeUiState.ytdNetCryptoMinor,
-                onAddIncome = { navController.navigate(Routes.AddIncome) },
-                onEditIncome = { id -> navController.navigate(Routes.editIncome(id)) },
-                onDeleteIncome = incomeViewModel::deleteIncome,
-                onMarkFreelanceReceived = incomeViewModel::markFreelanceAsReceived,
-                onBack = { navController.popBackStack() },
-                onRecurringSalary = { navController.navigate(Routes.SalaryTemplate) }
             )
         }
 
@@ -453,38 +439,10 @@ fun PfmsNavGraph(
                 onFetchExchangeRate = { date ->
                     incomeViewModel.fetchExchangeRate(date)
                 },
-                onSetManualRate = { rate ->
-                    incomeViewModel.setManualExchangeRate(rate)
-                },
+                onSetManualRate = incomeViewModel::setManualExchangeRate,
                 onClearExchangeRate = {
                     incomeViewModel.clearExchangeRate()
                 }
-            LaunchedEffect(Unit) {
-                incomeViewModel.clearFormError()
-                incomeViewModel.clearExchangeRate()
-            }
-            IncomeFormScreen(
-                onBack = { navController.popBackStack() },
-                onSave = { input ->
-                    incomeViewModel.addIncome(
-                        amount = input.amount, currency = input.currency,
-                        source = input.source, receivedDate = input.receivedDate,
-                        note = input.note, projectName = input.projectName,
-                        paymentStatus = input.paymentStatus,
-                        cryptoType = input.cryptoType, cryptoAsset = input.cryptoAsset
-                    )
-                },
-                isSaving = incomeUiState.isSaving,
-                errorMessage = incomeUiState.errorMessage,
-                exchangeRate = incomeUiState.exchangeRate,
-                exchangeRateDate = incomeUiState.exchangeRateDate,
-                isRateFetching = incomeUiState.isRateFetching,
-                rateFetchError = incomeUiState.rateFetchError,
-                isManualRateMode = incomeUiState.isManualRateMode,
-                onFetchExchangeRate = incomeViewModel::fetchExchangeRate,
-                onSetManualRate = incomeViewModel::setManualExchangeRate,
-                onEnableManualRate = incomeViewModel::enableManualRate,
-                onClearExchangeRate = incomeViewModel::clearExchangeRate
             )
         }
 
@@ -535,52 +493,16 @@ fun PfmsNavGraph(
                     onFetchExchangeRate = { date ->
                         incomeViewModel.fetchExchangeRate(date)
                     },
-                    onSetManualRate = { rate ->
-                        incomeViewModel.setManualExchangeRate(rate)
-                    },
+                    onSetManualRate = incomeViewModel::setManualExchangeRate,
                     onClearExchangeRate = {
                         incomeViewModel.clearExchangeRate()
                     }
                 )
             } else if (!incomeState.isLoading) {
                 Scaffold(
-            val id = backStackEntry.arguments?.getString("incomeId")
-            val item = incomeUiState.incomes.firstOrNull { it.id == id }
-            LaunchedEffect(item?.id) {
-                if (item != null) {
-                    incomeViewModel.clearFormError()
-                    incomeViewModel.loadExistingRate(item)
-                }
-            }
-            when {
-                item != null -> IncomeFormScreen(
-                    initialIncome = item,
-                    onBack = { navController.popBackStack() },
-                    onSave = { input ->
-                        incomeViewModel.updateIncome(
-                            incomeId = item.id, amount = input.amount,
-                            currency = input.currency, source = input.source,
-                            receivedDate = input.receivedDate, note = input.note,
-                            projectName = input.projectName, paymentStatus = input.paymentStatus,
-                            cryptoType = input.cryptoType, cryptoAsset = input.cryptoAsset
-                        )
-                    },
-                    isSaving = incomeUiState.isSaving,
-                    errorMessage = incomeUiState.errorMessage,
-                    exchangeRate = incomeUiState.exchangeRate,
-                    exchangeRateDate = incomeUiState.exchangeRateDate,
-                    isRateFetching = incomeUiState.isRateFetching,
-                    rateFetchError = incomeUiState.rateFetchError,
-                    isManualRateMode = incomeUiState.isManualRateMode,
-                    onFetchExchangeRate = incomeViewModel::fetchExchangeRate,
-                    onSetManualRate = incomeViewModel::setManualExchangeRate,
-                    onEnableManualRate = incomeViewModel::enableManualRate,
-                    onClearExchangeRate = incomeViewModel::clearExchangeRate
-                )
-                else -> Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text(if (incomeUiState.isLoading) "Loading Income" else "Income Not Found") },
+                            title = { Text(if (incomeState.isLoading) "Loading Income" else "Income Not Found") },
                             navigationIcon = {
                                 TextButton(onClick = { navController.popBackStack() }) { Text("Back") }
                             }
@@ -591,7 +513,7 @@ fun PfmsNavGraph(
                         modifier = Modifier.padding(padding).fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(if (incomeUiState.isLoading) "Loading..." else "This income record was not found.")
+                        Text(if (incomeState.isLoading) "Loading..." else "This income record was not found.")
                     }
                 }
             }

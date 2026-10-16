@@ -31,10 +31,6 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
-    abstract fun bindIncomeRepository(repository: FirestoreIncomeRepository): IncomeRepository
-
-    @Binds
-    @Singleton
     abstract fun bindLocalDataRepository(repository: FirestoreLocalDataRepository): LocalDataRepository
 
     @Binds
