@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 
 import com.pfms.app.domain.model.SessionState
 import com.pfms.app.ui.screen.DashboardScreen
@@ -31,6 +32,8 @@ import com.pfms.app.ui.screen.income.IncomeAnalyticsScreen
 import com.pfms.app.ui.screen.income.IncomeFormScreen
 import com.pfms.app.ui.screen.income.IncomeListScreen
 import com.pfms.app.ui.screen.income.SalaryTemplateScreen
+import com.pfms.app.ui.screen.income.SalaryConfirmationDialog
+import com.pfms.app.ui.screen.income.SalaryReminderLifecycle
 
 import com.pfms.app.ui.screen.expense.ExpenseListScreen
 import com.pfms.app.ui.screen.expense.ExpenseFormScreen
@@ -83,6 +86,7 @@ fun PfmsNavGraph(
     val lockState by sessionViewModel.lockState
         .collectAsStateWithLifecycle()
     val incomeUiState by incomeViewModel.uiState.collectAsStateWithLifecycle()
+    val salaryUiState by salaryViewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(incomeUiState.saveSuccessful) {
         if (incomeUiState.saveSuccessful) {
@@ -162,6 +166,21 @@ fun PfmsNavGraph(
 
                 AppLockState.Unlocked -> Routes.Dashboard
             }
+        }
+    }
+
+    // FR-10: Recheck the due salary on resume and after successful unlock.
+    SalaryReminderLifecycle(
+        onResume = {
+            if (targetRoute == Routes.Dashboard) {
+                salaryViewModel.refreshSalaryReminder()
+            }
+        }
+    )
+
+    LaunchedEffect(targetRoute) {
+        if (targetRoute == Routes.Dashboard) {
+            salaryViewModel.refreshSalaryReminder()
         }
     }
 
@@ -805,5 +824,36 @@ fun PfmsNavGraph(
             }
         }
     }
-}
 
+    // FR-10: Show the monthly salary prompt above the navigation host.
+    // Do not display it during login, while locked, or on form screens.
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    val canShowSalaryReminder =
+        targetRoute == Routes.Dashboard &&
+                (currentRoute == Routes.Dashboard || currentRoute == Routes.IncomeList)
+
+    // A salary confirmation should not pop the dashboard navigation stack.
+    // The salary template screen retains its own success handler.
+    LaunchedEffect(salaryUiState.operationSuccessful, canShowSalaryReminder) {
+        if (salaryUiState.operationSuccessful && canShowSalaryReminder) {
+            salaryViewModel.clearSuccess()
+        }
+    }
+
+    val salaryTemplate = salaryUiState.template
+    if (
+        canShowSalaryReminder &&
+        !salaryUiState.isLoading &&
+        salaryUiState.showConfirmation &&
+        salaryTemplate != null
+    ) {
+        SalaryConfirmationDialog(
+            template = salaryTemplate,
+            isSaving = salaryUiState.isSaving,
+            errorMessage = salaryUiState.errorMessage,
+            onConfirm = { amount -> salaryViewModel.confirmSalary(amount) },
+            onDismiss = { salaryViewModel.dismissConfirmation() }
+        )
+    }
+}
