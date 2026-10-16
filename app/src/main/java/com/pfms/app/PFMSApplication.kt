@@ -26,5 +26,8 @@ class PFMSApplication : Application(), Configuration.Provider {
 
         // Enqueue constrained one-time sync on application start
         IncomeSyncWorker.enqueue(this)
+
+        // Enqueue periodic daily checks for recurring expense and subscription reminders
+        com.pfms.app.data.sync.ExpenseReminderWorker.enqueuePeriodic(this)
     }
 }
