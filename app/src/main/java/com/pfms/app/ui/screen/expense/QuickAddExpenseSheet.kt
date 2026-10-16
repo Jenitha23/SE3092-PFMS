@@ -27,6 +27,18 @@ fun QuickAddExpenseSheet(
     onDismiss: () -> Unit,
     errorMessage: String? = null
 ) {
+    ExpenseUiTheme {
+        QuickAddExpenseSheetContent(categories, defaultPaymentMethod, isSaving, onSave, onDismiss, errorMessage)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickAddExpenseSheetContent(
+    categories: List<ExpenseCategoryOption>, defaultPaymentMethod: ExpensePaymentMethod,
+    isSaving: Boolean, onSave: (String, String, String, ExpenseClassification) -> Unit,
+    onDismiss: () -> Unit, errorMessage: String?
+) {
     var amount by remember {
         mutableStateOf("")
     }
@@ -58,10 +70,7 @@ fun QuickAddExpenseSheet(
             verticalArrangement =
                 Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                "Quick Add Expense",
-                style = MaterialTheme.typography.headlineSmall
-            )
+            ExpenseSectionTitle("Quick Add Expense", ExpenseSymbol.ADD)
 
             OutlinedTextField(
                 value = amount,
