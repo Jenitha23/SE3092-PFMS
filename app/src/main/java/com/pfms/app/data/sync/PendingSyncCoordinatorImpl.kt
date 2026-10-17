@@ -9,7 +9,8 @@ import javax.inject.Singleton
 class PendingSyncCoordinatorImpl @Inject constructor(
     private val authRepository: AuthRepository,
     private val incomeSyncable: IncomePendingSyncable,
-    private val templateSyncable: SalaryTemplatePendingSyncable
+    private val templateSyncable: SalaryTemplatePendingSyncable,
+    private val savingsGoalSyncable: SavingsGoalPendingSyncable
 ) : PendingSyncCoordinator {
 
     override suspend fun syncAllPending(): Result<Unit> {
@@ -20,29 +21,75 @@ class PendingSyncCoordinatorImpl @Inject constructor(
         }
 
         val incomeResult = try {
-            incomeSyncable.syncPendingIncome()
-        } catch (e: IllegalStateException) {
-            // Auth session may have ended mid-sync
-            return Result.success(Unit)
+            val res = incomeSyncable.syncPendingIncome()
+            if (res.isFailure && isAuthSessionLost(res.exceptionOrNull())) {
+                return Result.success(Unit)
+            }
+            res
         } catch (e: Exception) {
+            if (isAuthSessionLost(e)) {
+                return Result.success(Unit)
+            }
             Result.failure(e)
         }
 
         val templateResult = try {
-            templateSyncable.syncPendingTemplate()
-        } catch (e: IllegalStateException) {
-            return Result.success(Unit)
+            val res = templateSyncable.syncPendingTemplate()
+            if (res.isFailure && isAuthSessionLost(res.exceptionOrNull())) {
+                return Result.success(Unit)
+            }
+            res
         } catch (e: Exception) {
+            if (isAuthSessionLost(e)) {
+                return Result.success(Unit)
+            }
             Result.failure(e)
         }
 
-        return if (incomeResult.isSuccess && templateResult.isSuccess) {
+        val savingsGoalResult = try {
+            val res = savingsGoalSyncable.syncPendingGoals()
+            if (res.isFailure && isAuthSessionLost(res.exceptionOrNull())) {
+                return Result.success(Unit)
+            }
+            res
+        } catch (e: Exception) {
+            if (isAuthSessionLost(e)) {
+                return Result.success(Unit)
+            }
+            Result.failure(e)
+        }
+
+        val savingsTxResult = try {
+            val res = savingsGoalSyncable.syncPendingTransactions()
+            if (res.isFailure && isAuthSessionLost(res.exceptionOrNull())) {
+                return Result.success(Unit)
+            }
+            res
+        } catch (e: Exception) {
+            if (isAuthSessionLost(e)) {
+                return Result.success(Unit)
+            }
+            Result.failure(e)
+        }
+
+        return if (incomeResult.isSuccess && templateResult.isSuccess && savingsGoalResult.isSuccess && savingsTxResult.isSuccess) {
             Result.success(Unit)
         } else {
             val failure = incomeResult.exceptionOrNull()
                 ?: templateResult.exceptionOrNull()
+                ?: savingsGoalResult.exceptionOrNull()
+                ?: savingsTxResult.exceptionOrNull()
                 ?: RuntimeException("Failed to synchronize pending changes")
             Result.failure(failure)
         }
+    }
+
+    private suspend fun isAuthSessionLost(throwable: Throwable?): Boolean {
+        if (throwable == null) return false
+        if (throwable is IllegalStateException && throwable.message?.contains("Authentication required", ignoreCase = true) == true) {
+            return true
+        }
+        val current = authRepository.currentUser.first()
+        return (current == null || current.uid.isBlank()) && throwable is IllegalStateException
     }
 }

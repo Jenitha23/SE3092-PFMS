@@ -6,6 +6,7 @@ import com.pfms.app.data.local.entity.SyncStatus
 import com.pfms.app.data.local.mapper.toDomain
 import com.pfms.app.data.local.mapper.toEntity
 import com.pfms.app.data.remote.firestore.SavingsGoalRemoteDataSource
+import com.pfms.app.data.sync.SavingsGoalPendingSyncable
 import com.pfms.app.domain.model.AuthUser
 import com.pfms.app.domain.model.GoalStatus
 import com.pfms.app.domain.model.GoalTransaction
@@ -40,7 +41,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     private val goalTransactionDao: GoalTransactionDao,
     private val savingsGoalRemoteDataSource: SavingsGoalRemoteDataSource,
     private val authRepository: AuthRepository
-) : SavingsGoalRepository {
+) : SavingsGoalRepository, SavingsGoalPendingSyncable {
 
     private suspend fun requireUser(): AuthUser {
         val user = authRepository.currentUser.first()
