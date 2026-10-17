@@ -441,6 +441,10 @@ class IncomeViewModel @Inject constructor(
         if (_uiState.value.isSaving) return
 
         viewModelScope.launch {
+            if (source == "Freelance" && paymentStatus !in listOf("Expected", "Received")) {
+                showError("Invalid freelance payment status.")
+                return@launch
+            }
             val amountMinor = parseAmount(amount)
 
             if (amountMinor == null) {

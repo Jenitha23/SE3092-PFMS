@@ -51,6 +51,7 @@ class SalaryTemplateRepositoryImplTest {
     fun setup() {
         salaryTemplateDao = mock()
         salaryTemplateRemoteDataSource = mock()
+        whenever(salaryTemplateRemoteDataSource.observeSnapshots(any())).thenReturn(kotlinx.coroutines.flow.emptyFlow())
         incomeDao = mock()
         incomeRemoteDataSource = mock()
         database = mock()

@@ -64,6 +64,7 @@ class SalaryViewModel @Inject constructor(
                     )
                 }
                 .collect { template ->
+                    if (template?.id != _uiState.value.template?.id) dismissedMonth = null
 
                     val today = LocalDate.now(colomboZone)
 
@@ -142,6 +143,7 @@ class SalaryViewModel @Inject constructor(
             return
         }
 
+        _uiState.value = _uiState.value.copy(isSaving = true)
         viewModelScope.launch {
 
             _uiState.value = _uiState.value.copy(
@@ -232,6 +234,7 @@ class SalaryViewModel @Inject constructor(
             return
         }
 
+        _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
 
             _uiState.value = _uiState.value.copy(
@@ -256,7 +259,7 @@ class SalaryViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     showConfirmation = false,
-                    operationSuccessful = true
+                    operationSuccessful = false
                 )
 
             } catch (e: Exception) {

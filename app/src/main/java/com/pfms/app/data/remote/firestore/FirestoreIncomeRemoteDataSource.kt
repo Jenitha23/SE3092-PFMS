@@ -9,6 +9,7 @@ import com.pfms.app.data.remote.firestore.mapper.toIncome
 import com.pfms.app.domain.model.Income
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -73,7 +74,9 @@ class FirestoreIncomeRemoteDataSource @Inject constructor(
             .await()
     }
 
-    override fun observeIncome(userId: String): Flow<List<Income>> = callbackFlow {
+    override fun observeIncome(userId: String): Flow<List<Income>> = observeSnapshots(userId).map { it.rows }
+
+    override fun observeSnapshots(userId: String): Flow<RemoteRecords<Income>> = callbackFlow {
         validateAuthenticatedAccess(userId)
 
         val registration = userIncomeCollection(userId)
@@ -83,7 +86,7 @@ class FirestoreIncomeRemoteDataSource @Inject constructor(
                     return@addSnapshotListener
                 }
                 val list = snapshot?.documents?.mapNotNull { it.toIncome() }.orEmpty()
-                trySend(list)
+                trySend(RemoteRecords(list, snapshot != null && !snapshot.metadata.isFromCache && !snapshot.metadata.hasPendingWrites()))
             }
 
         awaitClose { registration.remove() }

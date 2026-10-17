@@ -27,6 +27,13 @@ import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.pfms.app.data.sync.IncomeSyncWorker
+import androidx.work.ExistingWorkPolicy
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.retryWhen
 
 /**
  * Offline-first implementation of [SalaryTemplateRepository].
@@ -46,6 +53,10 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
     private val database: PfmsDatabase,
     private val authRepository: AuthRepository
 ) : SalaryTemplateRepository, SalaryTemplatePendingSyncable {
+    @Inject @ApplicationContext lateinit var syncContext: Context
+    private fun scheduleSync() {
+        if (::syncContext.isInitialized) IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
+    }
 
     internal var transactionRunner: suspend (suspend () -> Unit) -> Unit = { block ->
         database.withTransaction(block)
@@ -65,8 +76,15 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
             if (user == null || user.uid.isBlank()) {
                 flowOf(null)
             } else {
-                salaryTemplateDao.observeSalaryTemplate(user.uid).map { entity ->
-                    entity?.takeIf { !it.isDeleted }?.toDomain()
+                channelFlow {
+                    launch {
+                        salaryTemplateRemoteDataSource.observeSnapshots(user.uid).retryWhen { e, _ ->
+                            if (e is CancellationException) throw e
+                            delay(2_000); true
+                        }.collect { snapshot -> salaryTemplateDao.reconcile(user.uid,
+                            snapshot.rows.map { it.copy(userId = user.uid).toEntity() }, snapshot.authoritative) }
+                    }
+                    salaryTemplateDao.observeSalaryTemplate(user.uid).collect { send(it?.takeIf { row -> !row.isDeleted }?.toDomain()) }
                 }
             }
         }
@@ -74,13 +92,15 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
 
     override suspend fun saveSalaryTemplate(template: SalaryTemplate) = withContext(Dispatchers.IO) {
         val user = requireUser()
-        require(template.userId == user.uid) {
+        require(template.userId.isBlank() || template.userId == user.uid) {
             "Cross-user write prevented: authenticated user '${user.uid}' does not match template.userId '${template.userId}'"
         }
         require(template.id.isNotBlank()) { "Template ID must not be blank" }
 
         val now = System.currentTimeMillis()
         val templateToSave = template.copy(
+            userId = user.uid,
+            id = if (template.userId.isBlank()) "salary_${user.uid}" else template.id,
             createdAt = if (template.createdAt > 0L) template.createdAt else now,
             updatedAt = if (template.updatedAt > 0L) template.updatedAt else now
         )
@@ -91,10 +111,11 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
             isDeleted = false
         )
         salaryTemplateDao.upsertSalaryTemplate(entity)
+        scheduleSync()
 
         // 2. Attempt remote Firestore upsert
         try {
-            salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, templateToSave)
+            withTimeout(10_000) { salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, templateToSave) }
             // 3. Mark synced on success
             salaryTemplateDao.updateSyncStatus(user.uid, SyncStatus.SYNCED)
         } catch (e: Exception) {
@@ -171,20 +192,29 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
 
         // Atomic local Room transaction
         transactionRunner {
+            val latest = salaryTemplateDao.getSalaryTemplate(user.uid)
+                ?: error("Salary template not found")
+            check(latest.id == templateId && latest.lastConfirmedMonth != monthKey) {
+                "Salary for this month has already been confirmed."
+            }
+            check(incomeDao.getIncomeById(user.uid, deterministicIncomeId)?.isDeleted != false) {
+                "A salary record for this month already exists."
+            }
             incomeDao.upsertIncome(incomeEntity)
             salaryTemplateDao.upsertSalaryTemplate(updatedTemplateEntity)
         }
 
         // Remote sync attempts (idempotent, failures remain safely pending)
+        scheduleSync()
         try {
-            incomeRemoteDataSource.upsertIncome(user.uid, salaryIncome)
+            withTimeout(10_000) { incomeRemoteDataSource.upsertIncome(user.uid, salaryIncome) }
             incomeDao.updateSyncStatus(user.uid, deterministicIncomeId, SyncStatus.SYNCED)
         } catch (e: Exception) {
             // Retains PENDING_INSERT locally
         }
 
         try {
-            salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, updatedTemplateEntity.toDomain())
+            withTimeout(10_000) { salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, updatedTemplateEntity.toDomain()) }
             salaryTemplateDao.updateSyncStatus(user.uid, SyncStatus.SYNCED)
         } catch (e: Exception) {
             // Retains PENDING_UPDATE locally
