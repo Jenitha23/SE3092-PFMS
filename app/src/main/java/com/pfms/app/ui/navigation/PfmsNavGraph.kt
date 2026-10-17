@@ -49,6 +49,11 @@ import com.pfms.app.ui.screen.expense.RecurringExpensesScreen
 import com.pfms.app.ui.screen.expense.ExpenseReminderPermission
 import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
+import com.pfms.app.viewmodel.IncomeOnboardingViewModel
+import com.pfms.app.ui.screen.income.IncomeOnboardingScreen
+import com.pfms.app.ui.screen.income.SalaryConfirmationDialog
+import com.pfms.app.ui.screen.income.SalaryReminderLifecycle
+import com.pfms.app.ui.screen.expense.ExpenseDuplicateDialog
 
 /**
  * Root navigation graph for PFMS.
@@ -74,6 +79,11 @@ fun PfmsNavGraph(
 ) {
 
     val advancedExpenseViewModel: AdvancedExpenseViewModel = hiltViewModel()
+    val onboarding: IncomeOnboardingViewModel = hiltViewModel()
+    val onboardingState by onboarding.uiState.collectAsStateWithLifecycle()
+    val expenseState by expenseViewModel.uiState.collectAsStateWithLifecycle()
+    val salaryState by salaryViewModel.uiState.collectAsStateWithLifecycle()
+    var showDashboardQuickAdd by rememberSaveable { mutableStateOf(false) }
 
     val navController = rememberNavController()
 
@@ -82,14 +92,6 @@ fun PfmsNavGraph(
 
     val lockState by sessionViewModel.lockState
         .collectAsStateWithLifecycle()
-    val incomeUiState by incomeViewModel.uiState.collectAsStateWithLifecycle()
-
-    LaunchedEffect(incomeUiState.saveSuccessful) {
-        if (incomeUiState.saveSuccessful) {
-            incomeViewModel.clearSaveSuccess()
-            navController.popBackStack()
-        }
-    }
 
     // -----------------------------------------
     // LIFECYCLE-AWARE APP LOCK
@@ -160,7 +162,7 @@ fun PfmsNavGraph(
 
                 AppLockState.Locked -> Routes.Lock
 
-                AppLockState.Unlocked -> Routes.Dashboard
+                AppLockState.Unlocked -> if (onboardingState.required) Routes.IncomeOnboarding else Routes.Dashboard
             }
         }
     }
@@ -198,10 +200,29 @@ fun PfmsNavGraph(
         }
     }
 
+    if (targetRoute == Routes.Dashboard) {
+        SalaryReminderLifecycle(salaryViewModel::refreshSalaryReminder)
+        if (salaryState.showConfirmation && salaryState.template != null && expenseState.pendingDuplicate == null && !showDashboardQuickAdd) {
+            SalaryConfirmationDialog(salaryState.template!!, salaryViewModel::confirmSalary,
+                salaryViewModel::dismissConfirmation, salaryState.isSaving, salaryState.errorMessage)
+        }
+        if (expenseState.pendingDuplicate != null) {
+            ExpenseDuplicateDialog(expenseState.isSaving, expenseViewModel::confirmDuplicateExpense, expenseViewModel::cancelDuplicateExpense)
+        }
+        if (showDashboardQuickAdd) {
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            val categoryState by advancedExpenseViewModel.categories.collectAsStateWithLifecycle()
+            ExpenseQuickAddContent(expenseViewModel, categoryState.filter { !it.archived }.map {
+                com.pfms.app.ui.screen.expense.ExpenseCategoryOption(it.id, it.name, it.classification)
+            }, { showDashboardQuickAdd = false }, { showDashboardQuickAdd = false })
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Routes.Splash
     ) {
+        composable(Routes.IncomeOnboarding) { IncomeOnboardingScreen(onboardingState, onboarding::save) }
 
 
         // -------------------------------------
@@ -290,6 +311,7 @@ fun PfmsNavGraph(
         composable(Routes.Dashboard) {
 
             DashboardScreen(
+                onQuickAddExpense = { showDashboardQuickAdd = true },
 
                 sessionViewModel = sessionViewModel,
 
@@ -479,6 +501,9 @@ fun PfmsNavGraph(
             val incomeId = backStackEntry.arguments?.getString("incomeId")
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
             val incomeItem = incomeState.incomes.find { it.id == incomeId }
+            LaunchedEffect(incomeItem?.id) {
+                incomeItem?.let(incomeViewModel::loadExistingRate)
+            }
 
             LaunchedEffect(incomeState.saveSuccessful) {
                 if (incomeState.saveSuccessful) {

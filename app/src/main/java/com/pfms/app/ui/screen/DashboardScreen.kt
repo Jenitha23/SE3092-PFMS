@@ -27,6 +27,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -80,7 +81,8 @@ fun DashboardScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToIncome: () -> Unit = {},
     onNavigateToAnalytics: () -> Unit = {},
-    onNavigateToExpenses: () -> Unit = {}
+    onNavigateToExpenses: () -> Unit = {},
+    onQuickAddExpense: () -> Unit = {}
 ) {
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
     val profile by settingsViewModel.profile.collectAsStateWithLifecycle()
@@ -98,6 +100,11 @@ fun DashboardScreen(
     val logoutError = (logoutResult as? LogoutResult.Failure)?.message
 
     Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = onQuickAddExpense, containerColor = EmeraldPrimary) {
+                Text("+ Expense", modifier = Modifier.padding(horizontal = 16.dp), color = Color.White)
+            }
+        },
         bottomBar = {
             // ── 5-Tab Bottom Navigation Bar matching Reference UI 2 ───
             Surface(

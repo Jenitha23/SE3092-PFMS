@@ -46,7 +46,8 @@ class FirestoreUserRepository @Inject constructor(
             ?: return@withContext Result.failure(IllegalStateException("No authenticated user session"))
 
         try {
-            val data = mapOf("estimatedMonthlyIncomeMinor" to amountMinor)
+            require(amountMinor == null || amountMinor >= 0L) { "Estimated income cannot be negative" }
+            val data = mapOf("estimatedMonthlyIncomeMinor" to amountMinor, "incomeOnboardingComplete" to true)
             firestore.collection(FirestoreCollections.USERS)
                 .document(user.uid)
                 .set(data, SetOptions.merge())
@@ -65,7 +66,8 @@ class FirestoreUserRepository @Inject constructor(
             email = getString("email").orEmpty(),
             baseCurrency = getString("baseCurrency") ?: "LKR",
             defaultPaymentMethod = getString("defaultPaymentMethod"),
-            estimatedMonthlyIncomeMinor = getLong("estimatedMonthlyIncomeMinor")
+            estimatedMonthlyIncomeMinor = getLong("estimatedMonthlyIncomeMinor"),
+            incomeOnboardingComplete = getBoolean("incomeOnboardingComplete") ?: false
         )
     }
 }
