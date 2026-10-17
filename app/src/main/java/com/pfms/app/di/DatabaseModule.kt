@@ -28,7 +28,7 @@ object DatabaseModule {
             PfmsDatabase::class.java,
             "pfms_database"
         )
-            .addMigrations(PfmsDatabase.MIGRATION_1_2, PfmsDatabase.MIGRATION_2_3)
+            .addMigrations(PfmsDatabase.MIGRATION_1_2, PfmsDatabase.MIGRATION_2_3, PfmsDatabase.MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .build()
     }

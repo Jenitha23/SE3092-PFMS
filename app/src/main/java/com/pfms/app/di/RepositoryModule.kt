@@ -28,7 +28,10 @@ abstract class RepositoryModule {
     abstract fun bindAdvancedExpenseRepository(repository: FirestoreAdvancedExpenseRepository): AdvancedExpenseRepository
 
     @Binds @Singleton
-    abstract fun bindExpenseRepository(repository: FirestoreExpenseRepository): ExpenseRepository
+    abstract fun bindExpenseRepository(repository: com.pfms.app.data.repository.OfflineFirstExpenseRepository): ExpenseRepository
+
+    @Binds @Singleton
+    abstract fun bindExpenseRemote(repository: com.pfms.app.data.remote.firestore.FirestoreExpenseRemoteDataSource): com.pfms.app.data.remote.firestore.ExpenseRemoteDataSource
 
 
     @Binds
