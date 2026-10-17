@@ -19,7 +19,13 @@ fun ExpenseListContent(
     onAddExpense: () -> Unit,
     onQuickAdd: () -> Unit,
     onEditExpense: (String) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRepeatExpense: (String) -> Unit = {},
+    onCategories: (() -> Unit)? = null,
+    onRecurring: (() -> Unit)? = null,
+    onSubscriptions: (() -> Unit)? = null,
+    onHome: (() -> Unit)? = null,
+    onIncome: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState
         .collectAsStateWithLifecycle()
@@ -42,6 +48,13 @@ fun ExpenseListContent(
             viewModel.deleteExpense(expenseId)
         },
 
-        onBack = onBack
+        onBack = onBack,
+        onRepeatExpense = onRepeatExpense,
+        onRetry = viewModel::retryLoading,
+        onCategories = onCategories,
+        onRecurring = onRecurring,
+        onSubscriptions = onSubscriptions,
+        onHome = onHome,
+        onIncome = onIncome
     )
 }

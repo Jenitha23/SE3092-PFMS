@@ -2,6 +2,9 @@ package com.pfms.app.ui.navigation
 
 /** Centralized route names for the PFMS navigation graph. */
 object Routes {
+    fun reminderDestination(route: String?): String? =
+        route?.takeIf { it == RecurringExpenses || it == Subscriptions }
+
     const val Splash = "splash"
     const val Login = "login"
     const val Register = "register"
@@ -19,10 +22,18 @@ object Routes {
     const val SalaryTemplate = "salary_template"
     const val IncomeAnalytics = "income_analytics"
 
+    const val Categories = "expense_categories"
+    const val RecurringExpenses = "recurring_expenses"
+    const val Subscriptions = "subscriptions"
+
     // Expense Management — Member 1
     const val ExpenseList = "expense_list"
     const val AddExpense = "add_expense"
     const val EditExpense = "edit_expense/{expenseId}"
     fun editExpense(expenseId: String): String =
         "edit_expense/${android.net.Uri.encode(expenseId)}"
+
+    const val RepeatExpense = "repeat_expense/{expenseId}"
+    fun repeatExpense(expenseId: String): String =
+        "repeat_expense/${android.net.Uri.encode(expenseId)}"
 }

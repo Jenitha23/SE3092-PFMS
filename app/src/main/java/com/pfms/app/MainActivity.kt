@@ -1,6 +1,7 @@
 package com.pfms.app
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -8,10 +9,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pfms.app.ui.navigation.PfmsNavGraph
+import com.pfms.app.ui.navigation.Routes
+import com.pfms.app.data.sync.ExpenseReminderWorker
 import com.pfms.app.ui.theme.PFMSTheme
 import com.pfms.app.ui.theme.ThemeViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -22,9 +27,23 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : FragmentActivity() {
 
     private val themeViewModel: ThemeViewModel by viewModels()
+    private var pendingReminderRoute by mutableStateOf<String?>(null)
+
+    private fun readReminderIntent(intent: Intent?) {
+        pendingReminderRoute = Routes.reminderDestination(
+            intent?.getStringExtra(ExpenseReminderWorker.EXTRA_DESTINATION_ROUTE)
+        )
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        readReminderIntent(intent)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        readReminderIntent(intent)
         enableEdgeToEdge()
         setContent {
             val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
@@ -33,7 +52,13 @@ class MainActivity : FragmentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    PfmsNavGraph()
+                    PfmsNavGraph(
+                        pendingReminderRoute = pendingReminderRoute,
+                        onReminderConsumed = {
+                            pendingReminderRoute = null
+                            intent?.removeExtra(ExpenseReminderWorker.EXTRA_DESTINATION_ROUTE)
+                        }
+                    )
                 }
             }
         }

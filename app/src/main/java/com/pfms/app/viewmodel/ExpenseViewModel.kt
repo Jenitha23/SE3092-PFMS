@@ -12,9 +12,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
+
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 // Form input received from the Expense UI.
 // categoryDefault comes from Member 2's category data.
@@ -48,7 +59,8 @@ data class ExpenseUiState(
         ExpensePaymentMethod.CASH
 )
 
-class ExpenseViewModel(
+@HiltViewModel
+class ExpenseViewModel @Inject constructor(
     private val repository: ExpenseRepository
 ) : ViewModel() {
 
@@ -61,6 +73,8 @@ class ExpenseViewModel(
     private val colomboZone =
         ZoneId.of("Asia/Colombo")
 
+    private var observation: Job? = null
+
     init {
         observeExpenses()
     }
@@ -70,8 +84,16 @@ class ExpenseViewModel(
     // -----------------------------------------
 
     private fun observeExpenses() {
-        viewModelScope.launch {
-            repository.observeExpenses()
+        observation?.cancel()
+        observation = viewModelScope.launch {
+            flow { emitAll(repository.observeExpenses()) }
+                .retryWhen { cause, attempt ->
+                    if (cause is CancellationException) throw cause
+                    _uiState.value = _uiState.value.copy(isLoading = false,
+                        errorMessage = "Unable to load expenses. Retrying; tap Retry to try now.")
+                    delay((attempt + 1).coerceAtMost(15) * 2_000L)
+                    true
+                }
                 .catch {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -94,6 +116,10 @@ class ExpenseViewModel(
                 }
         }
     }
+
+    fun retryLoading() = observeExpenses()
+
+    private suspend fun <T> networkOperation(block: suspend () -> T): T = withTimeout(20_000) { block() }
 
     // -----------------------------------------
     // QUICK-ADD EXPENSE
@@ -195,9 +221,9 @@ class ExpenseViewModel(
         viewModelScope.launch {
             try {
                 val recentExpenses =
-                    repository.getExpensesCreatedSince(
+                    networkOperation { repository.getExpensesCreatedSince(
                         now - 60_000L
-                    )
+                    ) }
 
                 val duplicate =
                     ExpenseRules.isDuplicateWithin60Seconds(
@@ -216,6 +242,10 @@ class ExpenseViewModel(
                     persistNewExpense(expense)
                 }
 
+            } catch (e: CancellationException) {
+                if (e !is TimeoutCancellationException) throw e
+                _uiState.value = _uiState.value.copy(isSaving = false,
+                    errorMessage = "Connection timed out. Check your connection and retry.")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
@@ -265,7 +295,7 @@ class ExpenseViewModel(
         expense: Expense
     ) {
         try {
-            repository.addExpense(expense)
+            networkOperation { repository.addExpense(expense) }
 
             _uiState.value = _uiState.value.copy(
                 isSaving = false,
@@ -277,6 +307,10 @@ class ExpenseViewModel(
                     expense.paymentMethod
             )
 
+        } catch (e: CancellationException) {
+            if (e !is TimeoutCancellationException) throw e
+            _uiState.value = _uiState.value.copy(isSaving = false,
+                errorMessage = "Connection timed out. Check the list before retrying; this expense may still sync.")
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
                 isSaving = false,
@@ -329,7 +363,7 @@ class ExpenseViewModel(
         viewModelScope.launch {
             try {
                 val existing =
-                    repository.getExpenseById(expenseId)
+                    networkOperation { repository.getExpenseById(expenseId) }
 
                 if (existing == null) {
                     _uiState.value =
@@ -361,7 +395,7 @@ class ExpenseViewModel(
                     updatedAt = System.currentTimeMillis()
                 )
 
-                repository.updateExpense(updated)
+                networkOperation { repository.updateExpense(updated) }
 
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
@@ -371,6 +405,10 @@ class ExpenseViewModel(
                         updated.paymentMethod
                 )
 
+            } catch (e: CancellationException) {
+                if (e !is TimeoutCancellationException) throw e
+                _uiState.value = _uiState.value.copy(isSaving = false,
+                    errorMessage = "Connection timed out. Check the list before retrying; changes may still sync.")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
@@ -402,13 +440,17 @@ class ExpenseViewModel(
 
         viewModelScope.launch {
             try {
-                repository.deleteExpense(expenseId)
+                networkOperation { repository.deleteExpense(expenseId) }
 
                 _uiState.value = _uiState.value.copy(
                     isDeleting = false,
                     operationSuccessful = true,
                     successfulOperation = ExpenseOperation.DELETE
                 )
+            } catch (e: CancellationException) {
+                if (e !is TimeoutCancellationException) throw e
+                _uiState.value = _uiState.value.copy(isDeleting = false,
+                    errorMessage = "Connection timed out. Check the list before retrying; deletion may still sync.")
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isDeleting = false,
