@@ -43,7 +43,8 @@ fun ExpenseListScreen(
     onDeleteExpense: (String) -> Unit, onBack: () -> Unit, errorMessage: String? = null,
     onRepeatExpense: (String) -> Unit = {}, onRetry: () -> Unit = {},
     onCategories: (() -> Unit)? = null, onRecurring: (() -> Unit)? = null,
-    onSubscriptions: (() -> Unit)? = null, onHome: (() -> Unit)? = null, onIncome: (() -> Unit)? = null
+    onSubscriptions: (() -> Unit)? = null, onHome: (() -> Unit)? = null, onIncome: (() -> Unit)? = null,
+    onGoals: (() -> Unit)? = null, onInsights: (() -> Unit)? = null
 ) = ExpenseUiTheme {
     var expenseToDelete by remember { mutableStateOf<Expense?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -76,17 +77,56 @@ fun ExpenseListScreen(
                         IconButton(onClick = onBack, modifier = Modifier.size(32.dp).semantics { contentDescription = "Back" }) { ExpenseIcon(ExpenseSymbol.BACK) }
                         Text("Expenses", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = onAddExpense, modifier = Modifier.height(44.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
-                            ExpenseIcon(ExpenseSymbol.ADD, Modifier.size(17.dp), MaterialTheme.colorScheme.onPrimary)
-                            Spacer(Modifier.width(5.dp)); Text("Add Expense", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Quick Add Button: Highlighted primary action
+                        Button(
+                            onClick = onQuickAdd,
+                            modifier = Modifier.height(38.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF0F766E),
+                                contentColor = Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 10.dp)
+                        ) {
+                            ExpenseIcon(ExpenseSymbol.FLASH, Modifier.size(15.dp), tint = Color.White)
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Quick Add",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
+
+                        // Full Form Add Button
+                        OutlinedButton(
+                            onClick = onAddExpense,
+                            modifier = Modifier.height(38.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 9.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            ExpenseIcon(ExpenseSymbol.ADD, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.width(3.dp))
+                            Text(
+                                "Add",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
                         Box {
-                            IconButton(onClick = { toolsMenu = true }, modifier = Modifier.size(36.dp).semantics { contentDescription = "Expense tools" }) {
+                            IconButton(onClick = { toolsMenu = true }, modifier = Modifier.size(34.dp).semantics { contentDescription = "Expense tools" }) {
                                 ExpenseIcon(ExpenseSymbol.MORE, Modifier.size(18.dp))
                             }
                             DropdownMenu(toolsMenu, { toolsMenu = false }) {
-                                listOf("Quick Add" to onQuickAdd, "Categories" to onCategories, "Recurring" to onRecurring, "Subscriptions" to onSubscriptions).forEach { (label, action) ->
+                                listOf(
+                                    "Quick Add" to onQuickAdd,
+                                    "Categories" to onCategories,
+                                    "Recurring" to onRecurring,
+                                    "Subscriptions" to onSubscriptions
+                                ).forEach { (label, action) ->
                                     if (action != null) DropdownMenuItem(text = { Text(label) }, onClick = { toolsMenu = false; action() })
                                 }
                             }
@@ -96,14 +136,35 @@ fun ExpenseListScreen(
                 Text("Track your spending and stay in control.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        bottomBar = {
-            if (onHome != null && onIncome != null) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                    NavigationBarItem(selected = false, onClick = onHome, icon = { HomeNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant) }, label = { Text("Home") })
-                    NavigationBarItem(selected = false, onClick = onIncome, icon = { IncomeNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant) }, label = { Text("Income") })
-                    NavigationBarItem(selected = true, onClick = {}, icon = { ExpensesNavIcon(tint = MaterialTheme.colorScheme.primary) }, label = { Text("Expenses") },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer))
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = onQuickAdd,
+                containerColor = Color(0xFF0F766E),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp),
+                icon = {
+                    ExpenseIcon(ExpenseSymbol.FLASH, Modifier.size(18.dp), tint = Color.White)
+                },
+                text = {
+                    Text(
+                        "Quick Add",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
+            )
+        },
+        bottomBar = {
+            if (onHome != null || onIncome != null) {
+                com.pfms.app.ui.component.PfmsBottomNavBar(
+                    selectedTab = com.pfms.app.ui.component.PfmsNavTab.EXPENSES,
+                    onHomeClick = { onHome?.invoke() },
+                    onIncomeClick = { onIncome?.invoke() },
+                    onExpensesClick = { /* Already on Expenses */ },
+                    onGoalsClick = onGoals,
+                    onInsightsClick = { onInsights?.invoke() }
+                )
             }
         }
     ) { padding ->

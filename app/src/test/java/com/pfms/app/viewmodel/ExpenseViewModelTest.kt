@@ -306,4 +306,109 @@ class ExpenseViewModelTest {
 
         assertNull(deleted)
     }
+
+    // -----------------------------------------
+    // TEST 10 - FR-14 QUICK ADD DEFAULTS
+    // -----------------------------------------
+
+    @Test
+    fun quickAddExpense_appliesTodayDate_categoryDefaults_andPaymentMethod() = runTest(dispatcher) {
+        advanceUntilIdle()
+
+        viewModel.quickAddExpense(
+            amount = "1250.50",
+            categoryId = "groceries",
+            categoryName = "Groceries",
+            categoryDefault = ExpenseClassification.COMMITTED
+        )
+
+        advanceUntilIdle()
+
+        val saved = getFirstExpense()
+        assertEquals(125050L, saved.amountMinor)
+        assertEquals("groceries", saved.categoryId)
+        assertEquals("Groceries", saved.categoryName)
+        assertEquals(ExpenseClassification.COMMITTED, saved.classification)
+        assertEquals(LocalDate.now(java.time.ZoneId.of("Asia/Colombo")).toString(), saved.date)
+        assertEquals(ExpensePaymentMethod.CASH, saved.paymentMethod)
+        assertTrue(viewModel.uiState.value.operationSuccessful)
+        assertEquals(ExpenseOperation.ADD, viewModel.uiState.value.successfulOperation)
+    }
+
+    // -----------------------------------------
+    // TEST 11 - FR-14 PRESERVES PAYMENT METHOD ACROSS RESTARTS
+    // -----------------------------------------
+
+    @Test
+    fun quickAddExpense_preservesLastUsedPaymentMethodAcrossRestarts() = runTest(dispatcher) {
+        advanceUntilIdle()
+
+        // 1. Add an expense using CARD payment method
+        viewModel.addExpense(
+            expenseInput().copy(paymentMethod = ExpensePaymentMethod.CARD)
+        )
+        advanceUntilIdle()
+
+        assertEquals(ExpensePaymentMethod.CARD, viewModel.uiState.value.lastUsedPaymentMethod)
+
+        // 2. Simulate app restart by instantiating a fresh ViewModel using the same repository
+        val restartedViewModel = ExpenseViewModel(repository)
+        advanceUntilIdle()
+
+        // Verify the restored state has CARD as the last used payment method
+        assertEquals(ExpensePaymentMethod.CARD, restartedViewModel.uiState.value.lastUsedPaymentMethod)
+
+        // 3. Perform Quick Add on the restarted ViewModel
+        restartedViewModel.quickAddExpense(
+            amount = "450.00",
+            categoryId = "transport",
+            categoryName = "Transport",
+            categoryDefault = ExpenseClassification.COMMITTED
+        )
+        advanceUntilIdle()
+
+        // Verify the new expense used CARD payment method preserved from before the restart
+        val allExpenses = getExpenses()
+        val quickAdded = allExpenses.find { it.amountMinor == 45000L }
+        assertNotNull(quickAdded)
+        assertEquals(ExpensePaymentMethod.CARD, quickAdded!!.paymentMethod)
+        assertEquals(ExpensePaymentMethod.CARD, restartedViewModel.uiState.value.lastUsedPaymentMethod)
+    }
+
+    // -----------------------------------------
+    // TEST 12 - FR-14 QUICK ADD WITH REAL CATEGORIES
+    // -----------------------------------------
+
+    @Test
+    fun quickAddExpense_withRealCategories_savesAccurately() = runTest(dispatcher) {
+        advanceUntilIdle()
+
+        // Real categories typically available in PFMS:
+        val realCategories = listOf(
+            Triple("rent", "Rent", ExpenseClassification.COMMITTED),
+            Triple("food_delivery", "Food Delivery", ExpenseClassification.DISCRETIONARY),
+            Triple("utilities", "Electricity / Water", ExpenseClassification.COMMITTED)
+        )
+
+        for ((id, name, classification) in realCategories) {
+            viewModel.quickAddExpense(
+                amount = "2500.00",
+                categoryId = id,
+                categoryName = name,
+                categoryDefault = classification
+            )
+            advanceUntilIdle()
+        }
+
+        val allExpenses = getExpenses()
+        assertEquals(3, allExpenses.size)
+
+        val rent = allExpenses.find { it.categoryId == "rent" }
+        assertNotNull(rent)
+        assertEquals(ExpenseClassification.COMMITTED, rent!!.classification)
+
+        val delivery = allExpenses.find { it.categoryId == "food_delivery" }
+        assertNotNull(delivery)
+        assertEquals(ExpenseClassification.DISCRETIONARY, delivery!!.classification)
+    }
 }

@@ -80,7 +80,22 @@ private fun QuickAddExpenseSheetContent(
                 onValueChange = { amount = it },
                 label = { Text("Amount (LKR)") },
                 keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = {
+                        val selected = category ?: return@KeyboardActions
+                        if (!isSaving && amount.isNotBlank()) {
+                            keyboard?.hide()
+                            onSave(
+                                amount,
+                                selected.id,
+                                selected.name,
+                                selected.defaultClassification
+                            )
+                        }
+                    }
                 ),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(amountFocus)

@@ -58,7 +58,11 @@ import java.util.Locale
 fun IncomeAnalyticsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: IncomeAnalyticsViewModel = hiltViewModel()
+    viewModel: IncomeAnalyticsViewModel = hiltViewModel(),
+    onHome: (() -> Unit)? = null,
+    onIncome: (() -> Unit)? = null,
+    onExpenses: (() -> Unit)? = null,
+    onGoals: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -70,6 +74,10 @@ fun IncomeAnalyticsScreen(
         onClearEstimatedMonthlyIncome = viewModel::clearEstimatedMonthlyIncome,
         onClearError = viewModel::clearError,
         onBack = onBack,
+        onHome = onHome,
+        onIncome = onIncome,
+        onExpenses = onExpenses,
+        onGoals = onGoals,
         modifier = modifier
     )
 }
@@ -84,6 +92,10 @@ fun IncomeAnalyticsContent(
     onClearEstimatedMonthlyIncome: () -> Unit,
     onClearError: () -> Unit,
     onBack: () -> Unit,
+    onHome: (() -> Unit)? = null,
+    onIncome: (() -> Unit)? = null,
+    onExpenses: (() -> Unit)? = null,
+    onGoals: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val textPrimary = DarkNavyText
@@ -117,6 +129,18 @@ fun IncomeAnalyticsContent(
                     containerColor = AppBackground
                 )
             )
+        },
+        bottomBar = {
+            if (onHome != null || onIncome != null || onExpenses != null) {
+                com.pfms.app.ui.component.PfmsBottomNavBar(
+                    selectedTab = com.pfms.app.ui.component.PfmsNavTab.INSIGHTS,
+                    onHomeClick = { onHome?.invoke() ?: onBack() },
+                    onIncomeClick = { onIncome?.invoke() },
+                    onExpensesClick = { onExpenses?.invoke() },
+                    onGoalsClick = onGoals,
+                    onInsightsClick = { /* Already on Insights */ }
+                )
+            }
         }
     ) { paddingValues ->
         if (uiState.isLoading) {
