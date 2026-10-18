@@ -26,6 +26,9 @@ object Routes {
     const val RecurringExpenses = "recurring_expenses"
     const val Subscriptions = "subscriptions"
 
+    // Savings Goal Management — Member 2 (FR-23 through FR-28)
+    const val SavingsGoal = "savings_goal"
+
     // Expense Management — Member 1
     const val ExpenseList = "expense_list"
     const val AddExpense = "add_expense"
