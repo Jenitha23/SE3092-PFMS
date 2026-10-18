@@ -361,8 +361,8 @@ class SavingsGoalViewModel @Inject constructor(
     }
 
     fun updateTransaction(transaction: GoalTransaction) {
-        if (transaction.amountMinor < 0L) {
-            _errorMessage.value = "Transaction amount must be non-negative"
+        if (transaction.amountMinor <= 0L) {
+            _errorMessage.value = "Transaction amount must be greater than zero"
             return
         }
         viewModelScope.launch {

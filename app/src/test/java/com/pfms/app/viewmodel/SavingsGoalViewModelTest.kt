@@ -23,7 +23,6 @@ import com.pfms.app.domain.usecase.savings.CalculateSavedAmountUseCase
 import com.pfms.app.domain.usecase.savings.CalculateTrailingNetSavingsAverageUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -100,7 +99,7 @@ class SavingsGoalViewModelTest {
 
     // 1. no active goal produces empty safe state
     @Test
-    fun `no active goal produces empty safe state`() = runTest {
+    fun `1 no active goal produces empty safe state`() = runTest {
         advanceUntilIdle()
         val state = viewModel.uiState.value
 
@@ -120,7 +119,7 @@ class SavingsGoalViewModelTest {
 
     // 2. active goal appears reactively
     @Test
-    fun `active goal appears reactively`() = runTest {
+    fun `2 active goal appears reactively`() = runTest {
         val goal = SavingsGoal(
             id = "g-1",
             userId = "user-123",
@@ -141,7 +140,7 @@ class SavingsGoalViewModelTest {
 
     // 3. transactions follow active goal
     @Test
-    fun `transactions follow active goal`() = runTest {
+    fun `3 transactions follow active goal`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "MacBook Pro", status = GoalStatus.ACTIVE)
         val tx1 = GoalTransaction(id = "tx-1", goalId = "g-1", userId = "user-123", amountMinor = 50_000L, date = "2026-10-17")
         val txOther = GoalTransaction(id = "tx-2", goalId = "g-other", userId = "user-123", amountMinor = 99_000L, date = "2026-10-17")
@@ -157,7 +156,7 @@ class SavingsGoalViewModelTest {
 
     // 4. switching goal cancels old transaction state
     @Test
-    fun `switching goal cancels old transaction state`() = runTest {
+    fun `4 switching goal cancels old transaction state`() = runTest {
         val goal1 = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal 1", status = GoalStatus.ACTIVE)
         val goal2 = SavingsGoal(id = "g-2", userId = "user-123", name = "Goal 2", status = GoalStatus.ARCHIVED)
 
@@ -186,7 +185,7 @@ class SavingsGoalViewModelTest {
 
     // 5. current saved = opening + contributions - withdrawals
     @Test
-    fun `current saved equals opening plus contributions minus withdrawals`() = runTest {
+    fun `5 current saved equals opening plus contributions minus withdrawals`() = runTest {
         val goal = SavingsGoal(
             id = "g-1",
             userId = "user-123",
@@ -207,12 +206,8 @@ class SavingsGoalViewModelTest {
     }
 
     // 6. progress percentage correct
-    // 7. remaining amount correct
-    // 8. remaining months correct
-    // 9. required monthly saving correct
     @Test
-    fun `progress metrics calculated correctly`() = runTest {
-        // Goal: 1,000,000 target, opening 200,000, target date 10 months ahead (2027-08-17)
+    fun `6 progress percentage correct`() = runTest {
         val goal = SavingsGoal(
             id = "g-1",
             userId = "user-123",
@@ -225,33 +220,96 @@ class SavingsGoalViewModelTest {
         savingsGoalRepository.goals.value = listOf(goal)
         advanceUntilIdle()
 
-        val state = viewModel.uiState.value
-        assertEquals(20.0, state.progressPercent, 0.001) // 200,000 / 1,000,000 = 20%
-        assertEquals(800_000L, state.remainingAmountMinor) // 1,000,000 - 200,000 = 800,000
-        assertEquals(10L, state.remainingMonths) // Oct 2026 to Aug 2027 = 10 months
-        assertEquals(80_000L, state.requiredMonthlySavingMinor) // 800,000 / 10 = 80,000
+        assertEquals(20.0, viewModel.uiState.value.progressPercent, 0.001)
+    }
+
+    // 7. remaining amount correct
+    @Test
+    fun `7 remaining amount correct`() = runTest {
+        val goal = SavingsGoal(
+            id = "g-1",
+            userId = "user-123",
+            name = "Trip",
+            targetAmountMinor = 1_000_000L,
+            openingSavedAmountMinor = 200_000L,
+            targetDate = "2027-08-17",
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(goal)
+        advanceUntilIdle()
+
+        assertEquals(800_000L, viewModel.uiState.value.remainingAmountMinor)
+    }
+
+    // 8. remaining months correct
+    @Test
+    fun `8 remaining months correct`() = runTest {
+        val goal = SavingsGoal(
+            id = "g-1",
+            userId = "user-123",
+            name = "Trip",
+            targetAmountMinor = 1_000_000L,
+            openingSavedAmountMinor = 200_000L,
+            targetDate = "2027-08-17", // Oct 2026 to Aug 2027 = 10 months
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(goal)
+        advanceUntilIdle()
+
+        assertEquals(10L, viewModel.uiState.value.remainingMonths)
+    }
+
+    // 9. required monthly saving correct
+    @Test
+    fun `9 required monthly saving correct`() = runTest {
+        val goal = SavingsGoal(
+            id = "g-1",
+            userId = "user-123",
+            name = "Trip",
+            targetAmountMinor = 1_000_000L,
+            openingSavedAmountMinor = 200_000L,
+            targetDate = "2027-08-17", // 800_000 / 10 = 80_000
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(goal)
+        advanceUntilIdle()
+
+        assertEquals(80_000L, viewModel.uiState.value.requiredMonthlySavingMinor)
     }
 
     // 10. current-month contribution calculation correct
+    @Test
+    fun `10 current-month contribution calculation correct`() = runTest {
+        val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
+        val currentMonthContrib1 = GoalTransaction(id = "tx-1", goalId = "g-1", amountMinor = 30_000L, transactionType = GoalTransactionType.CONTRIBUTION, date = "2026-10-05")
+        val currentMonthContrib2 = GoalTransaction(id = "tx-2", goalId = "g-1", amountMinor = 20_000L, transactionType = GoalTransactionType.CONTRIBUTION, date = "2026-10-10")
+        val previousMonthContrib = GoalTransaction(id = "tx-3", goalId = "g-1", amountMinor = 50_000L, transactionType = GoalTransactionType.CONTRIBUTION, date = "2026-09-20")
+
+        savingsGoalRepository.goals.value = listOf(goal)
+        savingsGoalRepository.transactions.value = listOf(currentMonthContrib1, currentMonthContrib2, previousMonthContrib)
+        advanceUntilIdle()
+
+        assertEquals(50_000L, viewModel.uiState.value.currentMonthContributionMinor)
+    }
+
     // 11. withdrawals excluded from contribution total
     @Test
-    fun `current-month goal contribution correctly accounts for deposits and ignores other months`() = runTest {
+    fun `11 withdrawals excluded from increasing contribution total`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         val currentMonthContrib = GoalTransaction(id = "tx-1", goalId = "g-1", amountMinor = 50_000L, transactionType = GoalTransactionType.CONTRIBUTION, date = "2026-10-05")
         val currentMonthWithdrawal = GoalTransaction(id = "tx-2", goalId = "g-1", amountMinor = 10_000L, transactionType = GoalTransactionType.WITHDRAWAL, date = "2026-10-08")
-        val previousMonthContrib = GoalTransaction(id = "tx-3", goalId = "g-1", amountMinor = 40_000L, transactionType = GoalTransactionType.CONTRIBUTION, date = "2026-09-20")
 
         savingsGoalRepository.goals.value = listOf(goal)
-        savingsGoalRepository.transactions.value = listOf(currentMonthContrib, currentMonthWithdrawal, previousMonthContrib)
+        savingsGoalRepository.transactions.value = listOf(currentMonthContrib, currentMonthWithdrawal)
         advanceUntilIdle()
 
-        // Oct net contribution: 50_000 - 10_000 = 40_000
+        // 50_000 deposit - 10_000 withdrawal = 40_000 net contribution
         assertEquals(40_000L, viewModel.uiState.value.currentMonthContributionMinor)
     }
 
     // 12. current-month net savings correct
     @Test
-    fun `current-month net savings equals realized income minus total expenses`() = runTest {
+    fun `12 current-month net savings correct`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(goal)
 
@@ -268,7 +326,7 @@ class SavingsGoalViewModelTest {
 
     // 13. trailing 3-month average correct
     @Test
-    fun `trailing 3-month net savings average divides M-3 to M-1 by three`() = runTest {
+    fun `13 trailing 3-month average correct`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(goal)
 
@@ -295,11 +353,8 @@ class SavingsGoalViewModelTest {
     }
 
     // 14. pace ON_TRACK correct
-    // 15. pace BEHIND correct
-    // 16. shortfall correct
     @Test
-    fun `pace evaluates ON_TRACK and BEHIND against trailing average benchmark`() = runTest {
-        // Required saving = 50_000/mo
+    fun `14 pace ON_TRACK correct`() = runTest {
         val goal = SavingsGoal(
             id = "g-1",
             userId = "user-123",
@@ -316,24 +371,56 @@ class SavingsGoalViewModelTest {
         incomeRepository.incomes.value = listOf(inc)
         advanceUntilIdle()
 
-        val stateOnTrack = viewModel.uiState.value
-        assertEquals(GoalPaceStatus.ON_TRACK, stateOnTrack.pace?.paceStatus)
-        assertEquals(0L, stateOnTrack.pace?.shortfallMinor)
+        assertEquals(GoalPaceStatus.ON_TRACK, viewModel.uiState.value.pace?.paceStatus)
+    }
 
-        // Now lower income so trailing avg = 20_000 (< 50_000) -> BEHIND, shortfall = 30_000
+    // 15. pace BEHIND correct
+    @Test
+    fun `15 pace BEHIND correct`() = runTest {
+        val goal = SavingsGoal(
+            id = "g-1",
+            userId = "user-123",
+            name = "Goal",
+            targetAmountMinor = 500_000L,
+            openingSavedAmountMinor = 0L,
+            targetDate = "2027-08-17", // 10 months -> 50_000/mo
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(goal)
+
+        // Trailing avg = 20_000 (< 50_000) -> BEHIND
         val incLower = Income(id = "inc-sep", userId = "user-123", amountMinor = 60_000L, amountLkrMinor = 60_000L, receivedDate = "2026-09-01", paymentStatus = "Received")
         incomeRepository.incomes.value = listOf(incLower)
         advanceUntilIdle()
 
-        val stateBehind = viewModel.uiState.value
-        assertEquals(GoalPaceStatus.BEHIND, stateBehind.pace?.paceStatus)
-        assertEquals(30_000L, stateBehind.pace?.shortfallMinor) // 50_000 - 20_000 = 30_000
+        assertEquals(GoalPaceStatus.BEHIND, viewModel.uiState.value.pace?.paceStatus)
+    }
+
+    // 16. shortfall correct
+    @Test
+    fun `16 shortfall correct`() = runTest {
+        val goal = SavingsGoal(
+            id = "g-1",
+            userId = "user-123",
+            name = "Goal",
+            targetAmountMinor = 500_000L,
+            openingSavedAmountMinor = 0L,
+            targetDate = "2027-08-17", // 10 months -> 50_000/mo
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(goal)
+
+        // Trailing avg = 20_000 (< 50_000) -> Shortfall = 50_000 - 20_000 = 30_000
+        val incLower = Income(id = "inc-sep", userId = "user-123", amountMinor = 60_000L, amountLkrMinor = 60_000L, receivedDate = "2026-09-01", paymentStatus = "Received")
+        incomeRepository.incomes.value = listOf(incLower)
+        advanceUntilIdle()
+
+        assertEquals(30_000L, viewModel.uiState.value.pace?.shortfallMinor)
     }
 
     // 17. projected completion populated when pace > 0
-    // 18. projected completion safe when pace <= 0
     @Test
-    fun `projected completion date handles positive and non-positive pace safely`() = runTest {
+    fun `17 projected completion populated when pace greater than 0`() = runTest {
         val goal = SavingsGoal(
             id = "g-1",
             userId = "user-123",
@@ -353,6 +440,21 @@ class SavingsGoalViewModelTest {
         val state = viewModel.uiState.value
         assertNotNull(state.pace?.projectedCompletionDate)
         assertEquals(LocalDate.of(2026, 12, 17), state.pace?.projectedCompletionDate)
+    }
+
+    // 18. projected completion safe when pace <= 0
+    @Test
+    fun `18 projected completion safe when pace less than or equal to 0`() = runTest {
+        val goal = SavingsGoal(
+            id = "g-1",
+            userId = "user-123",
+            name = "Goal",
+            targetAmountMinor = 100_000L,
+            openingSavedAmountMinor = 0L,
+            targetDate = "2027-10-17",
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(goal)
 
         // Zero/negative pace: no income, high expense
         val exp = Expense(id = "exp-1", userId = "user-123", amountMinor = 500_000L, date = "2026-09-01")
@@ -363,10 +465,37 @@ class SavingsGoalViewModelTest {
     }
 
     // 19. only discretionary expenses counted for FR-27
+    @Test
+    fun `19 only discretionary expenses counted for FR-27`() = runTest {
+        val goal = SavingsGoal(
+            id = "g-1",
+            userId = "user-123",
+            name = "Goal",
+            targetAmountMinor = 500_000L,
+            targetDate = "2027-08-17", // 10 months -> 50_000/mo
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(goal)
+
+        val discExp = Expense(
+            id = "exp-d",
+            userId = "user-123",
+            amountMinor = 25_000L,
+            classification = ExpenseClassification.DISCRETIONARY,
+            date = "2026-10-05"
+        )
+        expenseRepository.addExpense(discExp)
+        advanceUntilIdle()
+
+        val impact = viewModel.uiState.value.discretionaryImpact
+        assertNotNull(impact)
+        assertEquals(25_000L, impact?.discretionaryExpensesMinor)
+        assertEquals(50.0, impact?.percentageOfRequiredSaving ?: 0.0, 0.001)
+    }
+
     // 20. committed expenses excluded
     @Test
-    fun `discretionary impact only counts DISCRETIONARY classification`() = runTest {
-        // Goal requires 50_000/mo
+    fun `20 committed expenses excluded`() = runTest {
         val goal = SavingsGoal(
             id = "g-1",
             userId = "user-123",
@@ -399,13 +528,13 @@ class SavingsGoalViewModelTest {
         assertNotNull(impact)
         assertEquals(25_000L, impact?.discretionaryExpensesMinor)
         assertEquals(100_000L, impact?.committedExpensesMinor)
-        // 25_000 / 50_000 = 50.0%
+        // 25_000 / 50_000 = 50.0% (committed is excluded from the numerator)
         assertEquals(50.0, impact?.percentageOfRequiredSaving ?: 0.0, 0.001)
     }
 
     // 21. overdue unfinished goal sets isOverdue=true
     @Test
-    fun `overdue unfinished goal exposes isOverdue true`() = runTest {
+    fun `21 overdue unfinished goal sets isOverdue true`() = runTest {
         val overdueGoal = SavingsGoal(
             id = "g-overdue",
             userId = "user-123",
@@ -424,15 +553,14 @@ class SavingsGoalViewModelTest {
     }
 
     // 22. completed goal does not show overdue
-    // 23. completed goal state works at >=100%
     @Test
-    fun `completed goal exposes isCompleted true and isOverdue false even if targetDate is past`() = runTest {
+    fun `22 completed goal does not show overdue`() = runTest {
         val completedGoal = SavingsGoal(
             id = "g-done",
             userId = "user-123",
             name = "Done Goal",
             targetAmountMinor = 500_000L,
-            openingSavedAmountMinor = 600_000L, // >= 100%
+            openingSavedAmountMinor = 500_000L, // 100%
             targetDate = "2026-09-01", // In past
             status = GoalStatus.ACTIVE
         )
@@ -442,13 +570,33 @@ class SavingsGoalViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state.isCompleted)
         assertFalse(state.isOverdue)
+    }
+
+    // 23. completed goal state works at >=100%
+    @Test
+    fun `23 completed goal state works at greater than or equal to 100 percent`() = runTest {
+        val surplusGoal = SavingsGoal(
+            id = "g-surplus",
+            userId = "user-123",
+            name = "Surplus Goal",
+            targetAmountMinor = 500_000L,
+            openingSavedAmountMinor = 750_000L, // 150%
+            targetDate = "2027-10-17",
+            status = GoalStatus.ACTIVE
+        )
+        savingsGoalRepository.goals.value = listOf(surplusGoal)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.isCompleted)
         assertEquals(100.0, state.progressPercent, 0.001)
         assertEquals(0L, state.remainingAmountMinor)
+        assertEquals(0L, state.requiredMonthlySavingMinor)
     }
 
     // 24. create goal success
     @Test
-    fun `create goal success adds goal to repository`() = runTest {
+    fun `24 create goal success`() = runTest {
         val newGoal = SavingsGoal(
             id = "g-new",
             name = "Trip to Tokyo",
@@ -467,7 +615,7 @@ class SavingsGoalViewModelTest {
 
     // 25. second active goal failure is surfaced
     @Test
-    fun `second active goal creation surfaces error and preserves existing active goal`() = runTest {
+    fun `25 second active goal failure is surfaced`() = runTest {
         val existingActive = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal 1", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(existingActive)
         advanceUntilIdle()
@@ -483,7 +631,7 @@ class SavingsGoalViewModelTest {
 
     // 26. update goal success
     @Test
-    fun `update goal success modifies repository state`() = runTest {
+    fun `26 update goal success`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Old Name", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(goal)
         advanceUntilIdle()
@@ -496,7 +644,7 @@ class SavingsGoalViewModelTest {
 
     // 27. archive goal success
     @Test
-    fun `archive goal success sets status to ARCHIVED and resets active goal`() = runTest {
+    fun `27 archive goal success`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Active Goal", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(goal)
         advanceUntilIdle()
@@ -509,7 +657,7 @@ class SavingsGoalViewModelTest {
 
     // 28. delete goal success
     @Test
-    fun `delete goal success removes goal from repository`() = runTest {
+    fun `28 delete goal success`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(goal)
         advanceUntilIdle()
@@ -522,7 +670,7 @@ class SavingsGoalViewModelTest {
 
     // 29. contribution creation success
     @Test
-    fun `contribution creation adds positive transaction to repository`() = runTest {
+    fun `29 contribution creation success`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(goal)
         advanceUntilIdle()
@@ -541,7 +689,7 @@ class SavingsGoalViewModelTest {
 
     // 30. withdrawal creation success
     @Test
-    fun `withdrawal creation adds withdrawal transaction with positive amount`() = runTest {
+    fun `30 withdrawal creation success`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         savingsGoalRepository.goals.value = listOf(goal)
         advanceUntilIdle()
@@ -558,7 +706,7 @@ class SavingsGoalViewModelTest {
 
     // 31. transaction update success
     @Test
-    fun `transaction update success updates repository record`() = runTest {
+    fun `31 transaction update success`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         val tx = GoalTransaction(id = "tx-1", goalId = "g-1", userId = "user-123", amountMinor = 10_000L)
         savingsGoalRepository.goals.value = listOf(goal)
@@ -569,11 +717,81 @@ class SavingsGoalViewModelTest {
         advanceUntilIdle()
 
         assertEquals(25_000L, viewModel.uiState.value.transactions.first().amountMinor)
+        assertNull(viewModel.uiState.value.errorMessage)
+        assertFalse(viewModel.uiState.value.operationInProgress)
+    }
+
+    @Test
+    fun `updateTransaction with zero amount is rejected and repository not called`() = runTest {
+        val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
+        val tx = GoalTransaction(id = "tx-1", goalId = "g-1", userId = "user-123", amountMinor = 10_000L)
+        savingsGoalRepository.goals.value = listOf(goal)
+        savingsGoalRepository.transactions.value = listOf(tx)
+        advanceUntilIdle()
+
+        viewModel.updateTransaction(tx.copy(amountMinor = 0L))
+        advanceUntilIdle()
+
+        assertEquals("Transaction amount must be greater than zero", viewModel.uiState.value.errorMessage)
+        assertEquals(10_000L, savingsGoalRepository.transactions.value.first().amountMinor)
+        assertEquals(10_000L, viewModel.uiState.value.transactions.first().amountMinor)
+        assertFalse(viewModel.uiState.value.operationInProgress)
+    }
+
+    @Test
+    fun `updateTransaction with negative amount is rejected and repository not called`() = runTest {
+        val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
+        val tx = GoalTransaction(id = "tx-1", goalId = "g-1", userId = "user-123", amountMinor = 10_000L)
+        savingsGoalRepository.goals.value = listOf(goal)
+        savingsGoalRepository.transactions.value = listOf(tx)
+        advanceUntilIdle()
+
+        val negativeTx = createGoalTransactionWithAmount(
+            id = "tx-1",
+            goalId = "g-1",
+            userId = "user-123",
+            amountMinor = -5_000L
+        )
+        viewModel.updateTransaction(negativeTx)
+        advanceUntilIdle()
+
+        assertEquals("Transaction amount must be greater than zero", viewModel.uiState.value.errorMessage)
+        assertEquals(10_000L, savingsGoalRepository.transactions.value.first().amountMinor)
+        assertEquals(10_000L, viewModel.uiState.value.transactions.first().amountMinor)
+        assertFalse(viewModel.uiState.value.operationInProgress)
+    }
+
+    private fun createGoalTransactionWithAmount(
+        id: String = "tx-1",
+        goalId: String = "g-1",
+        userId: String = "user-123",
+        amountMinor: Long
+    ): GoalTransaction {
+        if (amountMinor >= 0L) {
+            return GoalTransaction(id = id, goalId = goalId, userId = userId, amountMinor = amountMinor)
+        }
+        val unsafeField = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }
+        val unsafe = unsafeField.get(null) as sun.misc.Unsafe
+        val tx = unsafe.allocateInstance(GoalTransaction::class.java) as GoalTransaction
+        val idField = GoalTransaction::class.java.getDeclaredField("id")
+        val goalIdField = GoalTransaction::class.java.getDeclaredField("goalId")
+        val userIdField = GoalTransaction::class.java.getDeclaredField("userId")
+        val amountField = GoalTransaction::class.java.getDeclaredField("amountMinor")
+        val typeField = GoalTransaction::class.java.getDeclaredField("transactionType")
+        val dateField = GoalTransaction::class.java.getDeclaredField("date")
+
+        unsafe.putObject(tx, unsafe.objectFieldOffset(idField), id)
+        unsafe.putObject(tx, unsafe.objectFieldOffset(goalIdField), goalId)
+        unsafe.putObject(tx, unsafe.objectFieldOffset(userIdField), userId)
+        unsafe.putLong(tx, unsafe.objectFieldOffset(amountField), amountMinor)
+        unsafe.putObject(tx, unsafe.objectFieldOffset(typeField), GoalTransactionType.CONTRIBUTION)
+        unsafe.putObject(tx, unsafe.objectFieldOffset(dateField), "2026-10-17")
+        return tx
     }
 
     // 32. transaction delete success
     @Test
-    fun `transaction delete success removes record from ledger`() = runTest {
+    fun `32 transaction delete success`() = runTest {
         val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
         val tx = GoalTransaction(id = "tx-1", goalId = "g-1", userId = "user-123", amountMinor = 10_000L)
         savingsGoalRepository.goals.value = listOf(goal)
@@ -588,7 +806,7 @@ class SavingsGoalViewModelTest {
 
     // 33. unauthenticated write blocked safely
     @Test
-    fun `unauthenticated write blocked safely and surfaces auth error`() = runTest {
+    fun `33 unauthenticated write blocked safely`() = runTest {
         authRepository.userFlow.value = null // Sign out
         val goal = SavingsGoal(id = "g-1", name = "Offline Goal", status = GoalStatus.ACTIVE)
 
@@ -601,7 +819,7 @@ class SavingsGoalViewModelTest {
 
     // 34. repository failure exposed as UI-safe error
     @Test
-    fun `repository failure exposed as UI-safe error`() = runTest {
+    fun `34 repository failure exposed as UI-safe error`() = runTest {
         savingsGoalRepository.failureException = RuntimeException("Firestore connection reset")
 
         viewModel.createGoal(SavingsGoal(id = "g-1", status = GoalStatus.ACTIVE))
@@ -611,23 +829,27 @@ class SavingsGoalViewModelTest {
     }
 
     // 35. operationInProgress resets after success
-    // 36. operationInProgress resets after failure
     @Test
-    fun `operationInProgress resets to false after success and failure`() = runTest {
+    fun `35 operationInProgress resets after success`() = runTest {
         val goal = SavingsGoal(id = "g-1", status = GoalStatus.ACTIVE)
 
-        // Success
         viewModel.createGoal(goal)
         advanceUntilIdle()
         assertFalse(viewModel.uiState.value.operationInProgress)
+    }
 
-        // Failure
+    // 36. operationInProgress resets after failure
+    @Test
+    fun `36 operationInProgress resets after failure`() = runTest {
+        val goal = SavingsGoal(id = "g-1", status = GoalStatus.ACTIVE)
         savingsGoalRepository.failureException = RuntimeException("Network timeout")
+
         viewModel.updateGoal(goal)
         advanceUntilIdle()
         assertFalse(viewModel.uiState.value.operationInProgress)
     }
 
+    // Extra edge-case validations
     @Test
     fun `clearError clears transient error message`() = runTest {
         savingsGoalRepository.failureException = RuntimeException("Error")
@@ -639,5 +861,49 @@ class SavingsGoalViewModelTest {
         viewModel.clearError()
         advanceUntilIdle()
         assertNull(viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun `addContribution with negative or zero amount surfaces error`() = runTest {
+        val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
+        savingsGoalRepository.goals.value = listOf(goal)
+        advanceUntilIdle()
+
+        viewModel.addContribution(amountMinor = 0L)
+        advanceUntilIdle()
+
+        assertEquals("Contribution amount must be greater than zero", viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun `addWithdrawal with negative or zero amount surfaces error`() = runTest {
+        val goal = SavingsGoal(id = "g-1", userId = "user-123", name = "Goal", status = GoalStatus.ACTIVE)
+        savingsGoalRepository.goals.value = listOf(goal)
+        advanceUntilIdle()
+
+        viewModel.addWithdrawal(amountMinor = -500L)
+        advanceUntilIdle()
+
+        assertEquals("Withdrawal amount must be greater than zero", viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun `addContribution without active goal surfaces error`() = runTest {
+        advanceUntilIdle()
+
+        viewModel.addContribution(amountMinor = 10_000L)
+        advanceUntilIdle()
+
+        assertEquals("No active savings goal found", viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun `addWithdrawal without active goal surfaces error`() = runTest {
+        advanceUntilIdle()
+
+        viewModel.addWithdrawal(amountMinor = 10_000L)
+        advanceUntilIdle()
+
+        assertEquals("No active savings goal found", viewModel.uiState.value.errorMessage)
     }
 }
