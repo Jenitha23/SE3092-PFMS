@@ -58,7 +58,7 @@ fun SplashScreen() {
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "PF",
+                        text = "TrackMy",
                         style = MaterialTheme.typography.headlineLarge.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.5).sp
@@ -66,7 +66,7 @@ fun SplashScreen() {
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "MS",
+                        text = "Finances",
                         style = MaterialTheme.typography.headlineLarge.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.5).sp
