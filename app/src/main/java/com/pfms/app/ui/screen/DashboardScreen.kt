@@ -71,7 +71,7 @@ import com.pfms.app.viewmodel.SettingsViewModel
  * - Emerald top header with user greeting, display name + wave, date, bell, and avatar.
  * - Floating Monthly Overview card (Income ↑, Expenses ↓, Savings).
  * - Spending Breakdown card with two-tone donut chart (Committed 45%, Discretionary 55%).
- * - Savings Goal card with target laptop item and 23% progress bar.
+ * - Dynamic Savings Goal card with reactive target, progress bar, and metrics.
  * - Recent Activity card with Salary (+ LKR 130,000) and Dining (- LKR 2,500).
  * - Pinned 5-tab bottom navigation (Home, Income, Expenses, Goals, Insights).
  * - All authentication, session state, settings navigation, and logout dialogs strictly preserved.
