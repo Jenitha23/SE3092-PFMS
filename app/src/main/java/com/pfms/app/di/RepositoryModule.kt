@@ -21,6 +21,8 @@ import com.pfms.app.data.repository.OfflineFirstExpenseRepository
 import com.pfms.app.data.remote.firestore.FirestoreExpenseRemoteDataSource
 import com.pfms.app.data.remote.firestore.ExpenseRemoteDataSource
 import com.pfms.app.domain.repository.ExpenseRepository
+import com.pfms.app.data.repository.OfflineFirstDashboardRepository
+import com.pfms.app.domain.repository.DashboardRepository
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -54,5 +56,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindSalaryTemplateRepository(repository: SalaryTemplateRepositoryImpl): SalaryTemplateRepository
+
+    // Dashboard / analytics / history read side
+    @Binds
+    @Singleton
+    abstract fun bindDashboardRepository(repository: OfflineFirstDashboardRepository): DashboardRepository
 }
 
