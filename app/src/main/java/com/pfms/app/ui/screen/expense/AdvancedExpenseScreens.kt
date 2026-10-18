@@ -33,10 +33,14 @@ import com.pfms.app.domain.usecase.ExpenseRules
 import com.pfms.app.domain.usecase.RecurringExpenseCalculator
 import com.pfms.app.viewmodel.AdvancedExpenseViewModel
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 
 @Composable
 internal fun ExpenseReminderPermission() {
@@ -372,6 +376,26 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
     var recurrence by remember { mutableStateOf(Recurrence.MONTHLY) }
     var flag by remember { mutableStateOf(SubscriptionFlag.NONE) }
     var paymentMethod by remember { mutableStateOf(ExpensePaymentMethod.CASH) }
+    var showDueDatePicker by remember { mutableStateOf(false) }
+    var showReminderDatePicker by remember { mutableStateOf(false) }
+
+    val dueInteractionSource = remember { MutableInteractionSource() }
+    LaunchedEffect(dueInteractionSource) {
+        dueInteractionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Release) {
+                showDueDatePicker = true
+            }
+        }
+    }
+
+    val reminderInteractionSource = remember { MutableInteractionSource() }
+    LaunchedEffect(reminderInteractionSource) {
+        reminderInteractionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Release) {
+                showReminderDatePicker = true
+            }
+        }
+    }
 
     val activeCategories = categories.filter { !it.archived }
     val currentSelectedCategory = activeCategories.firstOrNull { it.id == selectedCategoryId }
@@ -381,6 +405,7 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
 
     val relevantTemplates = templates.filter { it.subscription == subscriptionsOnly }
     val dueTemplates = relevantTemplates.filter { vm.isDue(it) }
+    val reviewTemplates = if (subscriptionsOnly) relevantTemplates.filter { vm.isReviewDue(it) } else emptyList()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -472,6 +497,101 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
                 }
             }
 
+            // FR-20: Subscriptions Due for Review Prompt (Prominently placed at the top of Subscriptions)
+            if (subscriptionsOnly && reviewTemplates.isNotEmpty()) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Subscriptions to Review (${reviewTemplates.size})",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                                ExpenseBadge("Review Due", ExpenseOrange)
+                            }
+                            Text(
+                                "These subscriptions have reached their reminder date or are flagged for review. Keep, cancel, or edit them below.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+
+                            reviewTemplates.forEach { item ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(item.title, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                "LKR ${String.format(Locale.US, "%.2f", item.amountMinor / 100.0)} • ${item.categoryName}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            if (item.reminderDate.isNotBlank()) {
+                                                Text("Reminder: ${item.reminderDate}", style = MaterialTheme.typography.labelSmall, color = ExpenseOrange)
+                                            }
+                                            if (item.flag == SubscriptionFlag.REVIEW) {
+                                                Text("Status: Flagged for review", style = MaterialTheme.typography.labelSmall, color = ExpenseOrange)
+                                            }
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(onClick = {
+                                            editingTemplate = item
+                                            title = item.title
+                                            amountText = String.format(Locale.US, "%.2f", item.amountMinor / 100.0)
+                                            due = item.nextDueDate
+                                            reminder = item.reminderDate
+                                            selectedCategoryId = item.categoryId
+                                            recurrence = item.recurrence
+                                            flag = item.flag
+                                            paymentMethod = item.paymentMethod
+                                            showForm = true
+                                        }) {
+                                            Text("Edit")
+                                        }
+
+                                        TextButton(
+                                            enabled = !busy,
+                                            onClick = { vm.cancelSubscription(item) }
+                                        ) {
+                                            Text("Cancel Sub")
+                                        }
+
+                                        FilledTonalButton(
+                                            enabled = !busy,
+                                            onClick = { vm.dismissReview(item) },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("Keep")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // FR-19 Part C: DUE RECURRING EXPENSES PROMPT
             if (dueTemplates.isNotEmpty()) {
                 item {
@@ -524,6 +644,7 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
                     }
                 }
             }
+
 
             // Add/Edit Template Form
             if (showForm) {
@@ -602,20 +723,44 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
                                 }
                             }
 
+                            // Next Due Date with Interactive DatePicker
                             OutlinedTextField(
                                 value = due,
-                                onValueChange = { due = it },
+                                onValueChange = {},
+                                readOnly = true,
+                                interactionSource = dueInteractionSource,
                                 label = { Text("Next Due Date (YYYY-MM-DD)") },
+                                trailingIcon = {
+                                    IconButton(onClick = { showDueDatePicker = true }) {
+                                        ExpenseIcon(ExpenseSymbol.CALENDAR, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
+                                    }
+                                },
                                 isError = !validDueDate,
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
                             if (subscriptionsOnly) {
+                                // Review Reminder Date with Interactive DatePicker
                                 OutlinedTextField(
                                     value = reminder,
-                                    onValueChange = { reminder = it },
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    interactionSource = reminderInteractionSource,
                                     label = { Text("Review Reminder Date (YYYY-MM-DD, optional)") },
+                                    placeholder = { Text("Tap calendar to select date") },
+                                    trailingIcon = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (reminder.isNotBlank()) {
+                                                IconButton(onClick = { reminder = "" }) {
+                                                    ExpenseIcon(ExpenseSymbol.CLOSE, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                            }
+                                            IconButton(onClick = { showReminderDatePicker = true }) {
+                                                ExpenseIcon(ExpenseSymbol.CALENDAR, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
+                                            }
+                                        }
+                                    },
                                     isError = !validReminderDate,
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
@@ -712,6 +857,9 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
                                 ExpenseBadge(if (item.active) "Active" else "Paused / Cancelled")
                                 if (subscriptionsOnly && item.flag != SubscriptionFlag.NONE) {
                                     ExpenseBadge("Flag: ${item.flag.name}", ExpenseOrange)
+                                }
+                                if (subscriptionsOnly && vm.isReviewDue(item)) {
+                                    ExpenseBadge("Review Due", ExpenseOrange)
                                 }
                                 ExpenseBadge("Next: ${item.nextDueDate}")
                             }
@@ -831,4 +979,56 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
             }
         )
     }
+
+    if (showDueDatePicker) {
+        val initialDate = runCatching { LocalDate.parse(due.trim()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
+        val picker = rememberDatePickerState(initialSelectedDateMillis = initialDate)
+        DatePickerDialog(
+            onDismissRequest = { showDueDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    enabled = picker.selectedDateMillis != null,
+                    onClick = {
+                        picker.selectedDateMillis?.let {
+                            due = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                        }
+                        showDueDatePicker = false
+                    }
+                ) { Text("Select") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDueDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(picker)
+        }
+    }
+
+    if (showReminderDatePicker) {
+        val initialDate = runCatching {
+            if (reminder.isNotBlank()) LocalDate.parse(reminder.trim()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            else LocalDate.now(RecurringExpenseCalculator.COLOMBO_ZONE).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        }.getOrNull()
+        val picker = rememberDatePickerState(initialSelectedDateMillis = initialDate)
+        DatePickerDialog(
+            onDismissRequest = { showReminderDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    enabled = picker.selectedDateMillis != null,
+                    onClick = {
+                        picker.selectedDateMillis?.let {
+                            reminder = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                        }
+                        showReminderDatePicker = false
+                    }
+                ) { Text("Select") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReminderDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(picker)
+        }
+    }
 }
+

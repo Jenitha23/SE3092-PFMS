@@ -11,6 +11,7 @@ object Routes {
     const val ForgotPassword = "forgot_password"
     const val Lock = "lock"
     const val Dashboard = "dashboard"
+    const val IncomeOnboarding = "income_onboarding"
     const val Settings = "settings"
 
     // Income Management

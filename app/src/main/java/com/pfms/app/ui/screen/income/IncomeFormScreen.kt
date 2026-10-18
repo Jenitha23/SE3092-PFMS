@@ -1,6 +1,12 @@
 package com.pfms.app.ui.screen.income
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -18,12 +24,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pfms.app.domain.model.Income
-import com.pfms.app.ui.theme.DarkNavyText
-import com.pfms.app.ui.theme.EmeraldPrimary
-import com.pfms.app.ui.theme.SecondaryText
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.Instant
@@ -45,18 +49,27 @@ data class IncomeFormInput(
     val cryptoAsset: String? = null
 )
 
-// Supported income sources (no emojis)
+// Supported income sources
 private val incomeCategoryList = listOf(
     "Salary",
     "Freelance",
-    "Crypto",
     "Google AdSense",
+    "Crypto",
     "Other"
 )
 
 // Common cryptocurrency assets
 private val quickCryptoAssets = listOf(
     "BTC", "ETH", "USDT", "SOL", "BNB", "XRP", "ADA"
+)
+
+// Common frequencies
+private val frequencyList = listOf(
+    "Monthly",
+    "One-time",
+    "Bi-weekly",
+    "Weekly",
+    "Annually"
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,12 +93,11 @@ fun IncomeFormScreen(
 ) {
     val isEditMode = initialIncome != null
 
-    // 1. Income source
+    // Form states
     var source by rememberSaveable(initialIncome?.id) {
         mutableStateOf(initialIncome?.source ?: "Salary")
     }
 
-    // 2. Income amount
     var amount by rememberSaveable(initialIncome?.id) {
         mutableStateOf(
             initialIncome?.amountMinor?.let {
@@ -94,12 +106,10 @@ fun IncomeFormScreen(
         )
     }
 
-    // 3. Currency
     var currency by rememberSaveable(initialIncome?.id) {
         mutableStateOf(initialIncome?.currency ?: "LKR")
     }
 
-    // 4. Received / Invoice date
     var receivedDate by rememberSaveable(initialIncome?.id) {
         mutableStateOf(
             initialIncome?.receivedDate
@@ -107,21 +117,20 @@ fun IncomeFormScreen(
         )
     }
 
-    // 5. Optional note
-    var note by rememberSaveable(initialIncome?.id) {
-        mutableStateOf(initialIncome?.note ?: "")
-    }
-
-    // Member 2: Freelance fields
-    var projectName by rememberSaveable(initialIncome?.id) {
-        mutableStateOf(initialIncome?.projectName ?: "")
-    }
+    var frequency by rememberSaveable { mutableStateOf("Monthly") }
 
     var paymentStatus by rememberSaveable(initialIncome?.id) {
         mutableStateOf(initialIncome?.paymentStatus ?: "Received")
     }
 
-    // Member 2: Crypto fields
+    var note by rememberSaveable(initialIncome?.id) {
+        mutableStateOf(initialIncome?.note ?: "")
+    }
+
+    var projectName by rememberSaveable(initialIncome?.id) {
+        mutableStateOf(initialIncome?.projectName ?: "")
+    }
+
     var cryptoType by rememberSaveable(initialIncome?.id) {
         mutableStateOf(initialIncome?.cryptoType ?: "Gain")
     }
@@ -130,52 +139,73 @@ fun IncomeFormScreen(
         mutableStateOf(initialIncome?.cryptoAsset ?: "BTC")
     }
 
-    // Member 2: Date picker state
-    var showDatePicker by remember { mutableStateOf(false) }
+    // Expandable accordion state (for extra details like notes, freelance client, crypto details)
+    var isDetailsExpanded by rememberSaveable {
+        mutableStateOf(source == "Freelance" || source == "Crypto" || initialIncome?.note?.isNotBlank() == true)
+    }
 
-    // Source of truth for exchange rates is IncomeViewModel, not the Composable.
-    val activeExchangeRate = exchangeRate
-    val activeExchangeRateDate = exchangeRateDate
-    val activeIsRateFetching = isRateFetching
-    val activeRateFetchError = rateFetchError
-    val activeIsManualMode = isManualRateMode
+    // Dropdown visibility states
+    var showSourceDropdown by remember { mutableStateOf(false) }
+    var showCurrencyDropdown by remember { mutableStateOf(false) }
+    var showFrequencyDropdown by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     var manualRateInput by rememberSaveable { mutableStateOf("") }
     var amountError by remember { mutableStateOf<String?>(null) }
 
-    // Palette tokens
-    val cardBackground = Color.White
-    val borderLight = Color(0xFFE9EDF2)
-    val textPrimary = DarkNavyText
-    val textSecondary = SecondaryText
-    val brandEmerald = EmeraldPrimary
+    // Palette tokens matching the reference design
+    val brandEmerald = Color(0xFF007A5E)
+    val brandEmeraldLight = Color(0xFFF0FDF4)
+    val brandEmeraldBorder = Color(0xFFDCFCE7)
+    val textPrimary = Color(0xFF0F172A)
+    val textSecondary = Color(0xFF64748B)
+    val borderLight = Color(0xFFE2E8F0)
+    val bgScreen = Color(0xFFF8FAFC)
+
+    // ════════════════════════════════════════════════════════════
+    // AUTOMATIC LIVE EXCHANGE RATE FETCHING
+    // ════════════════════════════════════════════════════════════
+    // When currency is USD, automatically fetch the exchange rate
+    // immediately whenever the currency is set or the date changes!
+    LaunchedEffect(currency, receivedDate) {
+        if (currency == "USD") {
+            if (initialIncome != null && initialIncome.currency == "USD" && initialIncome.receivedDate == receivedDate && exchangeRate != null) {
+                // Already loaded existing rate for edit mode
+            } else {
+                onFetchExchangeRate(receivedDate)
+            }
+        }
+    }
+
+    // Sync manualRateInput when exchangeRate is updated
+    LaunchedEffect(exchangeRate) {
+        if (exchangeRate != null) {
+            manualRateInput = exchangeRate.toPlainString()
+        }
+    }
 
     Scaffold(
         modifier = modifier,
-        containerColor = Color(0xFFF7F9FC),
+        containerColor = bgScreen,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = if (isEditMode) "Edit Income Record" else "Add Income Record",
+                        text = if (isEditMode) "Edit Income" else "Add Income",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            color = textPrimary
+                            color = textPrimary,
+                            fontSize = 20.sp
                         )
                     )
                 },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text(
-                            text = "Back",
-                            fontWeight = FontWeight.Bold,
-                            color = brandEmerald,
-                            fontSize = 15.sp
-                        )
+                    IconButton(onClick = onBack) {
+                        IncomeArrowBackIcon(tint = textPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFF7F9FC)
+                    containerColor = bgScreen
                 )
             )
         }
@@ -186,494 +216,156 @@ fun IncomeFormScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
 
             // ════════════════════════════════════════════════════════════
-            // 1. CATEGORY SELECTOR (Clean Modern Pills, No Emojis)
+            // 1. SOURCE SELECTOR
             // ════════════════════════════════════════════════════════════
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Income Category",
+                    text = "Source",
                     style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = textSecondary
+                        fontWeight = FontWeight.Bold,
+                        color = textPrimary,
+                        fontSize = 14.sp
                     )
                 )
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    incomeCategoryList.forEach { cat ->
-                        val isSelected = source == cat
-                        Surface(
-                            shape = RoundedCornerShape(24.dp),
-                            color = if (isSelected) brandEmerald else Color.White,
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) brandEmerald else borderLight
-                            ),
-                            shadowElevation = if (isSelected) 2.dp else 0.dp,
+                // Category Card / Selector
+                val (sourceIconBg, sourceIconTint) = when {
+                    source.equals("Salary", ignoreCase = true) -> Pair(Color(0xFFE6F4EA), Color(0xFF007A5E))
+                    source.equals("Freelance", ignoreCase = true) -> Pair(Color(0xFFE0F2FE), Color(0xFF0284C7))
+                    source.contains("AdSense", ignoreCase = true) -> Pair(Color(0xFFFEF3C7), Color(0xFFD97706))
+                    source.equals("Crypto", ignoreCase = true) -> Pair(Color(0xFFF3E8FF), Color(0xFF7E22CE))
+                    else -> Pair(Color(0xFFF1F5F9), Color(0xFF475569))
+                }
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, borderLight),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { showSourceDropdown = true }
+                    ) {
+                        Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
-                                .clickable { source = cat }
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = cat,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else textPrimary
-                                ),
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ════════════════════════════════════════════════════════════
-            // 2. FREELANCE PROJECT DETAILS (FR-08)
-            // ════════════════════════════════════════════════════════════
-            if (source == "Freelance") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBackground),
-                    border = BorderStroke(1.dp, borderLight),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Freelance Project Details",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = textPrimary
-                                    )
-                                )
-                                Text(
-                                    text = "Client billing & invoice status",
-                                    style = MaterialTheme.typography.bodySmall.copy(color = textSecondary)
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFEBF3FE)
-                            ) {
-                                Text(
-                                    text = "Client Project",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF2563EB)
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        // Project / Client Name
-                        OutlinedTextField(
-                            value = projectName,
-                            onValueChange = { projectName = it },
-                            label = { Text("Project / Client Name") },
-                            placeholder = { Text("e.g. Acme Corp Web App") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Payment Status Toggle
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "Payment Status",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = textPrimary
-                                )
-                            )
-
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                // Expected Option
-                                val isExpected = paymentStatus == "Expected"
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (isExpected) Color(0xFFFEF3C7) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isExpected) Color(0xFFF59E0B) else borderLight
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .clickable { paymentStatus = "Expected" }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = "Pending Invoice",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isExpected) Color(0xFFB45309) else textPrimary
-                                            )
-                                        )
-                                        Text(
-                                            text = "Awaiting payment",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                color = if (isExpected) Color(0xFF92400E) else textSecondary
-                                            )
-                                        )
-                                    }
-                                }
-
-                                // Received Option
-                                val isReceived = paymentStatus == "Received"
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (isReceived) Color(0xFFD1FAE5) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isReceived) brandEmerald else borderLight
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .clickable { paymentStatus = "Received" }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = "Paid & Received",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isReceived) Color(0xFF065F46) else textPrimary
-                                            )
-                                        )
-                                        Text(
-                                            text = "Funds received",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                color = if (isReceived) Color(0xFF047857) else textSecondary
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Dynamic explanatory banner for Freelance
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (paymentStatus == "Expected") Color(0xFFFEF3C7).copy(alpha = 0.5f)
-                                else Color(0xFFD1FAE5).copy(alpha = 0.5f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = if (paymentStatus == "Expected")
-                                        "Pending payments are tracked in Outstanding Invoices and excluded from your actual realized income until received."
-                                    else
-                                        "Received payments are immediately included in your realized income total.",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = if (paymentStatus == "Expected") Color(0xFF92400E) else Color(0xFF065F46)
-                                    ),
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ════════════════════════════════════════════════════════════
-            // 3. CRYPTO P&L DETAILS (FR-09)
-            // ════════════════════════════════════════════════════════════
-            if (source == "Crypto") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBackground),
-                    border = BorderStroke(1.dp, borderLight),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Cryptocurrency P&L",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = textPrimary
-                                    )
-                                )
-                                Text(
-                                    text = "Track realized trading profit or loss",
-                                    style = MaterialTheme.typography.bodySmall.copy(color = textSecondary)
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFF3E8FF)
-                            ) {
-                                Text(
-                                    text = "Portfolio Trade",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF7E22CE)
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        // Gain vs Loss Segmented Selector
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "Transaction Result",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = textPrimary
-                                )
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                // Profit Option
-                                val isGain = cryptoType == "Gain"
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (isGain) Color(0xFFD1FAE5) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isGain) brandEmerald else borderLight
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .clickable { cryptoType = "Gain" }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = "+ Profit (Gain)",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isGain) Color(0xFF065F46) else textPrimary
-                                            )
-                                        )
-                                        Text(
-                                            text = "Adds to income",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                color = if (isGain) Color(0xFF047857) else textSecondary
-                                            )
-                                        )
-                                    }
-                                }
-
-                                // Loss Option
-                                val isLoss = cryptoType == "Loss"
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (isLoss) Color(0xFFFEE2E2) else Color(0xFFF8FAFC),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isLoss) Color(0xFFEF4444) else borderLight
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .clickable { cryptoType = "Loss" }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = "- Loss",
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isLoss) Color(0xFFB91C1C) else textPrimary
-                                            )
-                                        )
-                                        Text(
-                                            text = "Deducted from income",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                color = if (isLoss) Color(0xFF991B1B) else textSecondary
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Dynamic explanatory banner for Crypto
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (cryptoType == "Loss") Color(0xFFFEE2E2).copy(alpha = 0.5f)
-                                else Color(0xFFD1FAE5).copy(alpha = 0.5f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = if (cryptoType == "Loss")
-                                        "Crypto losses are automatically deducted from your monthly net income totals."
-                                    else
-                                        "Crypto profits are added to your monthly net income and portfolio summary.",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = if (cryptoType == "Loss") Color(0xFF991B1B) else Color(0xFF065F46)
-                                    ),
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            }
-                        }
-
-                        // Crypto Asset Chips
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "Cryptocurrency Asset (Optional)",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = textPrimary
-                                )
-                            )
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                quickCryptoAssets.forEach { asset ->
-                                    val isAssetSelected = cryptoAsset.equals(asset, ignoreCase = true)
-                                    Surface(
-                                        shape = RoundedCornerShape(18.dp),
-                                        color = if (isAssetSelected) textPrimary else Color(0xFFF1F5F9),
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .clickable { cryptoAsset = asset }
-                                    ) {
-                                        Text(
-                                            text = asset,
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isAssetSelected) Color.White else textPrimary
-                                            ),
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            OutlinedTextField(
-                                value = cryptoAsset,
-                                onValueChange = { cryptoAsset = it },
-                                label = { Text("Asset Symbol") },
-                                placeholder = { Text("e.g. BTC, ETH, USDT") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ════════════════════════════════════════════════════════════
-            // 4. AMOUNT & CURRENCY CARD
-            // ════════════════════════════════════════════════════════════
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = cardBackground),
-                border = BorderStroke(1.dp, borderLight),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "Amount & Currency",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = textPrimary
-                        )
-                    )
-
-                    // Currency Switcher
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        listOf("LKR", "USD").forEach { cur ->
-                            val isCurSelected = currency == cur
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isCurSelected) brandEmerald else Color(0xFFF8FAFC),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isCurSelected) brandEmerald else borderLight
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        if (currency != cur) {
-                                            currency = cur
-                                            onClearExchangeRate()
-                                        }
-                                    }
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.padding(vertical = 12.dp)
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(sourceIconBg),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        text = cur,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isCurSelected) Color.White else textPrimary
-                                        )
+                                    IncomeSourceVector(
+                                        source = source,
+                                        modifier = Modifier.size(20.dp),
+                                        customTint = sourceIconTint
                                     )
                                 }
+
+                                Text(
+                                    text = if (source.contains("AdSense")) "AdSense" else source,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = textPrimary
+                                    )
+                                )
                             }
+
+                            IncomeChevronDownIcon(
+                                modifier = Modifier.size(16.dp),
+                                tint = textSecondary
+                            )
                         }
                     }
 
-                    // Dynamic Amount Label
-                    val amountLabel = when {
-                        source == "Freelance" && paymentStatus == "Expected" -> "Expected Invoice Amount"
-                        source == "Freelance" -> "Payment Amount Received"
-                        source == "Crypto" && cryptoType == "Loss" -> "Crypto Loss Amount (Deducted)"
-                        source == "Crypto" -> "Crypto Gain Amount"
-                        else -> "Income Amount"
+                    // Source Options Dropdown
+                    DropdownMenu(
+                        expanded = showSourceDropdown,
+                        onDismissRequest = { showSourceDropdown = false },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(0.9f)
+                    ) {
+                        incomeCategoryList.forEach { cat ->
+                            val isSelected = source == cat
+                            val (catBg, catTint) = when {
+                                cat.equals("Salary", ignoreCase = true) -> Pair(Color(0xFFE6F4EA), Color(0xFF007A5E))
+                                cat.equals("Freelance", ignoreCase = true) -> Pair(Color(0xFFE0F2FE), Color(0xFF0284C7))
+                                cat.contains("AdSense", ignoreCase = true) -> Pair(Color(0xFFFEF3C7), Color(0xFFD97706))
+                                cat.equals("Crypto", ignoreCase = true) -> Pair(Color(0xFFF3E8FF), Color(0xFF7E22CE))
+                                else -> Pair(Color(0xFFF1F5F9), Color(0xFF475569))
+                            }
+
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(catBg),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        IncomeSourceVector(
+                                            source = cat,
+                                            modifier = Modifier.size(18.dp),
+                                            customTint = catTint
+                                        )
+                                    }
+                                },
+                                text = {
+                                    Text(
+                                        text = if (cat.contains("AdSense")) "AdSense" else cat,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) brandEmerald else textPrimary
+                                    )
+                                },
+                                onClick = {
+                                    source = cat
+                                    showSourceDropdown = false
+                                    if (cat == "Freelance" || cat == "Crypto") {
+                                        isDetailsExpanded = true
+                                    }
+                                }
+                            )
+                        }
                     }
+                }
+            }
+
+            // ════════════════════════════════════════════════════════════
+            // 2. ROW: AMOUNT & CURRENCY
+            // ════════════════════════════════════════════════════════════
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Amount Input
+                Column(
+                    modifier = Modifier.weight(1.5f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Amount",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                            fontSize = 14.sp
+                        )
+                    )
 
                     OutlinedTextField(
                         value = amount,
@@ -681,372 +373,697 @@ fun IncomeFormScreen(
                             amount = it
                             amountError = null
                         },
-                        label = { Text(amountLabel) },
-                        placeholder = { Text("0.00") },
+                        placeholder = { Text("0.00", color = Color(0xFF94A3B8)) },
                         prefix = {
                             Text(
                                 text = if (currency == "USD") "$ " else "Rs. ",
-                                fontWeight = FontWeight.Bold,
-                                color = textPrimary
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = brandEmerald
+                                )
                             )
                         },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                         isError = amountError != null,
-                        supportingText = {
-                            amountError?.let { Text(it) }
-                        },
                         shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = brandEmerald,
+                            unfocusedBorderColor = borderLight
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-            }
 
-            // ════════════════════════════════════════════════════════════
-            // 5. USD TO LKR CONVERSION (FR-07)
-            // ════════════════════════════════════════════════════════════
-            if (currency == "USD") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBackground),
-                    border = BorderStroke(1.dp, borderLight),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "USD to LKR Conversion",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = textPrimary
-                                    )
-                                )
-                                Text(
-                                    text = "Live and historical exchange rates",
-                                    style = MaterialTheme.typography.bodySmall.copy(color = textSecondary)
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFEBF3FE)
-                            ) {
-                                Text(
-                                    text = "Forex",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF2563EB)
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        val isHistorical = runCatching {
-                            LocalDate.parse(receivedDate) < LocalDate.now(ZoneId.of("Asia/Colombo"))
-                        }.getOrDefault(false)
-
-                        Button(
-                            onClick = { onFetchExchangeRate(receivedDate) },
-                            enabled = !activeIsRateFetching,
-                            colors = ButtonDefaults.buttonColors(containerColor = brandEmerald),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            if (activeIsRateFetching) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color.White
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text("Retrieving rate...")
-                            } else {
-                                Text(
-                                    text = if (isHistorical) "Fetch Historical Rate ($receivedDate)"
-                                    else "Fetch Current Rate",
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        // Display Rate & Converted Preview
-                        if (activeExchangeRate != null) {
-                            val rateFormatter = NumberFormat.getNumberInstance(Locale.US).apply {
-                                minimumFractionDigits = 2
-                                maximumFractionDigits = 4
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFF8FAFC),
-                                border = BorderStroke(1.dp, borderLight),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(14.dp)) {
-                                    Text(
-                                        text = "1 USD = ${rateFormatter.format(activeExchangeRate)} LKR",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = textPrimary
-                                        )
-                                    )
-                                    Text(
-                                        text = if (activeIsManualMode) "Manual rate applied"
-                                        else "Rate date: ${activeExchangeRateDate ?: "Latest"}",
-                                        style = MaterialTheme.typography.bodySmall.copy(color = textSecondary)
-                                    )
-
-                                    val parsedAmount = amount.trim().toBigDecimalOrNull()
-                                    if (parsedAmount != null && parsedAmount > BigDecimal.ZERO) {
-                                        val converted = parsedAmount.multiply(activeExchangeRate)
-                                        val lkrFormatter = NumberFormat.getNumberInstance(Locale.US).apply {
-                                            minimumFractionDigits = 2
-                                            maximumFractionDigits = 2
-                                        }
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                            color = borderLight
-                                        )
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = "Converted Value:",
-                                                style = MaterialTheme.typography.bodyMedium.copy(color = textSecondary)
-                                            )
-                                            Text(
-                                                text = "LKR ${lkrFormatter.format(converted)}",
-                                                style = MaterialTheme.typography.bodyLarge.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = brandEmerald
-                                                )
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (activeRateFetchError != null) {
-                            Text(
-                                text = activeRateFetchError,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-
-                        TextButton(onClick = onEnableManualRate, enabled = !isSaving) {
-                            Text("Enter exchange rate manually")
-                        }
-
-                        // Manual fallback entry
-                        if (activeIsManualMode || activeRateFetchError != null) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    text = "Manual Rate Entry (1 USD = ? LKR)",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = textPrimary
-                                    )
-                                )
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = manualRateInput,
-                                        onValueChange = { manualRateInput = it },
-                                        label = { Text("Rate") },
-                                        placeholder = { Text("e.g. 305.50") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(1f)
-                                    )
-
-                                    Button(
-                                        onClick = {
-                                            onSetManualRate(manualRateInput, receivedDate)
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = brandEmerald),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text("Apply")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ════════════════════════════════════════════════════════════
-            // 6. DATE & NOTES CARD
-            // ════════════════════════════════════════════════════════════
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = cardBackground),
-                border = BorderStroke(1.dp, borderLight),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
+                // Currency Dropdown
                 Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Date & Notes",
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        text = "Currency",
+                        style = MaterialTheme.typography.labelLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            color = textPrimary
+                            color = textPrimary,
+                            fontSize = 14.sp
                         )
                     )
 
-                    // Date Picker — clean clickable row
-                    val dateLabel = if (source == "Freelance" && paymentStatus == "Expected") "Invoice Date" else "Date Received"
-                    val parsedDate = runCatching { LocalDate.parse(receivedDate) }
-                        .getOrElse { LocalDate.now(ZoneId.of("Asia/Colombo")) }
-
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = dateLabel,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = SecondaryText,
-                                fontWeight = FontWeight.Medium
-                            ),
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
+                    Box(modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE9EDF2)),
                             color = Color.White,
+                            border = BorderStroke(1.dp, borderLight),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { showDatePicker = true }
+                                .height(56.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { showCurrencyDropdown = true }
                         ) {
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                                    .fillMaxSize()
+                                    .padding(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = receivedDate,
+                                    text = currency,
                                     style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = FontWeight.Bold,
                                         color = textPrimary
                                     )
                                 )
-                                Text(
-                                    text = "Edit",
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = brandEmerald
-                                    )
+                                IncomeChevronDownIcon(
+                                    modifier = Modifier.size(16.dp),
+                                    tint = textSecondary
                                 )
                             }
                         }
 
-                        if (showDatePicker) {
-                            val datePickerState = rememberDatePickerState(
-                                initialSelectedDateMillis = runCatching {
-                                    parsedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-                                }.getOrNull() ?: System.currentTimeMillis()
-                            )
-
-                            DatePickerDialog(
-                                onDismissRequest = { showDatePicker = false },
-                                confirmButton = {
-                                    TextButton(
-                                        onClick = {
-                                            datePickerState.selectedDateMillis?.let { millis ->
-                                                val selectedLocalDate = Instant.ofEpochMilli(millis)
-                                                    .atZone(ZoneOffset.UTC)
-                                                    .toLocalDate()
-                                                receivedDate = selectedLocalDate.toString()
-                                                if (currency == "USD") {
-                                                    onClearExchangeRate()
-                                                }
+                        DropdownMenu(
+                            expanded = showCurrencyDropdown,
+                            onDismissRequest = { showCurrencyDropdown = false },
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            listOf("LKR", "USD").forEach { cur ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = cur,
+                                            fontWeight = if (currency == cur) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (currency == cur) brandEmerald else textPrimary
+                                        )
+                                    },
+                                    onClick = {
+                                        if (currency != cur) {
+                                            currency = cur
+                                            onClearExchangeRate()
+                                            if (cur == "USD") {
+                                                onFetchExchangeRate(receivedDate)
                                             }
-                                            showDatePicker = false
                                         }
-                                    ) {
-                                        Text(
-                                            text = "Confirm",
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                color = brandEmerald,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        )
+                                        showCurrencyDropdown = false
                                     }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showDatePicker = false }) {
-                                        Text(
-                                            text = "Cancel",
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                color = textSecondary,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        )
-                                    }
-                                },
-                                colors = DatePickerDefaults.colors(
-                                    containerColor = Color.White
-                                )
-                            ) {
-                                DatePicker(
-                                    state = datePickerState,
-                                    colors = DatePickerDefaults.colors(
-                                        containerColor = Color.White,
-                                        selectedDayContainerColor = brandEmerald,
-                                        selectedDayContentColor = Color.White,
-                                        todayDateBorderColor = brandEmerald,
-                                        todayContentColor = brandEmerald
-                                    )
                                 )
                             }
                         }
                     }
-
-                    // Optional Notes
-                    OutlinedTextField(
-                        value = note,
-                        onValueChange = { note = it },
-                        label = { Text("Notes (Optional)") },
-                        placeholder = { Text("Add transaction details or reference...") },
-                        minLines = 2,
-                        maxLines = 4,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
 
-            // Global error message
-            errorMessage?.let { message ->
+            if (amountError != null) {
                 Text(
-                    text = message,
+                    text = amountError ?: "",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
 
             // ════════════════════════════════════════════════════════════
-            // 7. SAVE & CANCEL BUTTONS
+            // AUTOMATIC LIVE CURRENCY CONVERSION CARD (When Currency = USD)
+            // ════════════════════════════════════════════════════════════
+            if (currency == "USD") {
+                val effectiveRate = exchangeRate ?: manualRateInput.trim().toBigDecimalOrNull()
+                val parsedAmount = amount.trim().toBigDecimalOrNull()
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = brandEmeraldLight),
+                    border = BorderStroke(1.dp, brandEmeraldBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Card Header with Live Status & Refresh Button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Live Pulsing Status Dot
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isRateFetching) Color(0xFFF59E0B)
+                                            else if (effectiveRate != null) Color(0xFF10B981)
+                                            else Color(0xFFEF4444)
+                                        )
+                                )
+
+                                Column {
+                                    Text(
+                                        text = if (isRateFetching) "Fetching Live Exchange Rate..."
+                                        else if (effectiveRate != null) "Exchange Rate (USD → LKR)"
+                                        else "Exchange Rate Required",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = textPrimary,
+                                            fontSize = 13.5.sp
+                                        )
+                                    )
+
+                                    if (exchangeRateDate != null && !isRateFetching) {
+                                        Text(
+                                            text = "Official rate date: $exchangeRateDate",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                color = textSecondary,
+                                                fontSize = 11.sp
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Refresh / Re-fetch Button
+                            IconButton(
+                                onClick = { onFetchExchangeRate(receivedDate) },
+                                enabled = !isRateFetching,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                if (isRateFetching) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = brandEmerald
+                                    )
+                                } else {
+                                    IncomeRefreshIcon(modifier = Modifier.size(16.dp), tint = brandEmerald)
+                                }
+                            }
+                        }
+
+                        // Rate Input Field with clean suffix
+                        OutlinedTextField(
+                            value = if (isRateFetching && exchangeRate == null) "Fetching..." else manualRateInput,
+                            onValueChange = {
+                                manualRateInput = it
+                                onSetManualRate(it, receivedDate)
+                            },
+                            enabled = !isRateFetching,
+                            label = { Text("Rate (1 USD = ? LKR)") },
+                            placeholder = { Text("e.g. 308.50") },
+                            trailingIcon = {
+                                Text(
+                                    text = "LKR per 1 USD",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        color = textSecondary,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    modifier = Modifier.padding(end = 12.dp)
+                                )
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = brandEmerald,
+                                unfocusedBorderColor = borderLight
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Real-Time Converted Amount Banner
+                        if (effectiveRate != null && parsedAmount != null && parsedAmount > BigDecimal.ZERO) {
+                            val converted = parsedAmount.multiply(effectiveRate)
+                            val lkrFormatter = NumberFormat.getNumberInstance(Locale.US).apply {
+                                minimumFractionDigits = 2
+                                maximumFractionDigits = 2
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, brandEmeraldBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Converted Value:",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = textSecondary,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    )
+                                    Text(
+                                        text = "LKR ${lkrFormatter.format(converted)}",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = brandEmerald
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        // Rate fetch error fallback message
+                        if (rateFetchError != null) {
+                            Text(
+                                text = rateFetchError,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ════════════════════════════════════════════════════════════
+            // 3. ROW: DATE RECEIVED & FREQUENCY
+            // ════════════════════════════════════════════════════════════
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Date Received
+                Column(
+                    modifier = Modifier.weight(1.5f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Date Received",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                            fontSize = 14.sp
+                        )
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, borderLight),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { showDatePicker = true }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            IncomeCalendarIcon(
+                                modifier = Modifier.size(18.dp),
+                                tint = textSecondary
+                            )
+                            Text(
+                                text = formatDisplayDate(receivedDate),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    color = textPrimary
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Frequency Dropdown
+                Column(
+                    modifier = Modifier.weight(1.2f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Frequency",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary,
+                            fontSize = 14.sp
+                        )
+                    )
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, borderLight),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { showFrequencyDropdown = true }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = frequency,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        color = textPrimary
+                                    )
+                                )
+                                IncomeChevronDownIcon(
+                                    modifier = Modifier.size(16.dp),
+                                    tint = textSecondary
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showFrequencyDropdown,
+                            onDismissRequest = { showFrequencyDropdown = false },
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            frequencyList.forEach { freq ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = freq,
+                                            fontWeight = if (frequency == freq) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (frequency == freq) brandEmerald else textPrimary
+                                        )
+                                    },
+                                    onClick = {
+                                        frequency = freq
+                                        showFrequencyDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ════════════════════════════════════════════════════════════
+            // 4. STATUS TOGGLE (Confirmed vs Estimated)
+            // ════════════════════════════════════════════════════════════
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Status",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = textPrimary,
+                        fontSize = 14.sp
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Confirmed Button
+                    val isConfirmed = paymentStatus == "Received"
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isConfirmed) brandEmerald else Color.White,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isConfirmed) brandEmerald else borderLight
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { paymentStatus = "Received" }
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            IncomeCheckmarkIcon(
+                                modifier = Modifier.size(16.dp),
+                                tint = if (isConfirmed) Color.White else textSecondary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Confirmed",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isConfirmed) Color.White else textPrimary
+                                )
+                            )
+                        }
+                    }
+
+                    // Estimated Button
+                    val isEstimated = paymentStatus == "Expected"
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isEstimated) brandEmerald else Color.White,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isEstimated) brandEmerald else borderLight
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { paymentStatus = "Expected" }
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            IncomeClockIcon(
+                                modifier = Modifier.size(16.dp),
+                                tint = if (isEstimated) Color.White else textSecondary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Estimated",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isEstimated) Color.White else textPrimary
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ════════════════════════════════════════════════════════════
+            // 5. ADDITIONAL DETAILS ACCORDION
+            // ════════════════════════════════════════════════════════════
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, borderLight),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    // Accordion Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isDetailsExpanded = !isDetailsExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Additional Details",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = textPrimary,
+                                fontSize = 15.sp
+                            )
+                        )
+                        if (isDetailsExpanded) {
+                            IncomeChevronUpIcon(modifier = Modifier.size(16.dp), tint = textSecondary)
+                        } else {
+                            IncomeChevronDownIcon(modifier = Modifier.size(16.dp), tint = textSecondary)
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = isDetailsExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(top = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+
+                            // Project / Client (required for Freelance, optional otherwise)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = if (source == "Freelance") "Project / Client *" else "Project / Client",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = textSecondary
+                                    )
+                                )
+
+                                OutlinedTextField(
+                                    value = projectName,
+                                    onValueChange = { projectName = it },
+                                    placeholder = { Text("e.g. ABC Industries", color = Color(0xFF94A3B8)) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White,
+                                        focusedBorderColor = brandEmerald,
+                                        unfocusedBorderColor = borderLight
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            // Crypto P&L specifics
+                            if (source == "Crypto") {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(
+                                        text = "Crypto Result",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = textSecondary
+                                        )
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        val isGain = cryptoType == "Gain"
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isGain) Color(0xFFD1FAE5) else Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, if (isGain) brandEmerald else borderLight),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { cryptoType = "Gain" }
+                                        ) {
+                                            Text(
+                                                text = "+ Profit (Gain)",
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isGain) Color(0xFF065F46) else textPrimary,
+                                                modifier = Modifier.padding(vertical = 10.dp),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+
+                                        val isLoss = cryptoType == "Loss"
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isLoss) Color(0xFFFEE2E2) else Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, if (isLoss) Color(0xFFEF4444) else borderLight),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { cryptoType = "Loss" }
+                                        ) {
+                                            Text(
+                                                text = "- Loss",
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isLoss) Color(0xFFB91C1C) else textPrimary,
+                                                modifier = Modifier.padding(vertical = 10.dp),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+
+                                    // Quick crypto tokens
+                                    Text(
+                                        text = "Asset Symbol",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = textSecondary
+                                        )
+                                    )
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        quickCryptoAssets.forEach { asset ->
+                                            val isAssetSelected = cryptoAsset.equals(asset, ignoreCase = true)
+                                            Surface(
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = if (isAssetSelected) textPrimary else Color(0xFFF1F5F9),
+                                                modifier = Modifier.clickable { cryptoAsset = asset }
+                                            ) {
+                                                Text(
+                                                    text = asset,
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isAssetSelected) Color.White else textPrimary
+                                                    ),
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Description (optional)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "Description (optional)",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = textSecondary
+                                    )
+                                )
+
+                                OutlinedTextField(
+                                    value = note,
+                                    onValueChange = { note = it },
+                                    placeholder = { Text("Add a note about this income...", color = Color(0xFF94A3B8)) },
+                                    minLines = 3,
+                                    maxLines = 5,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White,
+                                        focusedBorderColor = brandEmerald,
+                                        unfocusedBorderColor = borderLight
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Global error message if any
+            errorMessage?.let { msg ->
+                Text(
+                    text = msg,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // ════════════════════════════════════════════════════════════
+            // 6. ACTION BUTTONS: SAVE INCOME & CANCEL
             // ════════════════════════════════════════════════════════════
             Button(
                 onClick = {
@@ -1057,51 +1074,62 @@ fun IncomeFormScreen(
                             } == true
 
                     if (!validAmount) {
-                        amountError = "Enter a valid positive amount with up to 2 decimal places."
-                    } else {
-                        if (currency == "USD" && (activeExchangeRate == null || activeIsRateFetching)) {
-                            amountError = "Fetch or enter the exchange rate before saving."
-                            return@Button
-                        }
-                        if (source == "Freelance" && projectName.isBlank()) {
-                            amountError = "Enter a freelance project/client name."
-                            return@Button
-                        }
-
-                        onSave(
-                            IncomeFormInput(
-                                amount = value,
-                                source = source,
-                                currency = currency,
-                                receivedDate = receivedDate,
-                                note = note.trim(),
-                                projectName = if (source == "Freelance") projectName.trim() else null,
-                                paymentStatus = if (source == "Freelance") paymentStatus else "Received",
-                                cryptoType = if (source == "Crypto") cryptoType else null,
-                                cryptoAsset = if (source == "Crypto") cryptoAsset.trim().ifBlank { null } else null
-                            )
-                        )
+                        amountError = "Enter a valid positive amount."
+                        return@Button
                     }
+
+                    if (currency == "USD") {
+                        if (exchangeRate == null && manualRateInput.isNotBlank()) {
+                            val rateOk = onSetManualRate(manualRateInput, receivedDate)
+                            if (!rateOk) {
+                                amountError = "Enter a valid exchange rate for USD."
+                                return@Button
+                            }
+                        } else if (exchangeRate == null || isRateFetching) {
+                            amountError = "Please wait for live exchange rate or enter it manually."
+                            return@Button
+                        }
+                    }
+
+                    if (source == "Freelance" && projectName.isBlank()) {
+                        amountError = "Project / client name is required for freelance income."
+                        return@Button
+                    }
+
+                    onSave(
+                        IncomeFormInput(
+                            amount = value,
+                            source = source,
+                            currency = currency,
+                            receivedDate = receivedDate,
+                            note = note.trim(),
+                            projectName = if (source == "Freelance") projectName.trim() else null,
+                            paymentStatus = paymentStatus,
+                            cryptoType = if (source == "Crypto") cryptoType else null,
+                            cryptoAsset = if (source == "Crypto") cryptoAsset.trim().ifBlank { null } else null
+                        )
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(52.dp),
                 enabled = !isSaving,
                 colors = ButtonDefaults.buttonColors(containerColor = brandEmerald),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                         color = Color.White,
                         strokeWidth = 2.dp
                     )
                 } else {
                     Text(
-                        text = if (isEditMode) "Update Income Record" else "Save Income Record",
+                        text = if (isEditMode) "Save Changes" else "Save Income",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.White,
+                            fontSize = 15.sp
                         )
                     )
                 }
@@ -1109,18 +1137,95 @@ fun IncomeFormScreen(
 
             OutlinedButton(
                 onClick = onBack,
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, borderLight),
-                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, brandEmerald),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
                 enabled = !isSaving
             ) {
                 Text(
                     text = "Cancel",
-                    style = MaterialTheme.typography.bodyLarge.copy(color = textSecondary)
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = brandEmerald,
+                        fontSize = 15.sp
+                    )
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+
+    // Date Picker Dialog
+    if (showDatePicker) {
+        val parsedDate = runCatching { LocalDate.parse(receivedDate) }
+            .getOrElse { LocalDate.now(ZoneId.of("Asia/Colombo")) }
+
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = runCatching {
+                parsedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            }.getOrNull() ?: System.currentTimeMillis()
+        )
+
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val selectedLocalDate = Instant.ofEpochMilli(millis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                            receivedDate = selectedLocalDate.toString()
+                            if (currency == "USD") {
+                                onClearExchangeRate()
+                                onFetchExchangeRate(receivedDate)
+                            }
+                        }
+                        showDatePicker = false
+                    }
+                ) {
+                    Text(
+                        text = "Confirm",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            color = brandEmerald,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel", color = textSecondary)
+                }
+            },
+            colors = DatePickerDefaults.colors(
+                containerColor = Color.White
+            )
+        ) {
+            DatePicker(
+                state = datePickerState,
+                colors = DatePickerDefaults.colors(
+                    containerColor = Color.White,
+                    selectedDayContainerColor = brandEmerald,
+                    selectedDayContentColor = Color.White,
+                    todayDateBorderColor = brandEmerald,
+                    todayContentColor = brandEmerald
+                )
+            )
+        }
+    }
+}
+
+/**
+ * Format "2025-09-25" -> "25 Sep 2025"
+ */
+private fun formatDisplayDate(dateStr: String): String {
+    return runCatching {
+        val parsed = LocalDate.parse(dateStr)
+        val month = parsed.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+        "${parsed.dayOfMonth} $month ${parsed.year}"
+    }.getOrDefault(dateStr)
 }

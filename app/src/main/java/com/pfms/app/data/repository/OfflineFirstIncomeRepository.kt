@@ -20,6 +20,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.pfms.app.data.sync.IncomeSyncWorker
+import androidx.work.ExistingWorkPolicy
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.retryWhen
 
 /**
  * Offline-first implementation of [IncomeRepository].
@@ -37,6 +44,10 @@ class OfflineFirstIncomeRepository @Inject constructor(
     private val incomeRemoteDataSource: IncomeRemoteDataSource,
     private val authRepository: AuthRepository
 ) : IncomeRepository, IncomePendingSyncable {
+    @Inject @ApplicationContext lateinit var syncContext: Context
+    private fun scheduleSync() {
+        if (::syncContext.isInitialized) IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
+    }
 
     private suspend fun requireUser(): AuthUser {
         val user = authRepository.currentUser.first()
@@ -52,8 +63,14 @@ class OfflineFirstIncomeRepository @Inject constructor(
             if (user == null || user.uid.isBlank()) {
                 flowOf(emptyList())
             } else {
-                incomeDao.observeIncome(user.uid).map { entities ->
-                    entities.toDomain()
+                channelFlow {
+                    launch {
+                        incomeRemoteDataSource.observeSnapshots(user.uid).retryWhen { e, _ ->
+                            if (e is CancellationException) throw e
+                            delay(2_000); true
+                        }.collect { snapshot -> incomeDao.reconcile(user.uid, snapshot.rows.map { it.copy(userId = user.uid).toEntity() }, snapshot.authoritative) }
+                    }
+                    incomeDao.observeIncome(user.uid).collect { send(it.toDomain()) }
                 }
             }
         }
@@ -78,10 +95,11 @@ class OfflineFirstIncomeRepository @Inject constructor(
             isDeleted = false
         )
         incomeDao.upsertIncome(localEntity)
+        scheduleSync()
 
         // 2. Attempt remote Firestore upsert
         try {
-            incomeRemoteDataSource.upsertIncome(user.uid, incomeToSave)
+            withTimeout(10_000) { incomeRemoteDataSource.upsertIncome(user.uid, incomeToSave) }
             // 3. Mark SYNCED on success
             incomeDao.updateSyncStatus(user.uid, incomeToSave.id, SyncStatus.SYNCED)
         } catch (e: Exception) {
@@ -115,10 +133,11 @@ class OfflineFirstIncomeRepository @Inject constructor(
             isDeleted = false
         )
         incomeDao.upsertIncome(updatedEntity)
+        scheduleSync()
 
         // 2. Attempt remote Firestore upsert
         try {
-            incomeRemoteDataSource.upsertIncome(user.uid, incomeToUpdate)
+            withTimeout(10_000) { incomeRemoteDataSource.upsertIncome(user.uid, incomeToUpdate) }
             // 3. Mark SYNCED on success
             incomeDao.updateSyncStatus(user.uid, incomeToUpdate.id, SyncStatus.SYNCED)
         } catch (e: Exception) {
@@ -139,8 +158,9 @@ class OfflineFirstIncomeRepository @Inject constructor(
         )
 
         // 2. Attempt remote Firestore deletion
+        scheduleSync()
         try {
-            incomeRemoteDataSource.deleteIncome(user.uid, incomeId)
+            withTimeout(10_000) { incomeRemoteDataSource.deleteIncome(user.uid, incomeId) }
             // 3. Remote confirmed: safely remove local row
             incomeDao.hardDeleteIncome(user.uid, incomeId)
         } catch (e: Exception) {

@@ -25,7 +25,9 @@ fun ExpenseListContent(
     onRecurring: (() -> Unit)? = null,
     onSubscriptions: (() -> Unit)? = null,
     onHome: (() -> Unit)? = null,
-    onIncome: (() -> Unit)? = null
+    onIncome: (() -> Unit)? = null,
+    onGoals: (() -> Unit)? = null,
+    onInsights: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState
         .collectAsStateWithLifecycle()
@@ -55,6 +57,8 @@ fun ExpenseListContent(
         onRecurring = onRecurring,
         onSubscriptions = onSubscriptions,
         onHome = onHome,
-        onIncome = onIncome
+        onIncome = onIncome,
+        onGoals = onGoals,
+        onInsights = onInsights
     )
 }

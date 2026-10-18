@@ -3,6 +3,7 @@ package com.pfms.app.data.local.dao
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import androidx.room.Transaction
 import com.pfms.app.data.local.entity.SalaryTemplateEntity
 import com.pfms.app.data.local.entity.SyncStatus
 import kotlinx.coroutines.flow.Flow
@@ -13,6 +14,17 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface SalaryTemplateDao {
+    @Query("DELETE FROM salary_templates WHERE userId=:userId AND syncStatus='SYNCED' AND id NOT IN (:ids)")
+    suspend fun removeMissingSynced(userId: String, ids: List<String>)
+
+    @Transaction
+    suspend fun reconcile(userId: String, rows: List<SalaryTemplateEntity>, authoritative: Boolean) {
+        val local = getSalaryTemplate(userId)
+        if (local == null || local.syncStatus == SyncStatus.SYNCED) {
+            rows.maxByOrNull { it.updatedAt }?.let { upsertSalaryTemplate(it) }
+        }
+        if (authoritative) removeMissingSynced(userId, rows.map { it.id })
+    }
 
     /**
      * Observes the active recurring salary template for a user.

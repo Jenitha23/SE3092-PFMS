@@ -12,6 +12,8 @@ import com.pfms.app.data.local.entity.ExpenseCategoryEntity
 import com.pfms.app.data.local.entity.IncomeEntity
 import com.pfms.app.data.local.entity.RecurringExpenseEntity
 import com.pfms.app.data.local.entity.SalaryTemplateEntity
+import com.pfms.app.data.local.entity.ExpenseEntity
+import com.pfms.app.data.local.dao.ExpenseDao
 
 /**
  * Main Room database for the Personal Financial Management System (PFMS).
@@ -20,20 +22,35 @@ import com.pfms.app.data.local.entity.SalaryTemplateEntity
 @Database(
     entities = [
         IncomeEntity::class,
+        ExpenseEntity::class,
         SalaryTemplateEntity::class,
         ExpenseCategoryEntity::class,
         RecurringExpenseEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class PfmsDatabase : RoomDatabase() {
+    abstract fun expenseDao(): ExpenseDao
     abstract fun incomeDao(): IncomeDao
     abstract fun salaryTemplateDao(): SalaryTemplateDao
     abstract fun expenseCategoryDao(): ExpenseCategoryDao
     abstract fun recurringExpenseDao(): RecurringExpenseDao
 
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""CREATE TABLE IF NOT EXISTS expenses (
+                    userId TEXT NOT NULL, id TEXT NOT NULL, amountMinor INTEGER NOT NULL,
+                    currency TEXT NOT NULL, categoryId TEXT NOT NULL, categoryName TEXT NOT NULL,
+                    classification TEXT NOT NULL, paymentMethod TEXT NOT NULL, date TEXT NOT NULL,
+                    merchant TEXT NOT NULL, note TEXT NOT NULL, createdAt INTEGER NOT NULL,
+                    updatedAt INTEGER NOT NULL, syncStatus TEXT NOT NULL, isDeleted INTEGER NOT NULL,
+                    revision TEXT NOT NULL, allowDuplicate INTEGER NOT NULL, needsConfirmation INTEGER NOT NULL,
+                    PRIMARY KEY(userId,id))""")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_userId ON expenses(userId)")
+            }
+        }
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Default category IDs are shared by every account on this device.

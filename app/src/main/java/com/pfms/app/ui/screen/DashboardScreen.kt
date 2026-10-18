@@ -20,18 +20,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,18 +82,24 @@ import com.pfms.app.viewmodel.SettingsViewModel
  * - Pinned 5-tab bottom navigation (Home, Income, Expenses, Goals, Insights).
  * - All authentication, session state, settings navigation, and logout dialogs strictly preserved.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit = {},
     onNavigateToIncome: () -> Unit = {},
+    onNavigateToAddIncome: () -> Unit = {},
     onNavigateToAnalytics: () -> Unit = {},
-    onNavigateToExpenses: () -> Unit = {}
+    onNavigateToExpenses: () -> Unit = {},
+    onNavigateToAddExpense: () -> Unit = {},
+    onQuickAddExpense: () -> Unit = {}
 ) {
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
     val profile by settingsViewModel.profile.collectAsStateWithLifecycle()
     val logoutResult by sessionViewModel.logoutResult.collectAsStateWithLifecycle()
+
+    var showActionHub by remember { mutableStateOf(false) }
 
     val authUser = (session as? SessionState.Authenticated)?.user
     val rawName = profile?.displayName?.ifBlank { null }
@@ -98,66 +113,48 @@ fun DashboardScreen(
     val logoutError = (logoutResult as? LogoutResult.Failure)?.message
 
     Scaffold(
-        bottomBar = {
-            // ── 5-Tab Bottom Navigation Bar matching Reference UI 2 ───
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                shadowElevation = 8.dp
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showActionHub = true },
+                containerColor = EmeraldPrimary,
+                shape = RoundedCornerShape(16.dp),
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Home Tab (Active)
-                    DashboardBottomTab(
-                        icon = { HomeNavIcon(tint = EmeraldPrimary, filled = true) },
-                        label = "Home",
-                        isActive = true,
-                        onClick = { /* Active destination */ }
-                    )
-
-                    // Income Tab
-                    DashboardBottomTab(
-                        icon = { IncomeNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
-                        label = "Income",
-                        isActive = false,
-                        onClick = onNavigateToIncome
-                    )
-
-                    // Expenses Tab
-                    DashboardBottomTab(
-                        icon = { ExpensesNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
-                        label = "Expenses",
-                        isActive = false,
-                        onClick = onNavigateToExpenses
-                    )
-
-                    // Goals Tab
-                    DashboardBottomTab(
-                        icon = { GoalsNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
-                        label = "Goals",
-                        isActive = false,
-                        onClick = null
-                    )
-
-                    // Insights Tab (Income Analytics)
-                    DashboardBottomTab(
-                        icon = { InsightsNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
-                        label = "Insights",
-                        isActive = false,
-                        onClick = onNavigateToAnalytics
-                    )
+                    Text("+", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Quick Actions", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
+        },
+        bottomBar = {
+            com.pfms.app.ui.component.PfmsBottomNavBar(
+                selectedTab = com.pfms.app.ui.component.PfmsNavTab.HOME,
+                onHomeClick = { /* Already on Home */ },
+                onIncomeClick = onNavigateToIncome,
+                onExpensesClick = onNavigateToExpenses,
+                onGoalsClick = null,
+                onInsightsClick = onNavigateToAnalytics
+            )
         },
         containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier.imePadding()
     ) { innerPadding ->
+        if (showActionHub) {
+            DashboardQuickActionSheet(
+                onDismiss = { showActionHub = false },
+                onQuickAddExpense = onQuickAddExpense,
+                onFullAddExpense = onNavigateToAddExpense,
+                onAddIncome = onNavigateToAddIncome,
+                onViewExpenses = onNavigateToExpenses,
+                onViewIncome = onNavigateToIncome,
+                onViewAnalytics = onNavigateToAnalytics
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -300,8 +297,14 @@ fun DashboardScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // Column 1: Income
-                            Column(horizontalAlignment = Alignment.Start) {
+                            // Column 1: Income (Interactive)
+                            Column(
+                                horizontalAlignment = Alignment.Start,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onNavigateToIncome() }
+                                    .padding(vertical = 4.dp, horizontal = 4.dp)
+                            ) {
                                 Surface(
                                     modifier = Modifier.size(36.dp),
                                     shape = CircleShape,
@@ -313,7 +316,7 @@ fun DashboardScreen(
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Income",
+                                    text = "Income →",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -327,8 +330,14 @@ fun DashboardScreen(
                                 )
                             }
 
-                            // Column 2: Expenses
-                            Column(horizontalAlignment = Alignment.Start) {
+                            // Column 2: Expenses (Interactive)
+                            Column(
+                                horizontalAlignment = Alignment.Start,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onNavigateToExpenses() }
+                                    .padding(vertical = 4.dp, horizontal = 4.dp)
+                            ) {
                                 Surface(
                                     modifier = Modifier.size(36.dp),
                                     shape = CircleShape,
@@ -340,7 +349,7 @@ fun DashboardScreen(
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Expenses",
+                                    text = "Expenses →",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -354,8 +363,14 @@ fun DashboardScreen(
                                 )
                             }
 
-                            // Column 3: Savings
-                            Column(horizontalAlignment = Alignment.Start) {
+                            // Column 3: Savings (Interactive)
+                            Column(
+                                horizontalAlignment = Alignment.Start,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onNavigateToAnalytics() }
+                                    .padding(vertical = 4.dp, horizontal = 4.dp)
+                            ) {
                                 Surface(
                                     modifier = Modifier.size(36.dp),
                                     shape = CircleShape,
@@ -367,7 +382,7 @@ fun DashboardScreen(
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Savings",
+                                    text = "Savings →",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -385,7 +400,72 @@ fun DashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Quick Action Shortcuts Bar ──────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Shortcut 1: + Income
+                Surface(
+                    onClick = onNavigateToAddIncome,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFE0F2FE),
+                    border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        ArrowUpVector(tint = Color(0xFF0284C7), modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("+ Income", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFF0369A1))
+                    }
+                }
+
+                // Shortcut 2: ⚡ Quick Add
+                Surface(
+                    onClick = onQuickAddExpense,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFD1FAE5),
+                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text("⚡", fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Quick Add", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
+                    }
+                }
+
+                // Shortcut 3: + Expense
+                Surface(
+                    onClick = onNavigateToAddExpense,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFFECEF),
+                    border = BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        ArrowDownVector(tint = Color(0xFFE84C6A), modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("+ Expense", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFFBE123C))
+                    }
+                }
+            }
 
             // ── Main Content Area ──────────────────────────────────────
             Column(
@@ -432,7 +512,10 @@ fun DashboardScreen(
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = EmeraldPrimary
+                                color = EmeraldPrimary,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { onNavigateToExpenses() }
                             )
                         }
 
@@ -596,7 +679,10 @@ fun DashboardScreen(
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = EmeraldPrimary
+                                color = EmeraldPrimary,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { onNavigateToAnalytics() }
                             )
                         }
 
@@ -725,7 +811,10 @@ fun DashboardScreen(
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = EmeraldPrimary
+                                color = EmeraldPrimary,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { onNavigateToExpenses() }
                             )
                         }
 
@@ -892,5 +981,178 @@ private fun DashboardBottomTab(
             ),
             color = color
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DashboardQuickActionSheet(
+    onDismiss: () -> Unit,
+    onQuickAddExpense: () -> Unit,
+    onFullAddExpense: () -> Unit,
+    onAddIncome: () -> Unit,
+    onViewExpenses: () -> Unit,
+    onViewIncome: () -> Unit,
+    onViewAnalytics: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        "Quick Actions",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Manage transactions & records",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Text("✕", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Action 1: Quick Add Expense
+            DashboardActionCard(
+                title = "Quick Add Expense",
+                subtitle = "Rapid amount & category entry in 2 taps",
+                iconBg = Color(0xFFD1FAE5),
+                badge = "Fastest",
+                onClick = {
+                    onDismiss()
+                    onQuickAddExpense()
+                }
+            ) {
+                ArrowDownVector(tint = EmeraldPrimary)
+            }
+
+            // Action 2: Full Expense Form
+            DashboardActionCard(
+                title = "Detailed Expense",
+                subtitle = "Add receipts, merchant, classification & notes",
+                iconBg = Color(0xFFFFECEF),
+                onClick = {
+                    onDismiss()
+                    onFullAddExpense()
+                }
+            ) {
+                ExpensesNavIcon(tint = Color(0xFFE84C6A))
+            }
+
+            // Action 3: Add Income
+            DashboardActionCard(
+                title = "Add Income",
+                subtitle = "Record salary, freelance, or crypto inflows",
+                iconBg = Color(0xFFE0F2FE),
+                badge = "Income",
+                onClick = {
+                    onDismiss()
+                    onAddIncome()
+                }
+            ) {
+                ArrowUpVector(tint = Color(0xFF0284C7))
+            }
+
+            // Action 4: Financial Analytics
+            DashboardActionCard(
+                title = "Insights & Analytics",
+                subtitle = "Review monthly spending breakdown & trends",
+                iconBg = Color(0xFFF3E8FF),
+                onClick = {
+                    onDismiss()
+                    onViewAnalytics()
+                }
+            ) {
+                InsightsNavIcon(tint = Color(0xFF7A4DD8))
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+        }
+    }
+}
+
+@Composable
+private fun DashboardActionCard(
+    title: String,
+    subtitle: String,
+    iconBg: Color,
+    badge: String? = null,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = iconBg
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    icon()
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (badge != null) {
+                        Surface(
+                            color = EmeraldPrimary,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                badge,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text("→", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

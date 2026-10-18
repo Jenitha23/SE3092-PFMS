@@ -9,6 +9,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.pfms.app.domain.model.ExpenseClassification
 import com.pfms.app.domain.model.ExpensePaymentMethod
 
@@ -47,9 +50,8 @@ private fun QuickAddExpenseSheetContent(
         mutableStateOf(categories.firstOrNull()?.id ?: "")
     }
 
-    var categoryExpanded by remember {
-        mutableStateOf(false)
-    }
+    val amountFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     val category = categories.find {
         it.id == selectedCategoryId
@@ -60,6 +62,7 @@ private fun QuickAddExpenseSheetContent(
             if (!isSaving) onDismiss()
         }
     ) {
+        LaunchedEffect(Unit) { amountFocus.requestFocus(); keyboard?.show() }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -77,37 +80,32 @@ private fun QuickAddExpenseSheetContent(
                 onValueChange = { amount = it },
                 label = { Text("Amount (LKR)") },
                 keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = {
+                        val selected = category ?: return@KeyboardActions
+                        if (!isSaving && amount.isNotBlank()) {
+                            keyboard?.hide()
+                            onSave(
+                                amount,
+                                selected.id,
+                                selected.name,
+                                selected.defaultClassification
+                            )
+                        }
+                    }
                 ),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().focusRequester(amountFocus)
             )
 
-            Box {
-                OutlinedButton(
-                    onClick = {
-                        categoryExpanded = true
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(category?.name ?: "Select Category")
-                }
-
-                DropdownMenu(
-                    expanded = categoryExpanded,
-                    onDismissRequest = {
-                        categoryExpanded = false
-                    }
-                ) {
-                    categories.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option.name) },
-                            onClick = {
-                                selectedCategoryId = option.id
-                                categoryExpanded = false
-                            }
-                        )
-                    }
+            Text("Category", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                categories.forEach { option ->
+                    FilterChip(selected = category?.id == option.id, enabled = !isSaving,
+                        onClick = { selectedCategoryId = option.id }, label = { Text(option.name) })
                 }
             }
 
