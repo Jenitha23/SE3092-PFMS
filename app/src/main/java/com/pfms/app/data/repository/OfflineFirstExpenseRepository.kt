@@ -33,6 +33,10 @@ class OfflineFirstExpenseRepository @Inject constructor(
     private val preferenceChanges = MutableStateFlow(0)
     private suspend fun uid() = auth.currentUser.first()?.uid ?: error("Authentication required")
 
+    internal var transactionRunner: suspend (suspend () -> Unit) -> Unit = {
+        db.withTransaction(it)
+    }
+
     override fun observeLastPaymentMethod(): Flow<ExpensePaymentMethod> = auth.currentUser.map { it?.uid }.distinctUntilChanged().flatMapLatest { user ->
         preferenceChanges.map {
             ExpensePaymentMethod.entries.firstOrNull { it.name == prefs.getString("payment_$user", "CASH") }
@@ -70,9 +74,9 @@ class OfflineFirstExpenseRepository @Inject constructor(
     override suspend fun addExpenseChecked(expense: Expense, allowDuplicate: Boolean) = withContext(Dispatchers.IO) {
         val user = uid()
         val row = expense.copy(userId = user, id = expense.id.ifBlank { UUID.randomUUID().toString() })
-        db.withTransaction {
+        transactionRunner {
             val existing = dao.get(user, row.id)
-            if (existing?.syncStatus == "SYNCED") return@withTransaction
+            if (existing?.syncStatus == "SYNCED") return@transactionRunner
             if (!allowDuplicate && ExpenseRules.isDuplicateWithin60Seconds(row,
                     dao.recent(user, row.createdAt - 60_000).filter { it.id != row.id }.map { it.toDomain() }, row.createdAt)) {
                 throw DuplicateExpenseException()
@@ -85,7 +89,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
 
     override suspend fun updateExpense(expense: Expense) = withContext(Dispatchers.IO) {
         val user = uid()
-        db.withTransaction {
+        transactionRunner {
             val old = dao.get(user, expense.id)?.takeUnless { it.isDeleted } ?: error("Expense not found")
             dao.upsert(expense.copy(userId = user, createdAt = old.createdAt).toEntity().copy(
                 syncStatus = if (old.syncStatus == "PENDING_INSERT") "PENDING_INSERT" else "PENDING_UPDATE",
@@ -97,8 +101,8 @@ class OfflineFirstExpenseRepository @Inject constructor(
 
     override suspend fun deleteExpense(expenseId: String) = withContext(Dispatchers.IO) {
         val user = uid()
-        db.withTransaction {
-            val old = dao.get(user, expenseId) ?: return@withTransaction
+        transactionRunner {
+            val old = dao.get(user, expenseId) ?: return@transactionRunner
             dao.upsert(old.copy(isDeleted = true, needsConfirmation = false,
                 syncStatus = "PENDING_DELETE", revision = UUID.randomUUID().toString()))
         }
@@ -107,7 +111,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
 
     override suspend fun dismissDuplicate(expenseId: String) = withContext(Dispatchers.IO) {
         val user = uid()
-        db.withTransaction {
+        transactionRunner {
             val old = dao.get(user, expenseId)
             if (old?.needsConfirmation == true) dao.deleteRevision(user, expenseId, old.revision)
         }

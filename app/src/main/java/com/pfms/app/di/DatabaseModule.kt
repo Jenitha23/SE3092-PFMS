@@ -3,6 +3,7 @@ package com.pfms.app.di
 import android.content.Context
 import androidx.room.Room
 import com.pfms.app.data.local.PfmsDatabase
+import com.pfms.app.data.local.dao.ExpenseDao
 import com.pfms.app.data.local.dao.ExpenseCategoryDao
 import com.pfms.app.data.local.dao.IncomeDao
 import com.pfms.app.data.local.dao.RecurringExpenseDao
@@ -52,4 +53,10 @@ object DatabaseModule {
     fun provideRecurringExpenseDao(database: PfmsDatabase): RecurringExpenseDao {
         return database.recurringExpenseDao()
     }
+
+    @Provides
+    fun provideExpenseDao(database: PfmsDatabase): ExpenseDao {
+        return database.expenseDao()
+    }
 }
+

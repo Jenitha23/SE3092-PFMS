@@ -254,6 +254,46 @@ class ExpenseViewModelTest {
     }
 
     // -----------------------------------------
+    // FR-22: REPEATED SAVE TAPS PROTECTION
+    // -----------------------------------------
+
+    @Test
+    fun repeatedSaveTaps_ignoredWhileSaving_invokesRepositoryOnlyOnce() = runTest(dispatcher) {
+        // First tap initiates save
+        viewModel.addExpense(expenseInput())
+        assertTrue("isSaving must be set to true immediately", viewModel.uiState.value.isSaving)
+
+        // Rapid repeated taps while isSaving is true are ignored
+        viewModel.addExpense(expenseInput(amount = "9999.00"))
+        viewModel.addExpense(expenseInput(amount = "8888.00"))
+
+        advanceUntilIdle()
+
+        // Only the first tap is processed
+        assertEquals(1, repository.addCallCount)
+        assertFalse(viewModel.uiState.value.isSaving)
+    }
+
+    @Test
+    fun repeatedSaveTaps_ignoredWhileAwaitingDuplicateConfirmation() = runTest(dispatcher) {
+        // Save initial expense
+        viewModel.addExpense(expenseInput())
+        advanceUntilIdle()
+
+        // Trigger duplicate detection
+        viewModel.addExpense(expenseInput())
+        advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.pendingDuplicate)
+
+        // Attempting to tap save again while duplicate prompt is active is blocked
+        val countBefore = repository.addCallCount
+        viewModel.addExpense(expenseInput(amount = "5000.00"))
+        advanceUntilIdle()
+
+        assertEquals("No new save triggered while duplicate confirmation is pending", countBefore, repository.addCallCount)
+    }
+
+    // -----------------------------------------
     // TEST 08 - EDIT EXPENSE
     // -----------------------------------------
 

@@ -131,4 +131,288 @@ class AdvancedExpenseViewModelTest {
 
         assertEquals(1, repository.confirmedCount)
     }
+
+    // -----------------------------------------
+    // FR-19: CONFIRM CREATES EXACTLY ONE TRANSACTION & ADVANCES DUE DATE
+    // -----------------------------------------
+
+    @Test
+    fun confirmDue_createsExactlyOneTransaction_andAdvancesNextDueDate() = runTest(dispatcher) {
+        backgroundScope.launch { viewModel.templates.collect {} }
+
+        val template = RecurringExpense(
+            id = "t_electricity",
+            title = "CEB Electricity",
+            amountMinor = 1450000L,
+            recurrence = Recurrence.MONTHLY,
+            nextDueDate = "2025-05-15",
+            active = true
+        )
+        viewModel.saveTemplate(template)
+        advanceUntilIdle()
+
+        // Confirm the due expense
+        viewModel.confirm(template)
+        advanceUntilIdle()
+
+        // Verify exactly one transaction was recorded
+        assertEquals(1, repository.confirmedCount)
+        assertEquals(1, repository.createdExpenses.size)
+
+        val createdTransaction = repository.createdExpenses.first()
+        assertEquals("recurring_t_electricity_2025-05-15", createdTransaction["id"])
+        assertEquals(1450000L, createdTransaction["amountMinor"])
+        assertEquals("2025-05-15", createdTransaction["date"])
+
+        // Verify template due date is atomically advanced by 1 month to 2025-06-15
+        val updatedTemplate = viewModel.templates.value.first { it.id == "t_electricity" }
+        assertEquals("2025-06-15", updatedTemplate.nextDueDate)
+    }
+
+    // -----------------------------------------
+    // FR-19: RECURRING TRANSACTIONS PRESERVED ACROSS RESTARTS
+    // -----------------------------------------
+
+    @Test
+    fun recurringTemplates_preservedAcrossApplicationRestarts() = runTest(dispatcher) {
+        backgroundScope.launch { viewModel.templates.collect {} }
+
+        val template1 = RecurringExpense(
+            id = "t_gym",
+            title = "Gym Membership",
+            amountMinor = 650000L,
+            recurrence = Recurrence.MONTHLY,
+            nextDueDate = "2025-08-01",
+            active = true
+        )
+        val template2 = RecurringExpense(
+            id = "t_water",
+            title = "Water Bill",
+            amountMinor = 220000L,
+            recurrence = Recurrence.MONTHLY,
+            nextDueDate = "2025-08-05",
+            active = true
+        )
+
+        viewModel.saveTemplate(template1)
+        advanceUntilIdle()
+        viewModel.saveTemplate(template2)
+        advanceUntilIdle()
+
+        assertEquals(2, viewModel.templates.value.size)
+
+        // Simulate app restart by constructing a fresh ViewModel using the same repository
+        val restartedVm = AdvancedExpenseViewModel(repository)
+        backgroundScope.launch { restartedVm.templates.collect {} }
+        advanceUntilIdle()
+
+        // Verify both templates are preserved and intact
+        val restored = restartedVm.templates.value
+        assertEquals(2, restored.size)
+        assertTrue(restored.any { it.id == "t_gym" && it.amountMinor == 650000L && it.nextDueDate == "2025-08-01" })
+        assertTrue(restored.any { it.id == "t_water" && it.amountMinor == 220000L && it.nextDueDate == "2025-08-05" })
+    }
+
+    // -----------------------------------------
+    // FR-19: REMINDERS APPEAR WHEN EXPENSES ARE DUE
+    // -----------------------------------------
+
+    @Test
+    fun isDue_accuratelyFlagsDueAndUpcomingTemplates() = runTest(dispatcher) {
+        val overdue = RecurringExpense(
+            id = "t_past",
+            title = "Internet Bill",
+            amountMinor = 350000L,
+            recurrence = Recurrence.MONTHLY,
+            nextDueDate = "2020-01-01",
+            active = true
+        )
+        val future = RecurringExpense(
+            id = "t_future",
+            title = "Annual Insurance",
+            amountMinor = 5000000L,
+            recurrence = Recurrence.MONTHLY,
+            nextDueDate = "2099-12-31",
+            active = true
+        )
+        val paused = RecurringExpense(
+            id = "t_paused",
+            title = "Magazine",
+            amountMinor = 150000L,
+            recurrence = Recurrence.MONTHLY,
+            nextDueDate = "2020-01-01",
+            active = false
+        )
+
+        assertTrue("Overdue template must be flagged as due", viewModel.isDue(overdue))
+        assertFalse("Future template must not be flagged as due", viewModel.isDue(future))
+        assertFalse("Paused template must not be flagged as due", viewModel.isDue(paused))
+    }
+
+    // -----------------------------------------
+    // FR-20: SUBSCRIPTION REMINDERS ON CONFIGURED DATES
+    // -----------------------------------------
+
+    @Test
+    fun subscriptionReminders_flaggedAccuratelyOnConfiguredDatesAndFlags() = runTest(dispatcher) {
+        val pastReminder = RecurringExpense(
+            id = "sub_past",
+            title = "AWS Hosting",
+            amountMinor = 200000L,
+            subscription = true,
+            active = true,
+            reminderDate = "2020-01-01"
+        )
+        val futureReminder = RecurringExpense(
+            id = "sub_future",
+            title = "GitHub Copilot",
+            amountMinor = 100000L,
+            subscription = true,
+            active = true,
+            reminderDate = "2099-12-31"
+        )
+        val reviewFlagged = RecurringExpense(
+            id = "sub_review",
+            title = "Notion AI",
+            amountMinor = 150000L,
+            subscription = true,
+            active = true,
+            flag = SubscriptionFlag.REVIEW
+        )
+        val cancelledSub = RecurringExpense(
+            id = "sub_cancelled",
+            title = "Old Streaming",
+            amountMinor = 100000L,
+            subscription = true,
+            active = false,
+            flag = SubscriptionFlag.CANCEL,
+            reminderDate = "2020-01-01"
+        )
+        val nonSubscription = RecurringExpense(
+            id = "rec_rent",
+            title = "Apartment Rent",
+            amountMinor = 8000000L,
+            subscription = false,
+            active = true,
+            reminderDate = "2020-01-01"
+        )
+
+        assertTrue("Past or today reminder date must flag review reminder", viewModel.isReviewDue(pastReminder))
+        assertFalse("Future reminder date must not trigger review reminder", viewModel.isReviewDue(futureReminder))
+        assertTrue("REVIEW flag must trigger review reminder", viewModel.isReviewDue(reviewFlagged))
+        assertFalse("Cancelled subscription must never trigger review reminder", viewModel.isReviewDue(cancelledSub))
+        assertFalse("Non-subscription must never trigger subscription review reminder", viewModel.isReviewDue(nonSubscription))
+    }
+
+    // -----------------------------------------
+    // FR-20: MONTHLY SUBSCRIPTION TOTALS (MIXED FREQUENCIES)
+    // -----------------------------------------
+
+    @Test
+    fun monthlySubscriptionTotals_calculatedAcrossMixedFrequencies_inRealTime() = runTest(dispatcher) {
+        backgroundScope.launch { viewModel.templates.collect {} }
+        backgroundScope.launch { viewModel.monthlySubscriptionMinor.collect {} }
+
+        // Monthly: 3000.00 LKR = 300,000 minor
+        val monthlySub = RecurringExpense(
+            id = "sub_m",
+            title = "Netflix",
+            amountMinor = 300000L,
+            recurrence = Recurrence.MONTHLY,
+            subscription = true,
+            active = true
+        )
+        // Weekly: 1200.00 LKR = 120,000 minor -> * 52 / 12 = 520,000 minor
+        val weeklySub = RecurringExpense(
+            id = "sub_w",
+            title = "Meal Kit Weekly",
+            amountMinor = 120000L,
+            recurrence = Recurrence.WEEKLY,
+            subscription = true,
+            active = true
+        )
+        // Daily: 100.00 LKR = 10,000 minor -> * 365 / 12 = 304,167 minor
+        val dailySub = RecurringExpense(
+            id = "sub_d",
+            title = "Daily Newspaper",
+            amountMinor = 10000L,
+            recurrence = Recurrence.DAILY,
+            subscription = true,
+            active = true
+        )
+
+        viewModel.saveTemplate(monthlySub)
+        advanceUntilIdle()
+        assertEquals(300000L, viewModel.monthlySubscriptionMinor.value)
+
+        viewModel.saveTemplate(weeklySub)
+        advanceUntilIdle()
+        assertEquals(820000L, viewModel.monthlySubscriptionMinor.value) // 300000 + 520000
+
+        viewModel.saveTemplate(dailySub)
+        advanceUntilIdle()
+        assertEquals(1124167L, viewModel.monthlySubscriptionMinor.value) // 820000 + 304167
+
+        // Pausing weekly subscription updates total reactively
+        viewModel.toggleActive(weeklySub)
+        advanceUntilIdle()
+        assertEquals(604167L, viewModel.monthlySubscriptionMinor.value) // 300000 + 304167
+    }
+
+    // -----------------------------------------
+    // FR-20: CANCELLED SUBSCRIPTIONS REMAIN TRACKED
+    // -----------------------------------------
+
+    @Test
+    fun cancelledSubscriptions_remainTrackedInTemplates_withFlagAndExcludedFromCalculations() = runTest(dispatcher) {
+        backgroundScope.launch { viewModel.templates.collect {} }
+        backgroundScope.launch { viewModel.monthlySubscriptionMinor.collect {} }
+
+        val sub = RecurringExpense(
+            id = "sub_hulu",
+            title = "Hulu Bundle",
+            amountMinor = 450000L,
+            recurrence = Recurrence.MONTHLY,
+            subscription = true,
+            active = true,
+            nextDueDate = "2020-01-01",
+            reminderDate = "2020-01-01"
+        )
+        viewModel.saveTemplate(sub)
+        advanceUntilIdle()
+
+        assertEquals(450000L, viewModel.monthlySubscriptionMinor.value)
+        assertTrue(viewModel.isDue(sub))
+        assertTrue(viewModel.isReviewDue(sub))
+
+        // Cancel the subscription
+        viewModel.cancelSubscription(sub)
+        advanceUntilIdle()
+
+        // 1. Still tracked in templates list
+        val trackedList = viewModel.templates.value
+        assertEquals(1, trackedList.size)
+        val cancelled = trackedList.first()
+        assertEquals("sub_hulu", cancelled.id)
+        assertFalse("Must be inactive", cancelled.active)
+        assertEquals(SubscriptionFlag.CANCEL, cancelled.flag)
+        assertEquals("", cancelled.reminderDate)
+
+        // 2. Excluded from monthly subscription totals
+        assertEquals(0L, viewModel.monthlySubscriptionMinor.value)
+
+        // 3. Excluded from due and review prompts
+        assertFalse(viewModel.isDue(cancelled))
+        assertFalse(viewModel.isReviewDue(cancelled))
+
+        // 4. Can be resumed by user: restoring active state and clearing CANCEL flag
+        viewModel.toggleActive(cancelled)
+        advanceUntilIdle()
+
+        val resumed = viewModel.templates.value.first()
+        assertTrue(resumed.active)
+        assertEquals(SubscriptionFlag.NONE, resumed.flag)
+        assertEquals(450000L, viewModel.monthlySubscriptionMinor.value)
+    }
 }
+

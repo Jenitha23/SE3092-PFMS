@@ -21,6 +21,15 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Legacy direct Firestore repository.
+ *
+ * NOTE: Production binds [OfflineFirstExpenseRepository] in [com.pfms.app.di.RepositoryModule],
+ * which uses the shared Room [com.pfms.app.data.local.PfmsDatabase], [com.pfms.app.data.local.dao.ExpenseDao],
+ * [com.pfms.app.data.local.entity.ExpenseEntity], and [com.pfms.app.data.sync.ExpenseSyncWorker]
+ * for full offline-first caching, local SQLite transactions, and WorkManager background sync.
+ */
+@Deprecated("Use OfflineFirstExpenseRepository for offline-first Room persistence and sync")
 @Singleton
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirestoreExpenseRepository @Inject constructor(

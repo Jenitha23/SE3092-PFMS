@@ -17,8 +17,9 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
-
-import com.pfms.app.data.repository.FirestoreExpenseRepository
+import com.pfms.app.data.repository.OfflineFirstExpenseRepository
+import com.pfms.app.data.remote.firestore.FirestoreExpenseRemoteDataSource
+import com.pfms.app.data.remote.firestore.ExpenseRemoteDataSource
 import com.pfms.app.domain.repository.ExpenseRepository
 
 @Module
@@ -28,10 +29,10 @@ abstract class RepositoryModule {
     abstract fun bindAdvancedExpenseRepository(repository: FirestoreAdvancedExpenseRepository): AdvancedExpenseRepository
 
     @Binds @Singleton
-    abstract fun bindExpenseRepository(repository: com.pfms.app.data.repository.OfflineFirstExpenseRepository): ExpenseRepository
+    abstract fun bindExpenseRepository(repository: OfflineFirstExpenseRepository): ExpenseRepository
 
     @Binds @Singleton
-    abstract fun bindExpenseRemote(repository: com.pfms.app.data.remote.firestore.FirestoreExpenseRemoteDataSource): com.pfms.app.data.remote.firestore.ExpenseRemoteDataSource
+    abstract fun bindExpenseRemote(repository: FirestoreExpenseRemoteDataSource): ExpenseRemoteDataSource
 
 
     @Binds

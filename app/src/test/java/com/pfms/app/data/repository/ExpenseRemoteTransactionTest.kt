@@ -71,4 +71,24 @@ class ExpenseRemoteTransactionTest {
         remote.insert("a", first.copy(amountMinor = 20000, updatedAt = 100001), false)
         assertEquals(20000L, data[refs["expense:one"]]?.get("amountMinor"))
     }
+
+    @Test fun concurrentInserts_oneSucceedsAndOneThrowsDuplicate() = runTest {
+        val expense1 = first.copy(id = "c1", createdAt = 200000)
+        val expense2 = first.copy(id = "c2", createdAt = 200005)
+
+        // First insert succeeds and writes the transaction guard
+        remote.insert("a", expense1, allowDuplicate = false)
+
+        // Second concurrent insert for the identical expense within 60s is blocked by the transactional guard
+        val failure = runCatching {
+            remote.insert("a", expense2, allowDuplicate = false)
+        }.exceptionOrNull()
+
+        assertTrue("Concurrent identical insert within 60s must throw DuplicateExpenseException", failure is DuplicateExpenseException)
+
+        // When confirmed with allowDuplicate = true, the second record is saved successfully
+        remote.insert("a", expense2, allowDuplicate = true)
+        assertNotNull(data[refs["expense:c2"]])
+    }
 }
+
