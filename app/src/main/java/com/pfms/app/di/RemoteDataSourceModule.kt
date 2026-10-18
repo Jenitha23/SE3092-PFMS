@@ -1,7 +1,9 @@
 package com.pfms.app.di
 
+import com.pfms.app.data.remote.firestore.FirestoreGoalSummaryRemoteDataSource
 import com.pfms.app.data.remote.firestore.FirestoreIncomeRemoteDataSource
 import com.pfms.app.data.remote.firestore.FirestoreSalaryTemplateRemoteDataSource
+import com.pfms.app.data.remote.firestore.GoalSummaryRemoteDataSource
 import com.pfms.app.data.remote.firestore.IncomeRemoteDataSource
 import com.pfms.app.data.remote.firestore.SalaryTemplateRemoteDataSource
 import dagger.Binds
@@ -25,4 +27,10 @@ abstract class RemoteDataSourceModule {
     abstract fun bindSalaryTemplateRemoteDataSource(
         dataSource: FirestoreSalaryTemplateRemoteDataSource
     ): SalaryTemplateRemoteDataSource
+
+    @Binds
+    @Singleton
+    abstract fun bindGoalSummaryRemoteDataSource(
+        dataSource: FirestoreGoalSummaryRemoteDataSource
+    ): GoalSummaryRemoteDataSource
 }

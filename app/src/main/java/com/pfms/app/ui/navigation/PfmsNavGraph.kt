@@ -27,6 +27,10 @@ import com.pfms.app.ui.screen.LoginScreen
 import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.SplashScreen
+import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
+import com.pfms.app.ui.screen.history.TransactionHistoryScreen
+import com.pfms.app.domain.model.dashboard.Transaction
+import com.pfms.app.domain.model.dashboard.TransactionType
 
 import com.pfms.app.ui.screen.income.IncomeAnalyticsScreen
 import com.pfms.app.ui.screen.income.IncomeFormScreen
@@ -89,6 +93,13 @@ fun PfmsNavGraph(
     var showDashboardQuickAdd by rememberSaveable { mutableStateOf(false) }
 
     val navController = rememberNavController()
+
+    // Tapping a transaction anywhere (dashboard, analytics, history) opens its edit screen.
+    val openTransaction: (Transaction) -> Unit = { tx ->
+        val route = if (tx.type == TransactionType.INCOME) Routes.editIncome(tx.id)
+        else Routes.editExpense(tx.id)
+        navController.navigate(route) { launchSingleTop = true }
+    }
 
     val session by sessionViewModel.session
         .collectAsStateWithLifecycle()
@@ -349,15 +360,49 @@ fun PfmsNavGraph(
                 onNavigateToAddIncome = {
                     navController.navigate(Routes.AddIncome) { launchSingleTop = true }
                 },
+                // "Insights" opens spending analytics (FR-30..32). Income analytics stays reachable
+                // from the income list and from a link inside spending analytics.
                 onNavigateToAnalytics = {
-                    navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true }
+                    navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true }
                 },
                 onNavigateToExpenses = {
                     navController.navigate(Routes.ExpenseList) { launchSingleTop = true }
                 },
                 onNavigateToAddExpense = {
                     navController.navigate(Routes.AddExpense) { launchSingleTop = true }
+                },
+                onNavigateToHistory = {
+                    navController.navigate(Routes.TransactionHistory) { launchSingleTop = true }
+                },
+                onTransactionClick = openTransaction
+            )
+        }
+
+        // -------------------------------------
+        // SPENDING ANALYTICS (FR-30..32)
+        // -------------------------------------
+
+        composable(Routes.SpendingAnalytics) {
+            SpendingAnalyticsScreen(
+                onBack = { navController.popBackStack() },
+                onTransactionClick = openTransaction,
+                onOpenHistory = {
+                    navController.navigate(Routes.TransactionHistory) { launchSingleTop = true }
+                },
+                onOpenIncomeAnalytics = {
+                    navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true }
                 }
+            )
+        }
+
+        // -------------------------------------
+        // TRANSACTION HISTORY (FR-33)
+        // -------------------------------------
+
+        composable(Routes.TransactionHistory) {
+            TransactionHistoryScreen(
+                onBack = { navController.popBackStack() },
+                onTransactionClick = openTransaction
             )
         }
 

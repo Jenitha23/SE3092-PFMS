@@ -14,6 +14,10 @@ object Routes {
     const val IncomeOnboarding = "income_onboarding"
     const val Settings = "settings"
 
+    // Dashboard, analytics and history
+    const val SpendingAnalytics = "spending_analytics"
+    const val TransactionHistory = "transaction_history"
+
     // Income Management
     const val IncomeList = "income_list"
     const val AddIncome = "add_income"
