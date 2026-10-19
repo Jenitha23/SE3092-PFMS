@@ -28,4 +28,14 @@ class NavigationRoutesTest {
         assertEquals("salary_template", Routes.SalaryTemplate)
         assertEquals("income_analytics", Routes.IncomeAnalytics)
     }
+
+    @Test
+    fun `SavingsGoal route is properly defined and distinct from existing routes`() {
+        assertEquals("savings_goal", Routes.SavingsGoal)
+        assertNotNull(Routes.SavingsGoal)
+        assertNotEquals(Routes.SavingsGoal, Routes.Dashboard)
+        assertNotEquals(Routes.SavingsGoal, Routes.IncomeList)
+        assertNotEquals(Routes.SavingsGoal, Routes.ExpenseList)
+        assertNotEquals(Routes.SavingsGoal, Routes.Settings)
+    }
 }

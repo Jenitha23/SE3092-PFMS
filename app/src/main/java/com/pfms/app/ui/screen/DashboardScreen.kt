@@ -81,6 +81,9 @@ import com.pfms.app.ui.component.formatPercent
 import com.pfms.app.ui.screen.income.formatAnalyticsLkrAmount
 import com.pfms.app.ui.screen.income.formatMonthLong
 import com.pfms.app.ui.theme.EmeraldPrimary
+import com.pfms.app.ui.screen.savings.SavingsGoalUiFormatter
+import com.pfms.app.viewmodel.SavingsGoalUiState
+import com.pfms.app.viewmodel.SavingsGoalViewModel
 import com.pfms.app.ui.theme.ErrorExpense
 import com.pfms.app.ui.theme.PurpleAccent
 import com.pfms.app.viewmodel.DashboardUiState
@@ -92,6 +95,14 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
+ * Modern Fintech Dashboard matching Reference UI 2 exactly:
+ * - Emerald top header with user greeting, display name + wave, date, bell, and avatar.
+ * - Floating Monthly Overview card (Income ↑, Expenses ↓, Savings).
+ * - Spending Breakdown card with two-tone donut chart (Committed 45%, Discretionary 55%).
+ * - Dynamic Savings Goal card with reactive target, progress bar, and metrics.
+ * - Recent Activity card with Salary (+ LKR 130,000) and Dining (- LKR 2,500).
+ * - Pinned 5-tab bottom navigation (Home, Income, Expenses, Goals, Insights).
+ * - All authentication, session state, settings navigation, and logout dialogs strictly preserved.
  * Home dashboard (FR-29), backed by [DashboardViewModel]:
  * - selectable month (default: current month, Asia/Colombo),
  * - total income, total expenses and net savings with a surplus/deficit shown as text AND an icon,
@@ -105,11 +116,13 @@ import java.util.Locale
 fun DashboardScreen(
     sessionViewModel: SessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
+    savingsGoalViewModel: SavingsGoalViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit = {},
     onNavigateToIncome: () -> Unit = {},
     onNavigateToAddIncome: () -> Unit = {},
     onNavigateToAnalytics: () -> Unit = {},
     onNavigateToExpenses: () -> Unit = {},
+    onNavigateToGoals: () -> Unit = {}
     onNavigateToAddExpense: () -> Unit = {},
     onQuickAddExpense: () -> Unit = {},
     onNavigateToHistory: () -> Unit = {},
@@ -119,6 +132,7 @@ fun DashboardScreen(
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
     val profile by settingsViewModel.profile.collectAsStateWithLifecycle()
     val logoutResult by sessionViewModel.logoutResult.collectAsStateWithLifecycle()
+    val savingsGoalUiState by savingsGoalViewModel.uiState.collectAsStateWithLifecycle()
     val uiState by dashboardViewModel.uiState.collectAsStateWithLifecycle()
     var showActionHub by remember { mutableStateOf(false) }
 
@@ -153,6 +167,45 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // Home Tab (Active)
+                    DashboardBottomTab(
+                        icon = { HomeNavIcon(tint = EmeraldPrimary, filled = true) },
+                        label = "Home",
+                        isActive = true,
+                        onClick = { /* Active destination */ }
+                    )
+
+                    // Income Tab
+                    DashboardBottomTab(
+                        icon = { IncomeNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
+                        label = "Income",
+                        isActive = false,
+                        onClick = onNavigateToIncome
+                    )
+
+                    // Expenses Tab
+                    DashboardBottomTab(
+                        icon = { ExpensesNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
+                        label = "Expenses",
+                        isActive = false,
+                        onClick = onNavigateToExpenses
+                    )
+
+                    // Goals Tab
+                    DashboardBottomTab(
+                        icon = { GoalsNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
+                        label = "Goals",
+                        isActive = false,
+                        onClick = onNavigateToGoals
+                    )
+
+                    // Insights Tab (Income Analytics)
+                    DashboardBottomTab(
+                        icon = { InsightsNavIcon(tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
+                        label = "Insights",
+                        isActive = false,
+                        onClick = onNavigateToAnalytics
+                    )
                     Text("+", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("Quick Actions", color = Color.White, fontWeight = FontWeight.Bold)
                 }
@@ -384,6 +437,11 @@ private fun DashboardHeader(
     }
 }
 
+                // ── Card 3: Savings Goal ────────────────────────────────
+                DashboardSavingsGoalCard(
+                    uiState = savingsGoalUiState,
+                    onClick = onNavigateToGoals
+                )
 @Composable
 private fun MonthlyOverviewCard(
     uiState: DashboardUiState,
@@ -936,6 +994,202 @@ private fun ShortcutChip(
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = textColor)
+        }
+    }
+}
+
+/**
+ * Dashboard card presenting live active savings goal summary (FR-23 through FR-28).
+ */
+@Composable
+fun DashboardSavingsGoalCard(
+    uiState: SavingsGoalUiState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val activeGoal = uiState.activeGoal
+
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.size(24.dp),
+                        shape = CircleShape,
+                        color = EmeraldPrimary.copy(alpha = 0.15f)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            GoalVectorIcon(tint = EmeraldPrimary)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Savings Goal",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Text(
+                    text = if (activeGoal != null) "View goal →" else "Set goal →",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = EmeraldPrimary,
+                    modifier = Modifier.clickable(onClick = onClick)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            if (activeGoal == null) {
+                // No active goal state
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(46.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF1F5F9)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            GoalVectorIcon(tint = Color(0xFF64748B))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "No active savings goal",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Set a goal to track your savings progress",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                // Active goal state with live data
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(46.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF1F5F9)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            LaptopVectorIcon(tint = Color(0xFF334155))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(
+                            text = activeGoal.name,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = SavingsGoalUiFormatter.formatLkr(activeGoal.targetAmountMinor),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Progress Bar & Percentage
+                val progressFraction = (uiState.progressPercent / 100.0).toFloat().coerceIn(0f, 1f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(Color(0xFFE2E8F0))
+                    ) {
+                        if (progressFraction > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progressFraction)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(EmeraldPrimary)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Text(
+                        text = "${uiState.progressPercent.toInt()}%",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Subtext: saved vs remaining
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "${SavingsGoalUiFormatter.formatLkr(uiState.currentSavedMinor)} saved",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (uiState.isCompleted) {
+                            "Goal Completed!"
+                        } else {
+                            "${SavingsGoalUiFormatter.formatLkr(uiState.remainingAmountMinor)} remaining"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (uiState.isCompleted) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

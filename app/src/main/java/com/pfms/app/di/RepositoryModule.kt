@@ -4,11 +4,13 @@ import com.pfms.app.data.repository.FirebaseAuthRepository
 import com.pfms.app.data.repository.FirestoreLocalDataRepository
 import com.pfms.app.data.repository.FirestoreUserRepository
 import com.pfms.app.data.repository.OfflineFirstIncomeRepository
+import com.pfms.app.data.repository.OfflineFirstSavingsGoalRepository
 import com.pfms.app.data.repository.SalaryTemplateRepositoryImpl
 import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.domain.repository.IncomeRepository
 import com.pfms.app.domain.repository.LocalDataRepository
 import com.pfms.app.domain.repository.SalaryTemplateRepository
+import com.pfms.app.domain.repository.SavingsGoalRepository
 import com.pfms.app.domain.repository.UserRepository
 import com.pfms.app.data.repository.FirestoreAdvancedExpenseRepository
 import com.pfms.app.domain.repository.AdvancedExpenseRepository
@@ -57,6 +59,9 @@ abstract class RepositoryModule {
     @Singleton
     abstract fun bindSalaryTemplateRepository(repository: SalaryTemplateRepositoryImpl): SalaryTemplateRepository
 
+    @Binds
+    @Singleton
+    abstract fun bindSavingsGoalRepository(repository: OfflineFirstSavingsGoalRepository): SavingsGoalRepository
     // Dashboard / analytics / history read side
     @Binds
     @Singleton

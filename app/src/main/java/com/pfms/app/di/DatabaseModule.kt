@@ -5,9 +5,11 @@ import androidx.room.Room
 import com.pfms.app.data.local.PfmsDatabase
 import com.pfms.app.data.local.dao.ExpenseDao
 import com.pfms.app.data.local.dao.ExpenseCategoryDao
+import com.pfms.app.data.local.dao.GoalTransactionDao
 import com.pfms.app.data.local.dao.IncomeDao
 import com.pfms.app.data.local.dao.RecurringExpenseDao
 import com.pfms.app.data.local.dao.SalaryTemplateDao
+import com.pfms.app.data.local.dao.SavingsGoalDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,6 +31,11 @@ object DatabaseModule {
             PfmsDatabase::class.java,
             "pfms_database"
         )
+            .addMigrations(
+                PfmsDatabase.MIGRATION_1_4,
+                PfmsDatabase.MIGRATION_2_4,
+                PfmsDatabase.MIGRATION_3_4
+            )
             .addMigrations(PfmsDatabase.MIGRATION_1_2, PfmsDatabase.MIGRATION_2_3, PfmsDatabase.MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .build()
@@ -42,6 +49,16 @@ object DatabaseModule {
     @Provides
     fun provideSalaryTemplateDao(database: PfmsDatabase): SalaryTemplateDao {
         return database.salaryTemplateDao()
+    }
+
+    @Provides
+    fun provideSavingsGoalDao(database: PfmsDatabase): SavingsGoalDao {
+        return database.savingsGoalDao()
+    }
+
+    @Provides
+    fun provideGoalTransactionDao(database: PfmsDatabase): GoalTransactionDao {
+        return database.goalTransactionDao()
     }
 
     @Provides

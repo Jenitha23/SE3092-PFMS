@@ -27,6 +27,7 @@ import com.pfms.app.ui.screen.LoginScreen
 import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.SplashScreen
+import com.pfms.app.ui.screen.savings.SavingsGoalScreen
 import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
 import com.pfms.app.ui.screen.history.TransactionHistoryScreen
 import com.pfms.app.domain.model.dashboard.Transaction
@@ -366,6 +367,15 @@ fun PfmsNavGraph(
                     navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true }
                 },
                 onNavigateToExpenses = {
+                    navController.navigate(Routes.ExpenseList) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onNavigateToGoals = {
+                    navController.navigate(Routes.SavingsGoal) {
+                        launchSingleTop = true
+                    }
                     navController.navigate(Routes.ExpenseList) { launchSingleTop = true }
                 },
                 onNavigateToAddExpense = {
@@ -418,6 +428,23 @@ fun PfmsNavGraph(
 
                 onNavigateBack = {
                     navController.popBackStack()
+                }
+            )
+        }
+
+        // -------------------------------------
+        // SAVINGS GOAL (FR-23 through FR-28)
+        // -------------------------------------
+
+        composable(Routes.SavingsGoal) {
+
+            SavingsGoalScreen(
+                onBack = {
+                    if (!navController.popBackStack()) {
+                        navController.navigate(Routes.Dashboard) {
+                            launchSingleTop = true
+                        }
+                    }
                 }
             )
         }
