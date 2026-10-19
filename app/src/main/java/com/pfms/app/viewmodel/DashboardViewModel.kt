@@ -2,7 +2,6 @@ package com.pfms.app.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.pfms.app.domain.model.dashboard.ActiveGoalSnapshot
 import com.pfms.app.domain.model.dashboard.MonthlySummary
 import com.pfms.app.domain.model.dashboard.Transaction
 import com.pfms.app.domain.repository.DashboardRepository
@@ -20,10 +19,10 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import java.time.YearMonth
 import javax.inject.Inject
+import kotlinx.coroutines.flow.map
 
 /** FR-29: everything the home dashboard shows for the selected month. */
 data class DashboardUiState(
@@ -32,7 +31,6 @@ data class DashboardUiState(
     val summary: MonthlySummary? = null,
     /** Latest 10 transactions of the selected month, newest first. */
     val latestTransactions: List<Transaction> = emptyList(),
-    val goal: ActiveGoalSnapshot? = null,
     val errorMessage: String? = null
 ) {
     val isCurrentMonth: Boolean get() = selectedMonth == AppClock.currentMonth()
@@ -76,16 +74,12 @@ class DashboardViewModel @Inject constructor(
     }
 
     val uiState: StateFlow<DashboardUiState> = retryKey.flatMapLatest {
-        combine(
-            monthBundle,
-            dashboardRepository.observeActiveGoal().onStart { emit(null) }
-        ) { bundle, goal ->
+        monthBundle.map { bundle ->
             DashboardUiState(
                 isLoading = false,
                 selectedMonth = bundle.month,
                 summary = bundle.summary,
-                latestTransactions = bundle.latest,
-                goal = goal
+                latestTransactions = bundle.latest
             )
         }.catch {
             emit(
