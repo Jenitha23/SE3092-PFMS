@@ -1,7 +1,6 @@
 package com.pfms.app.domain.repository
 
 import com.pfms.app.domain.model.Expense
-import com.pfms.app.domain.model.dashboard.ActiveGoalSnapshot
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
@@ -17,7 +16,4 @@ interface DashboardRepository {
 
     /** Expenses dated between [start] and [end] inclusive, newest first, from the offline cache. */
     fun observeExpensesBetween(start: LocalDate, end: LocalDate): Flow<List<Expense>>
-
-    /** The active savings goal (real-time), or null when there is none. */
-    fun observeActiveGoal(): Flow<ActiveGoalSnapshot?>
 }

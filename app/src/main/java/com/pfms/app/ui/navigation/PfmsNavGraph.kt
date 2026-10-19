@@ -59,8 +59,6 @@ import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
 import com.pfms.app.viewmodel.IncomeOnboardingViewModel
 import com.pfms.app.ui.screen.income.IncomeOnboardingScreen
-import com.pfms.app.ui.screen.income.SalaryConfirmationDialog
-import com.pfms.app.ui.screen.income.SalaryReminderLifecycle
 import com.pfms.app.ui.screen.expense.ExpenseDuplicateDialog
 
 /**
@@ -373,10 +371,7 @@ fun PfmsNavGraph(
                 },
 
                 onNavigateToGoals = {
-                    navController.navigate(Routes.SavingsGoal) {
-                        launchSingleTop = true
-                    }
-                    navController.navigate(Routes.ExpenseList) { launchSingleTop = true }
+                    navController.navigate(Routes.SavingsGoal) { launchSingleTop = true }
                 },
                 onNavigateToAddExpense = {
                     navController.navigate(Routes.AddExpense) { launchSingleTop = true }
@@ -524,7 +519,7 @@ fun PfmsNavGraph(
                     }
                 },
 
-                onNavigateToGoals = null
+                onNavigateToGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } }
             )
         }
 
@@ -701,7 +696,7 @@ fun PfmsNavGraph(
                 onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
                 onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
                 onExpenses = { navController.navigate(Routes.ExpenseList) { launchSingleTop = true } },
-                onGoals = null
+                onGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } }
             )
         }
 
@@ -746,7 +741,7 @@ fun PfmsNavGraph(
                             onSubscriptions = { navController.navigate(Routes.Subscriptions) },
                             onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
                             onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
-                            onGoals = null,
+                            onGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } },
                             onInsights = { navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true } },
                             onAddExpense = { navController.navigate(Routes.AddExpense) },
                             onQuickAdd = {
@@ -791,7 +786,7 @@ fun PfmsNavGraph(
                             onDeleteExpense = {},
                             onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
                             onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
-                            onGoals = null,
+                            onGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } },
                             onInsights = { navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true } },
                             onBack = {
                                 if (!navController.popBackStack()) {

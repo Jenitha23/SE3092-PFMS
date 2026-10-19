@@ -222,13 +222,53 @@ internal fun createOrReconcileExpenseTables(db: SupportSQLiteDatabase) {
 }
 
 /**
+ * The `expenses` table (offline-first expense storage, added on main). Idempotent, so it is safe on
+ * every upgrade path. Without it a device upgrading from an older version would fail Room's schema
+ * validation, because the entity exists but the table was never created.
+ */
+internal fun createExpensesTable(db: SupportSQLiteDatabase) {
+    db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `expenses` (
+            `userId` TEXT NOT NULL,
+            `id` TEXT NOT NULL,
+            `amountMinor` INTEGER NOT NULL,
+            `currency` TEXT NOT NULL,
+            `categoryId` TEXT NOT NULL,
+            `categoryName` TEXT NOT NULL,
+            `classification` TEXT NOT NULL,
+            `paymentMethod` TEXT NOT NULL,
+            `date` TEXT NOT NULL,
+            `merchant` TEXT NOT NULL,
+            `note` TEXT NOT NULL,
+            `createdAt` INTEGER NOT NULL,
+            `updatedAt` INTEGER NOT NULL,
+            `syncStatus` TEXT NOT NULL,
+            `isDeleted` INTEGER NOT NULL,
+            `revision` TEXT NOT NULL,
+            `allowDuplicate` INTEGER NOT NULL,
+            `needsConfirmation` INTEGER NOT NULL,
+            PRIMARY KEY(`userId`, `id`)
+        )
+        """.trimIndent()
+    )
+    db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_userId` ON `expenses` (`userId`)")
+}
+
+/** Everything version 4 needs: savings tables, expense categories/recurring, and expenses. */
+internal fun upgradeToVersion4(db: SupportSQLiteDatabase) {
+    createSavingsTables(db)
+    createOrReconcileExpenseTables(db)
+    createExpensesTable(db)
+}
+
+/**
  * Migration 1 -> 4: Direct upgrade from version 1 (incomes, salary_templates) to version 4.
  * Creates savings tables and expense tables with final composite primary keys.
  */
 val MIGRATION_1_4 = object : Migration(1, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        createSavingsTables(db)
-        createOrReconcileExpenseTables(db)
+        upgradeToVersion4(db)
     }
 }
 
@@ -241,8 +281,7 @@ val MIGRATION_1_4 = object : Migration(1, 4) {
  */
 val MIGRATION_2_4 = object : Migration(2, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        createSavingsTables(db)
-        createOrReconcileExpenseTables(db)
+        upgradeToVersion4(db)
     }
 }
 
@@ -253,8 +292,7 @@ val MIGRATION_2_4 = object : Migration(2, 4) {
  */
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        createSavingsTables(db)
-        createOrReconcileExpenseTables(db)
+        upgradeToVersion4(db)
     }
 }
 

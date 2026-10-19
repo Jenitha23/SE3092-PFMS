@@ -2,7 +2,6 @@ package com.pfms.app.viewmodel
 
 import com.pfms.app.domain.model.Expense
 import com.pfms.app.domain.model.Income
-import com.pfms.app.domain.model.dashboard.ActiveGoalSnapshot
 import com.pfms.app.domain.repository.DashboardRepository
 import com.pfms.app.domain.repository.IncomeRepository
 import com.pfms.app.domain.usecase.dashboard.AppClock
@@ -38,14 +37,12 @@ class DashboardViewModelTest {
     }
 
     private class FakeDashboardRepository(
-        initial: List<Expense> = emptyList(),
-        val goal: MutableStateFlow<ActiveGoalSnapshot?> = MutableStateFlow(null)
+        initial: List<Expense> = emptyList()
     ) : DashboardRepository {
         val expenses = MutableStateFlow(initial)
         override fun observeExpenses(): Flow<List<Expense>> = expenses
         override fun observeExpensesBetween(start: LocalDate, end: LocalDate): Flow<List<Expense>> =
             expenses.map { list -> list.filter { it.date >= start.toString() && it.date <= end.toString() } }
-        override fun observeActiveGoal(): Flow<ActiveGoalSnapshot?> = goal
     }
 
     private val thisMonth = AppClock.currentMonth()
@@ -72,7 +69,6 @@ class DashboardViewModelTest {
         assertNull(state.errorMessage)
         assertFalse(state.summary!!.hasData)
         assertTrue(state.latestTransactions.isEmpty())
-        assertNull(state.goal)
     }
 
     @Test
@@ -92,17 +88,6 @@ class DashboardViewModelTest {
         repo.expenses.value = listOf(expense("e1", day(1), 500_000L))
         val updated = vm.uiState.first { it.summary?.totalExpenseMinor == 500_000L }
         assertNotNull(updated.summary)
-    }
-
-    @Test
-    fun goalCardShowsTheActiveGoal() = runTest {
-        val goal = ActiveGoalSnapshot("g", "MacBook Pro M4", 49_000_000L, 11_200_000L, "2027-10-01")
-        val vm = DashboardViewModel(
-            FakeIncomeRepository(),
-            FakeDashboardRepository(goal = MutableStateFlow(goal))
-        )
-        val state = vm.uiState.first { it.goal != null }
-        assertEquals(22, state.goal?.progressPercent)
     }
 
     @Test
