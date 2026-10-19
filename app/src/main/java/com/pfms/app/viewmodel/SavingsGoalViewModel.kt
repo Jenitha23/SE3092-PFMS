@@ -158,7 +158,12 @@ class SavingsGoalViewModel @Inject constructor(
                     _errorMessage.value = "Authentication required: no active user session"
                     return@launch
                 }
-                val goalWithUser = if (goal.userId.isBlank()) goal.copy(userId = user.uid) else goal
+                // The create dialog builds the goal without an id, so generate one here.
+                // Keep an id if the caller already supplied one (e.g. tests, imports).
+                val goalWithUser = goal.copy(
+                    id = goal.id.ifBlank { UUID.randomUUID().toString() },
+                    userId = goal.userId.ifBlank { user.uid }
+                )
                 val result = savingsGoalRepository.createGoal(goalWithUser)
                 if (result.isFailure) {
                     _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to create savings goal"
