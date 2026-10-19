@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 
 import com.pfms.app.domain.model.SessionState
 import com.pfms.app.ui.screen.DashboardScreen
@@ -27,11 +28,17 @@ import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.ui.screen.savings.SavingsGoalScreen
+import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
+import com.pfms.app.ui.screen.history.TransactionHistoryScreen
+import com.pfms.app.domain.model.dashboard.Transaction
+import com.pfms.app.domain.model.dashboard.TransactionType
 
 import com.pfms.app.ui.screen.income.IncomeAnalyticsScreen
 import com.pfms.app.ui.screen.income.IncomeFormScreen
 import com.pfms.app.ui.screen.income.IncomeListScreen
 import com.pfms.app.ui.screen.income.SalaryTemplateScreen
+import com.pfms.app.ui.screen.income.SalaryConfirmationDialog
+import com.pfms.app.ui.screen.income.SalaryReminderLifecycle
 
 import com.pfms.app.ui.screen.expense.ExpenseListScreen
 import com.pfms.app.ui.screen.expense.ExpenseFormScreen
@@ -50,6 +57,11 @@ import com.pfms.app.ui.screen.expense.RecurringExpensesScreen
 import com.pfms.app.ui.screen.expense.ExpenseReminderPermission
 import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
+import com.pfms.app.viewmodel.IncomeOnboardingViewModel
+import com.pfms.app.ui.screen.income.IncomeOnboardingScreen
+import com.pfms.app.ui.screen.income.SalaryConfirmationDialog
+import com.pfms.app.ui.screen.income.SalaryReminderLifecycle
+import com.pfms.app.ui.screen.expense.ExpenseDuplicateDialog
 
 /**
  * Root navigation graph for PFMS.
@@ -75,8 +87,20 @@ fun PfmsNavGraph(
 ) {
 
     val advancedExpenseViewModel: AdvancedExpenseViewModel = hiltViewModel()
+    val onboarding: IncomeOnboardingViewModel = hiltViewModel()
+    val onboardingState by onboarding.uiState.collectAsStateWithLifecycle()
+    val expenseState by expenseViewModel.uiState.collectAsStateWithLifecycle()
+    val salaryState by salaryViewModel.uiState.collectAsStateWithLifecycle()
+    var showDashboardQuickAdd by rememberSaveable { mutableStateOf(false) }
 
     val navController = rememberNavController()
+
+    // Tapping a transaction anywhere (dashboard, analytics, history) opens its edit screen.
+    val openTransaction: (Transaction) -> Unit = { tx ->
+        val route = if (tx.type == TransactionType.INCOME) Routes.editIncome(tx.id)
+        else Routes.editExpense(tx.id)
+        navController.navigate(route) { launchSingleTop = true }
+    }
 
     val session by sessionViewModel.session
         .collectAsStateWithLifecycle()
@@ -84,6 +108,7 @@ fun PfmsNavGraph(
     val lockState by sessionViewModel.lockState
         .collectAsStateWithLifecycle()
     val incomeUiState by incomeViewModel.uiState.collectAsStateWithLifecycle()
+    val salaryUiState by salaryViewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(incomeUiState.saveSuccessful) {
         if (incomeUiState.saveSuccessful) {
@@ -161,8 +186,23 @@ fun PfmsNavGraph(
 
                 AppLockState.Locked -> Routes.Lock
 
-                AppLockState.Unlocked -> Routes.Dashboard
+                AppLockState.Unlocked -> if (onboardingState.required) Routes.IncomeOnboarding else Routes.Dashboard
             }
+        }
+    }
+
+    // FR-10: Recheck the due salary on resume and after successful unlock.
+    SalaryReminderLifecycle(
+        onResume = {
+            if (targetRoute == Routes.Dashboard) {
+                salaryViewModel.refreshSalaryReminder()
+            }
+        }
+    )
+
+    LaunchedEffect(targetRoute) {
+        if (targetRoute == Routes.Dashboard) {
+            salaryViewModel.refreshSalaryReminder()
         }
     }
 
@@ -199,10 +239,29 @@ fun PfmsNavGraph(
         }
     }
 
+    if (targetRoute == Routes.Dashboard) {
+        SalaryReminderLifecycle(salaryViewModel::refreshSalaryReminder)
+        if (salaryState.showConfirmation && salaryState.template != null && expenseState.pendingDuplicate == null && !showDashboardQuickAdd) {
+            SalaryConfirmationDialog(salaryState.template!!, salaryViewModel::confirmSalary,
+                salaryViewModel::dismissConfirmation, salaryState.isSaving, salaryState.errorMessage)
+        }
+        if (expenseState.pendingDuplicate != null) {
+            ExpenseDuplicateDialog(expenseState.isSaving, expenseViewModel::confirmDuplicateExpense, expenseViewModel::cancelDuplicateExpense)
+        }
+        if (showDashboardQuickAdd) {
+            LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
+            val categoryState by advancedExpenseViewModel.categories.collectAsStateWithLifecycle()
+            ExpenseQuickAddContent(expenseViewModel, categoryState.filter { !it.archived }.map {
+                com.pfms.app.ui.screen.expense.ExpenseCategoryOption(it.id, it.name, it.classification)
+            }, { showDashboardQuickAdd = false }, { showDashboardQuickAdd = false })
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Routes.Splash
     ) {
+        composable(Routes.IncomeOnboarding) { IncomeOnboardingScreen(onboardingState, onboarding::save) }
 
 
         // -------------------------------------
@@ -291,35 +350,22 @@ fun PfmsNavGraph(
         composable(Routes.Dashboard) {
 
             DashboardScreen(
-
+                onQuickAddExpense = { showDashboardQuickAdd = true },
                 sessionViewModel = sessionViewModel,
-
                 onNavigateToSettings = {
-
-                    navController.navigate(
-                        Routes.Settings
-                    ) {
-                        launchSingleTop = true
-                    }
+                    navController.navigate(Routes.Settings) { launchSingleTop = true }
                 },
-
                 onNavigateToIncome = {
-
-                    navController.navigate(
-                        Routes.IncomeList
-                    ) {
-                        launchSingleTop = true
-                    }
+                    navController.navigate(Routes.IncomeList) { launchSingleTop = true }
                 },
-
+                onNavigateToAddIncome = {
+                    navController.navigate(Routes.AddIncome) { launchSingleTop = true }
+                },
+                // "Insights" opens spending analytics (FR-30..32). Income analytics stays reachable
+                // from the income list and from a link inside spending analytics.
                 onNavigateToAnalytics = {
-                    navController.navigate(
-                        Routes.IncomeAnalytics
-                    ) {
-                        launchSingleTop = true
-                    }
+                    navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true }
                 },
-
                 onNavigateToExpenses = {
                     navController.navigate(Routes.ExpenseList) {
                         launchSingleTop = true
@@ -330,7 +376,43 @@ fun PfmsNavGraph(
                     navController.navigate(Routes.SavingsGoal) {
                         launchSingleTop = true
                     }
+                    navController.navigate(Routes.ExpenseList) { launchSingleTop = true }
+                },
+                onNavigateToAddExpense = {
+                    navController.navigate(Routes.AddExpense) { launchSingleTop = true }
+                },
+                onNavigateToHistory = {
+                    navController.navigate(Routes.TransactionHistory) { launchSingleTop = true }
+                },
+                onTransactionClick = openTransaction
+            )
+        }
+
+        // -------------------------------------
+        // SPENDING ANALYTICS (FR-30..32)
+        // -------------------------------------
+
+        composable(Routes.SpendingAnalytics) {
+            SpendingAnalyticsScreen(
+                onBack = { navController.popBackStack() },
+                onTransactionClick = openTransaction,
+                onOpenHistory = {
+                    navController.navigate(Routes.TransactionHistory) { launchSingleTop = true }
+                },
+                onOpenIncomeAnalytics = {
+                    navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true }
                 }
+            )
+        }
+
+        // -------------------------------------
+        // TRANSACTION HISTORY (FR-33)
+        // -------------------------------------
+
+        composable(Routes.TransactionHistory) {
+            TransactionHistoryScreen(
+                onBack = { navController.popBackStack() },
+                onTransactionClick = openTransaction
             )
         }
 
@@ -378,20 +460,15 @@ fun PfmsNavGraph(
         composable(Routes.IncomeList) {
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
 
-            // Member 2: Realized Income excludes unpaid freelance and deducts crypto losses
-            val nonCryptoRealized = incomeState.incomes.filter {
-                if (it.source == "Freelance") it.paymentStatus == "Received"
-                else it.source != "Crypto"
-            }.sumOf { it.amountLkrMinor ?: it.amountMinor }
-
-            val totalRealized = nonCryptoRealized + incomeState.cryptoGainsMinor - incomeState.cryptoLossesMinor
+            // FR-12: Use the centralized income summary calculated by IncomeViewModel.
+            // Do not recompute totals here; unconverted USD must never be treated as LKR.
 
             IncomeListScreen(
                 incomes = incomeState.incomes,
                 isLoading = incomeState.isLoading,
                 errorMessage = incomeState.errorMessage,
 
-                totalRealizedIncomeMinor = totalRealized,
+                totalRealizedIncomeMinor = incomeState.totalRealizedIncomeMinor,
                 totalPendingFreelanceMinor = incomeState.totalPendingFreelanceMinor,
                 pendingFreelanceCount = incomeState.pendingFreelanceCount,
                 cryptoGainsMinor = incomeState.cryptoGainsMinor,
@@ -433,7 +510,21 @@ fun PfmsNavGraph(
                     navController.navigate(Routes.IncomeAnalytics) {
                         launchSingleTop = true
                     }
-                }
+                },
+
+                onNavigateToHome = {
+                    navController.navigate(Routes.Dashboard) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onNavigateToExpenses = {
+                    navController.navigate(Routes.ExpenseList) {
+                        launchSingleTop = true
+                    }
+                },
+
+                onNavigateToGoals = null
             )
         }
 
@@ -503,6 +594,9 @@ fun PfmsNavGraph(
             val incomeId = backStackEntry.arguments?.getString("incomeId")
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
             val incomeItem = incomeState.incomes.find { it.id == incomeId }
+            LaunchedEffect(incomeItem?.id) {
+                incomeItem?.let(incomeViewModel::loadExistingRate)
+            }
 
             LaunchedEffect(incomeState.saveSuccessful) {
                 if (incomeState.saveSuccessful) {
@@ -603,7 +697,11 @@ fun PfmsNavGraph(
             IncomeAnalyticsScreen(
                 onBack = {
                     navController.popBackStack()
-                }
+                },
+                onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
+                onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
+                onExpenses = { navController.navigate(Routes.ExpenseList) { launchSingleTop = true } },
+                onGoals = null
             )
         }
 
@@ -640,76 +738,82 @@ fun PfmsNavGraph(
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {
 
-            if (vm != null) {
-                ExpenseListContent(
-                    viewModel = vm,
-                    onCategories = { navController.navigate(Routes.Categories) },
-                    onRecurring = { navController.navigate(Routes.RecurringExpenses) },
-                    onSubscriptions = { navController.navigate(Routes.Subscriptions) },
-                    onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
-                    onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
-                    onAddExpense = { navController.navigate(Routes.AddExpense) },
-                    onQuickAdd = {
-                        vm.clearSuccess()
-                        vm.clearError()
-                        showQuickAdd = true
-                    },
-                    onEditExpense = { id ->
-                        navController.navigate(Routes.editExpense(id))
-                    },
-                    onRepeatExpense = { id ->
-                        navController.navigate(Routes.repeatExpense(id))
-                    },
-                    onBack = {
-                        if (!navController.popBackStack()) {
-                            navController.navigate(Routes.Dashboard) {
-                                launchSingleTop = true
+                    if (vm != null) {
+                        ExpenseListContent(
+                            viewModel = vm,
+                            onCategories = { navController.navigate(Routes.Categories) },
+                            onRecurring = { navController.navigate(Routes.RecurringExpenses) },
+                            onSubscriptions = { navController.navigate(Routes.Subscriptions) },
+                            onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
+                            onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
+                            onGoals = null,
+                            onInsights = { navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true } },
+                            onAddExpense = { navController.navigate(Routes.AddExpense) },
+                            onQuickAdd = {
+                                vm.clearSuccess()
+                                vm.clearError()
+                                showQuickAdd = true
+                            },
+                            onEditExpense = { id ->
+                                navController.navigate(Routes.editExpense(id))
+                            },
+                            onRepeatExpense = { id ->
+                                navController.navigate(Routes.repeatExpense(id))
+                            },
+                            onBack = {
+                                if (!navController.popBackStack()) {
+                                    navController.navigate(Routes.Dashboard) {
+                                        launchSingleTop = true
+                                    }
+                                }
                             }
+                        )
+
+                        if (showQuickAdd) {
+                            ExpenseQuickAddContent(
+                                viewModel = vm,
+                                categories = categories,
+                                onDismiss = { showQuickAdd = false },
+                                onSaveSuccess = { showQuickAdd = false }
+                            )
+                        }
+                    } else {
+                        val pending = "Expense storage is not connected yet. Saving is unavailable."
+                        ExpenseListScreen(
+                            expenses = emptyList(),
+                            isLoading = false,
+                            isDeleting = false,
+                            onAddExpense = { navController.navigate(Routes.AddExpense) },
+                            onQuickAdd = { showQuickAdd = true },
+                            onEditExpense = { id ->
+                                navController.navigate(Routes.editExpense(id))
+                            },
+                            onDeleteExpense = {},
+                            onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
+                            onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
+                            onGoals = null,
+                            onInsights = { navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true } },
+                            onBack = {
+                                if (!navController.popBackStack()) {
+                                    navController.navigate(Routes.Dashboard) {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            },
+                            errorMessage = pending
+                        )
+                        if (showQuickAdd) {
+                            QuickAddExpenseSheet(
+                                categories = categories,
+                                defaultPaymentMethod =
+                                    com.pfms.app.domain.model.ExpensePaymentMethod.CASH,
+                                isSaving = false,
+                                onSave = { _, _, _, _ -> },
+                                onDismiss = { showQuickAdd = false },
+                                errorMessage = pending
+                            )
                         }
                     }
-                )
-
-                if (showQuickAdd) {
-                    ExpenseQuickAddContent(
-                        viewModel = vm,
-                        categories = categories,
-                        onDismiss = { showQuickAdd = false },
-                        onSaveSuccess = { showQuickAdd = false }
-                    )
-                }
-            } else {
-                val pending = "Expense storage is not connected yet. Saving is unavailable."
-                ExpenseListScreen(
-                    expenses = emptyList(),
-                    isLoading = false,
-                    isDeleting = false,
-                    onAddExpense = { navController.navigate(Routes.AddExpense) },
-                    onQuickAdd = { showQuickAdd = true },
-                    onEditExpense = { id ->
-                        navController.navigate(Routes.editExpense(id))
-                    },
-                    onDeleteExpense = {},
-                    onBack = {
-                        if (!navController.popBackStack()) {
-                            navController.navigate(Routes.Dashboard) {
-                                launchSingleTop = true
-                            }
-                        }
-                    },
-                    errorMessage = pending
-                )
-                if (showQuickAdd) {
-                    QuickAddExpenseSheet(
-                        categories = categories,
-                        defaultPaymentMethod =
-                            com.pfms.app.domain.model.ExpensePaymentMethod.CASH,
-                        isSaving = false,
-                        onSave = { _, _, _, _ -> },
-                        onDismiss = { showQuickAdd = false },
-                        errorMessage = pending
-                    )
-                }
-            }
                 }
             }
         }
@@ -833,5 +937,37 @@ fun PfmsNavGraph(
                 )
             }
         }
+    }
+
+    // FR-10: Show the monthly salary prompt above the navigation host.
+    // Do not display it during login, while locked, or on form screens.
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    val canShowSalaryReminder =
+        targetRoute == Routes.Dashboard &&
+                (currentRoute == Routes.Dashboard || currentRoute == Routes.IncomeList)
+
+    // A salary confirmation should not pop the dashboard navigation stack.
+    // The salary template screen retains its own success handler.
+    LaunchedEffect(salaryUiState.operationSuccessful, canShowSalaryReminder) {
+        if (salaryUiState.operationSuccessful && canShowSalaryReminder) {
+            salaryViewModel.clearSuccess()
+        }
+    }
+
+    val salaryTemplate = salaryUiState.template
+    if (
+        canShowSalaryReminder &&
+        !salaryUiState.isLoading &&
+        salaryUiState.showConfirmation &&
+        salaryTemplate != null
+    ) {
+        SalaryConfirmationDialog(
+            template = salaryTemplate,
+            isSaving = salaryUiState.isSaving,
+            errorMessage = salaryUiState.errorMessage,
+            onConfirm = { amount -> salaryViewModel.confirmSalary(amount) },
+            onDismiss = { salaryViewModel.dismissConfirmation() }
+        )
     }
 }

@@ -3,6 +3,7 @@ package com.pfms.app.di
 import android.content.Context
 import androidx.room.Room
 import com.pfms.app.data.local.PfmsDatabase
+import com.pfms.app.data.local.dao.ExpenseDao
 import com.pfms.app.data.local.dao.ExpenseCategoryDao
 import com.pfms.app.data.local.dao.GoalTransactionDao
 import com.pfms.app.data.local.dao.IncomeDao
@@ -35,6 +36,8 @@ object DatabaseModule {
                 PfmsDatabase.MIGRATION_2_4,
                 PfmsDatabase.MIGRATION_3_4
             )
+            .addMigrations(PfmsDatabase.MIGRATION_1_2, PfmsDatabase.MIGRATION_2_3, PfmsDatabase.MIGRATION_3_4)
+            .fallbackToDestructiveMigration()
             .build()
     }
 
@@ -67,4 +70,10 @@ object DatabaseModule {
     fun provideRecurringExpenseDao(database: PfmsDatabase): RecurringExpenseDao {
         return database.recurringExpenseDao()
     }
+
+    @Provides
+    fun provideExpenseDao(database: PfmsDatabase): ExpenseDao {
+        return database.expenseDao()
+    }
 }
+

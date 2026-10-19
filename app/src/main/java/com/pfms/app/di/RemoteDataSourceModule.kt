@@ -1,8 +1,10 @@
 package com.pfms.app.di
 
+import com.pfms.app.data.remote.firestore.FirestoreGoalSummaryRemoteDataSource
 import com.pfms.app.data.remote.firestore.FirestoreIncomeRemoteDataSource
 import com.pfms.app.data.remote.firestore.FirestoreSalaryTemplateRemoteDataSource
 import com.pfms.app.data.remote.firestore.FirestoreSavingsGoalRemoteDataSource
+import com.pfms.app.data.remote.firestore.GoalSummaryRemoteDataSource
 import com.pfms.app.data.remote.firestore.IncomeRemoteDataSource
 import com.pfms.app.data.remote.firestore.SalaryTemplateRemoteDataSource
 import com.pfms.app.data.remote.firestore.SavingsGoalRemoteDataSource
@@ -33,4 +35,7 @@ abstract class RemoteDataSourceModule {
     abstract fun bindSavingsGoalRemoteDataSource(
         dataSource: FirestoreSavingsGoalRemoteDataSource
     ): SavingsGoalRemoteDataSource
+    abstract fun bindGoalSummaryRemoteDataSource(
+        dataSource: FirestoreGoalSummaryRemoteDataSource
+    ): GoalSummaryRemoteDataSource
 }

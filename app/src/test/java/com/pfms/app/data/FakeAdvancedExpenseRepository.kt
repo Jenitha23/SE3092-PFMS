@@ -74,8 +74,16 @@ class FakeAdvancedExpenseRepository : AdvancedExpenseRepository {
         templatesState.value = templatesState.value.filterNot { it.id == templateId }
     }
 
+    val createdExpenses = mutableListOf<Map<String, Any>>()
+
     override suspend fun confirmDue(template: RecurringExpense) {
         confirmedCount++
+        val due = java.time.LocalDate.parse(template.nextDueDate)
+        val next = com.pfms.app.domain.usecase.RecurringExpenseCalculator.calculateNextDueDate(due, template.recurrence)
+        val expenseId = "recurring_${template.id}_${template.nextDueDate}"
+        check(createdExpenses.none { it["id"] == expenseId }) { "Duplicate confirmation detected" }
+        createdExpenses.add(mapOf("id" to expenseId, "amountMinor" to template.amountMinor, "date" to template.nextDueDate))
+        saveTemplate(template.copy(nextDueDate = next.toString()))
     }
 
     override suspend fun repeatExpense(expenseId: String) {

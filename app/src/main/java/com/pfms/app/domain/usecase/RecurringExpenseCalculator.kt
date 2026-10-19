@@ -39,6 +39,21 @@ object RecurringExpenseCalculator {
     }
 
     /**
+     * Checks whether a subscription is due for review on its configured date (FR-20).
+     * Returns true if the subscription is active, not cancelled, and:
+     * - The flag is explicitly set to REVIEW, or
+     * - A reminderDate is configured and is on or before today.
+     */
+    fun isReviewDue(template: RecurringExpense, today: LocalDate = LocalDate.now(COLOMBO_ZONE)): Boolean {
+        if (!template.subscription || !template.active || template.flag == SubscriptionFlag.CANCEL) return false
+        if (template.flag == SubscriptionFlag.REVIEW) return true
+        if (template.reminderDate.isBlank()) return false
+        val reminder = runCatching { LocalDate.parse(template.reminderDate) }.getOrNull() ?: return false
+        return !reminder.isAfter(today)
+    }
+
+
+    /**
      * Calculates the total monthly equivalent amount for active subscriptions in minor units (LKR cents).
      * Conversion rules according to SRS (FR-20):
      * - Monthly: exact monthly amount.

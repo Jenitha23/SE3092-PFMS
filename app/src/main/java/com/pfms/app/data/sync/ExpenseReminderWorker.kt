@@ -18,7 +18,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.google.firebase.auth.FirebaseAuth
+import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.MainActivity
 import com.pfms.app.data.local.dao.RecurringExpenseDao
 import com.pfms.app.data.local.entity.RecurringExpenseEntity
@@ -33,6 +33,7 @@ import com.pfms.app.domain.repository.AdvancedExpenseRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 import android.util.Log
 
 @HiltWorker
@@ -40,12 +41,12 @@ class ExpenseReminderWorker @AssistedInject constructor(
     @Assisted private val context: Context,
     @Assisted params: WorkerParameters,
     private val recurringDao: RecurringExpenseDao,
-    private val auth: FirebaseAuth,
+    private val auth: AuthRepository,
     private val advancedExpenses: AdvancedExpenseRepository
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val uid = auth.currentUser?.uid ?: return Result.success()
+        val uid = auth.currentUser.first()?.uid ?: return Result.success()
 
         createNotificationChannel()
 
@@ -66,7 +67,7 @@ class ExpenseReminderWorker @AssistedInject constructor(
             if (e is CancellationException) throw e
             return Result.retry()
         }
-        if (auth.currentUser?.uid != uid) return Result.success()
+        if (auth.currentUser.first()?.uid != uid) return Result.success()
 
         // Check if permission is granted for Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

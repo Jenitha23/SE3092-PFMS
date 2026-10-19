@@ -11,7 +11,12 @@ object Routes {
     const val ForgotPassword = "forgot_password"
     const val Lock = "lock"
     const val Dashboard = "dashboard"
+    const val IncomeOnboarding = "income_onboarding"
     const val Settings = "settings"
+
+    // Dashboard, analytics and history
+    const val SpendingAnalytics = "spending_analytics"
+    const val TransactionHistory = "transaction_history"
 
     // Income Management
     const val IncomeList = "income_list"

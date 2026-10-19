@@ -17,6 +17,8 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class SyncModule {
+    @Binds
+    abstract fun bindExpenseSyncScheduler(scheduler: com.pfms.app.data.sync.WorkManagerExpenseSyncScheduler): com.pfms.app.data.sync.ExpenseSyncScheduler
 
     @Binds
     @Singleton

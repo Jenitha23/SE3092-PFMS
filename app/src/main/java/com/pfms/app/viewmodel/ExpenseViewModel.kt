@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.pfms.app.domain.model.Expense
 import com.pfms.app.domain.model.ExpenseClassification
 import com.pfms.app.domain.model.ExpensePaymentMethod
+import com.pfms.app.domain.model.DuplicateExpenseException
 import com.pfms.app.domain.repository.ExpenseRepository
 import com.pfms.app.domain.usecase.ExpenseRules
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,9 +75,25 @@ class ExpenseViewModel @Inject constructor(
         ZoneId.of("Asia/Colombo")
 
     private var observation: Job? = null
+    private var storedConflict: Expense? = null
 
     init {
         observeExpenses()
+        viewModelScope.launch {
+            repository.observeLastPaymentMethod().collect { method ->
+                _uiState.value = _uiState.value.copy(lastUsedPaymentMethod = method)
+            }
+        }
+        viewModelScope.launch {
+            repository.observeDuplicateConflict().collect { expense ->
+                val old = storedConflict
+                storedConflict = expense
+                val pending = _uiState.value.pendingDuplicate
+                if (pending == null || pending.id == old?.id) {
+                    _uiState.value = _uiState.value.copy(pendingDuplicate = expense)
+                }
+            }
+        }
     }
 
     // -----------------------------------------
@@ -275,16 +292,20 @@ class ExpenseViewModel @Inject constructor(
         )
 
         viewModelScope.launch {
-            persistNewExpense(expense)
+            persistNewExpense(expense, allowDuplicate = true)
         }
     }
 
     fun cancelDuplicateExpense() {
         if (_uiState.value.isSaving) return
-
-        _uiState.value = _uiState.value.copy(
-            pendingDuplicate = null
-        )
+        val expense = _uiState.value.pendingDuplicate ?: return
+        viewModelScope.launch {
+            try {
+                repository.dismissDuplicate(expense.id)
+                _uiState.value = _uiState.value.copy(pendingDuplicate = storedConflict?.takeIf { it.id != expense.id })
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { showError("Unable to dismiss duplicate. Please retry.") }
+        }
     }
 
     // -----------------------------------------
@@ -292,14 +313,15 @@ class ExpenseViewModel @Inject constructor(
     // -----------------------------------------
 
     private suspend fun persistNewExpense(
-        expense: Expense
+        expense: Expense,
+        allowDuplicate: Boolean = false
     ) {
         try {
-            networkOperation { repository.addExpense(expense) }
+            networkOperation { repository.addExpenseChecked(expense, allowDuplicate) }
 
             _uiState.value = _uiState.value.copy(
                 isSaving = false,
-                pendingDuplicate = null,
+                pendingDuplicate = storedConflict?.takeIf { it.id != expense.id },
                 operationSuccessful = true,
                 successfulOperation = ExpenseOperation.ADD,
                 errorMessage = null,
@@ -307,6 +329,8 @@ class ExpenseViewModel @Inject constructor(
                     expense.paymentMethod
             )
 
+        } catch (e: DuplicateExpenseException) {
+            _uiState.value = _uiState.value.copy(isSaving = false, pendingDuplicate = expense)
         } catch (e: CancellationException) {
             if (e !is TimeoutCancellationException) throw e
             _uiState.value = _uiState.value.copy(isSaving = false,

@@ -140,6 +140,15 @@ class AdvancedExpenseViewModel @Inject constructor(
         repository.saveTemplate(updated)
     }
 
+    fun dismissReview(template: RecurringExpense) = runTask {
+        val updated = template.copy(
+            flag = if (template.flag == SubscriptionFlag.REVIEW) SubscriptionFlag.NONE else template.flag,
+            reminderDate = ""
+        )
+        repository.saveTemplate(updated)
+    }
+
+
     fun toggleActive(template: RecurringExpense) = runTask {
         repository.saveTemplate(template.copy(
             active = !template.active,
@@ -149,4 +158,7 @@ class AdvancedExpenseViewModel @Inject constructor(
 
     fun isDue(template: RecurringExpense): Boolean =
         RecurringExpenseCalculator.isDue(template)
+
+    fun isReviewDue(template: RecurringExpense): Boolean =
+        RecurringExpenseCalculator.isReviewDue(template)
 }

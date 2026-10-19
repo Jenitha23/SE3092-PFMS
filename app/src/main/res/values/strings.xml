@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">PFMS</string>
+    <string name="app_name">FinTrack</string>
 
     <!-- Must be the *Web application* OAuth client (client_type 3 in google-services.json),
          NOT the Android client. Credential Manager / Firebase reject the Android client ID here. -->

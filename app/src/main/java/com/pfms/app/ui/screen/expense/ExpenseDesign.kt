@@ -58,7 +58,7 @@ internal fun ExpenseUiTheme(content: @Composable () -> Unit) {
     )
 }
 
-internal enum class ExpenseSymbol { BACK, ADD, SEARCH, FILTER, MORE, CHEVRON, CALENDAR, CARD, BAG, HOME, DINING, CAR, REPEAT, GRID, NOTE, CHECK, EDIT, ARCHIVE, INFO }
+internal enum class ExpenseSymbol { BACK, ADD, FLASH, SEARCH, FILTER, MORE, CHEVRON, CALENDAR, CARD, BAG, HOME, DINING, CAR, REPEAT, GRID, NOTE, CHECK, EDIT, ARCHIVE, INFO, CLOSE }
 
 /** Small native vectors keep the expense screens sharp at every display density. */
 @Composable
@@ -77,6 +77,7 @@ internal fun ExpenseIcon(symbol: ExpenseSymbol, modifier: Modifier = Modifier, t
         when (symbol) {
             ExpenseSymbol.BACK -> { line(20f,12f,4f,12f); path(10f to 5f,3f to 12f,10f to 19f) }
             ExpenseSymbol.ADD -> { line(12f,5f,12f,19f); line(5f,12f,19f,12f) }
+            ExpenseSymbol.FLASH -> path(13f to 2f, 6f to 12f, 12f to 12f, 10f to 22f, 18f to 11f, 12f to 11f, 14f to 2f)
             ExpenseSymbol.SEARCH -> { drawCircle(tint,6.5f*scale,point(10f,10f),style=Stroke(stroke)); line(15f,15f,21f,21f) }
             ExpenseSymbol.FILTER -> { line(4f,6f,20f,6f); line(7f,12f,17f,12f); line(10f,18f,14f,18f) }
             ExpenseSymbol.MORE -> listOf(5f,12f,19f).forEach { drawCircle(tint,1.6f*scale,point(12f,it)) }
@@ -94,6 +95,7 @@ internal fun ExpenseIcon(symbol: ExpenseSymbol, modifier: Modifier = Modifier, t
             ExpenseSymbol.EDIT -> { path(4f to 16f,16f to 4f,20f to 8f,8f to 20f,3f to 21f,4f to 16f); line(13f,7f,17f,11f) }
             ExpenseSymbol.ARCHIVE -> { box(3f,3f,18f,5f,1f); path(5f to 8f,5f to 21f,19f to 21f,19f to 8f); line(9f,12f,15f,12f) }
             ExpenseSymbol.INFO -> { drawCircle(tint,9f*scale,point(12f,12f),style=Stroke(stroke)); line(12f,11f,12f,17f); drawCircle(tint,scale,point(12f,7f)) }
+            ExpenseSymbol.CLOSE -> { line(6f,6f,18f,18f); line(18f,6f,6f,18f) }
         }
     }
 }

@@ -8,10 +8,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
-import androidx.compose.ui.graphics.asAndroidBitmap
-import android.graphics.Bitmap
-import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
 import com.pfms.app.domain.model.*
@@ -48,13 +44,6 @@ class ExpenseScreenIntegrationTest {
         compose.waitForIdle()
     }
 
-    private fun savePreview(name: String) {
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val file = File(context.getExternalFilesDir(null), name)
-        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    }
-
     @Test fun expenseSearchAndTransactionMenuStayConnected() {
         val date = LocalDate.now(ZoneId.of("Asia/Colombo")).withDayOfMonth(1).toString()
         val fixtures = listOf(
@@ -68,7 +57,6 @@ class ExpenseScreenIntegrationTest {
             ExpenseListScreen(fixtures, false, false, {}, {}, { edited = it }, {}, {},
                 onCategories = {}, onRecurring = {}, onSubscriptions = {}, onHome = {}, onIncome = {})
         } }
-        savePreview("expense-list-preview.png")
         compose.onNodeWithText("Search expenses…").performScrollTo().performTextInput("Lunch")
         closeKeyboard()
         compose.onNodeWithText("1 expense").assertExists()
@@ -93,7 +81,6 @@ class ExpenseScreenIntegrationTest {
         compose.onNodeWithText("Description / Note (optional)").performScrollTo().performTextInput("Coffee with friends")
         closeKeyboard()
         compose.onNodeWithText("Amount (LKR)").performScrollTo()
-        savePreview("expense-form-preview.png")
         compose.onNodeWithText("Save Expense").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals("2500", saved?.amount)

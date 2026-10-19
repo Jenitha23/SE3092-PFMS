@@ -19,9 +19,12 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
-
-import com.pfms.app.data.repository.FirestoreExpenseRepository
+import com.pfms.app.data.repository.OfflineFirstExpenseRepository
+import com.pfms.app.data.remote.firestore.FirestoreExpenseRemoteDataSource
+import com.pfms.app.data.remote.firestore.ExpenseRemoteDataSource
 import com.pfms.app.domain.repository.ExpenseRepository
+import com.pfms.app.data.repository.OfflineFirstDashboardRepository
+import com.pfms.app.domain.repository.DashboardRepository
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -30,7 +33,10 @@ abstract class RepositoryModule {
     abstract fun bindAdvancedExpenseRepository(repository: FirestoreAdvancedExpenseRepository): AdvancedExpenseRepository
 
     @Binds @Singleton
-    abstract fun bindExpenseRepository(repository: FirestoreExpenseRepository): ExpenseRepository
+    abstract fun bindExpenseRepository(repository: OfflineFirstExpenseRepository): ExpenseRepository
+
+    @Binds @Singleton
+    abstract fun bindExpenseRemote(repository: FirestoreExpenseRemoteDataSource): ExpenseRemoteDataSource
 
 
     @Binds
@@ -56,5 +62,9 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindSavingsGoalRepository(repository: OfflineFirstSavingsGoalRepository): SavingsGoalRepository
+    // Dashboard / analytics / history read side
+    @Binds
+    @Singleton
+    abstract fun bindDashboardRepository(repository: OfflineFirstDashboardRepository): DashboardRepository
 }
 

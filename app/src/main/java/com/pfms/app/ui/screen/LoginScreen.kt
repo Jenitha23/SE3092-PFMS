@@ -1,6 +1,7 @@
 package com.pfms.app.ui.screen
 
 import android.app.Activity
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +28,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -38,9 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pfms.app.R
 import com.pfms.app.ui.component.AuthTab
 import com.pfms.app.ui.component.ErrorBanner
-import com.pfms.app.ui.component.FinanceIllustration
 import com.pfms.app.ui.component.GoogleSignInButton
 import com.pfms.app.ui.component.LockVectorIcon
 import com.pfms.app.ui.component.MailVectorIcon
@@ -78,12 +80,19 @@ fun LoginScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
 
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding(),
-        color = MaterialTheme.colorScheme.background
+            .imePadding()
     ) {
+        // Full-screen background designed with illustration confined to the reserved hero area.
+        Image(
+            painter = painterResource(id = R.drawable.login),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.FillBounds
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -104,7 +113,7 @@ fun LoginScreen(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "PF",
+                    text = "TrackMy",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.5).sp
@@ -112,7 +121,7 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "MS",
+                    text = "Finances",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.5).sp
@@ -144,8 +153,9 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // ── Finance Illustration ───────────────────────────────────
-            FinanceIllustration()
+            // Preserve the original illustration space; artwork is now
+            // displayed full-screen by the background Image in the Box.
+            Spacer(modifier = Modifier.height(150.dp))
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -303,3 +313,4 @@ fun LoginScreen(
         }
     }
 }
+

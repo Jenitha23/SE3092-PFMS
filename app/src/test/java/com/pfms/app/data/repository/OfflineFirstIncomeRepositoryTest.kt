@@ -45,6 +45,7 @@ class OfflineFirstIncomeRepositoryTest {
     fun setup() {
         incomeDao = mock()
         incomeRemoteDataSource = mock()
+        whenever(incomeRemoteDataSource.observeSnapshots(any())).thenReturn(kotlinx.coroutines.flow.emptyFlow())
         authRepository = mock()
 
         whenever(authRepository.currentUser).thenReturn(flowOf(testUser))

@@ -3,6 +3,7 @@ package com.pfms.app.data.local.dao
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import androidx.room.Transaction
 import com.pfms.app.data.local.entity.IncomeEntity
 import com.pfms.app.data.local.entity.SyncStatus
 import kotlinx.coroutines.flow.Flow
@@ -13,6 +14,17 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface IncomeDao {
+    @Query("DELETE FROM incomes WHERE userId=:userId AND syncStatus='SYNCED' AND id NOT IN (:ids)")
+    suspend fun removeMissingSynced(userId: String, ids: List<String>)
+
+    @Transaction
+    suspend fun reconcile(userId: String, rows: List<IncomeEntity>, authoritative: Boolean) {
+        rows.forEach { row ->
+            val local = getIncomeById(userId, row.id)
+            if (local == null || local.syncStatus == SyncStatus.SYNCED) upsertIncome(row)
+        }
+        if (authoritative) removeMissingSynced(userId, rows.map { it.id })
+    }
 
     /**
      * Observes all active (non-deleted) income records for a user, sorted newest first.

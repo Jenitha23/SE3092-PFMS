@@ -63,11 +63,4 @@ fun ExpenseFormContent(
         )
     }
 
-    if (uiState.pendingDuplicate != null) {
-        ExpenseDuplicateDialog(
-            isSaving = uiState.isSaving,
-            onConfirm = viewModel::confirmDuplicateExpense,
-            onDismiss = viewModel::cancelDuplicateExpense
-        )
-    }
 }

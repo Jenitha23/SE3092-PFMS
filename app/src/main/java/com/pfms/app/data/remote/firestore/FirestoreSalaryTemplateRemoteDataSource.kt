@@ -9,6 +9,7 @@ import com.pfms.app.data.remote.firestore.mapper.toSalaryTemplate
 import com.pfms.app.domain.model.SalaryTemplate
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -73,7 +74,9 @@ class FirestoreSalaryTemplateRemoteDataSource @Inject constructor(
             .await()
     }
 
-    override fun observeSalaryTemplates(userId: String): Flow<List<SalaryTemplate>> = callbackFlow {
+    override fun observeSalaryTemplates(userId: String): Flow<List<SalaryTemplate>> = observeSnapshots(userId).map { it.rows }
+
+    override fun observeSnapshots(userId: String): Flow<RemoteRecords<SalaryTemplate>> = callbackFlow {
         validateAuthenticatedAccess(userId)
 
         val registration = userTemplatesCollection(userId)
@@ -83,7 +86,7 @@ class FirestoreSalaryTemplateRemoteDataSource @Inject constructor(
                     return@addSnapshotListener
                 }
                 val list = snapshot?.documents?.mapNotNull { it.toSalaryTemplate() }.orEmpty()
-                trySend(list)
+                trySend(RemoteRecords(list, snapshot != null && !snapshot.metadata.isFromCache && !snapshot.metadata.hasPendingWrites()))
             }
 
         awaitClose { registration.remove() }
