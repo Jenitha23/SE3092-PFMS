@@ -202,6 +202,10 @@ fun DashboardScreen(
                     .padding(horizontal = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                com.pfms.app.ui.component.WelcomeBackIndicator(onNavigateToAddIncome, onNavigateToAddExpense)
+                if (!uiState.isLoading && uiState.errorMessage == null) {
+                    com.pfms.app.ui.component.MonthlyDataIndicator(uiState.selectedMonth)
+                }
                 if (logoutError != null) ErrorBanner(message = logoutError)
 
                 if (uiState.errorMessage != null) {

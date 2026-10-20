@@ -88,7 +88,8 @@ fun SpendingAnalyticsScreen(
         onOpenHistory = onOpenHistory,
         onOpenIncomeAnalytics = onOpenIncomeAnalytics,
         onAddExpense = onAddExpense,
-        onAddIncome = onAddIncome
+        onAddIncome = onAddIncome,
+        monthlyData = { com.pfms.app.ui.component.MonthlyDataIndicator(it) }
     )
 }
 
@@ -104,7 +105,8 @@ fun SpendingAnalyticsContent(
     onOpenHistory: () -> Unit,
     onOpenIncomeAnalytics: () -> Unit,
     onAddExpense: () -> Unit = {},
-    onAddIncome: () -> Unit = {}
+    onAddIncome: () -> Unit = {},
+    monthlyData: @Composable (java.time.YearMonth) -> Unit = {}
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -146,6 +148,7 @@ fun SpendingAnalyticsContent(
                 onPrevious = onPreviousMonth,
                 onNext = onNextMonth
             )
+            monthlyData(uiState.selectedMonth)
 
             if (uiState.errorMessage != null) {
                 ErrorBanner(message = uiState.errorMessage)

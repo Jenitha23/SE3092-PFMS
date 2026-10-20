@@ -83,6 +83,7 @@ fun IncomeAnalyticsScreen(
         onExpenses = onExpenses,
         onGoals = onGoals,
         onAddIncome = onAddIncome,
+        monthlyData = { com.pfms.app.ui.component.MonthlyDataIndicator(it) },
         modifier = modifier
     )
 }
@@ -103,7 +104,8 @@ fun IncomeAnalyticsContent(
     onGoals: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onAddIncome: () -> Unit = {},
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    monthlyData: @Composable (YearMonth) -> Unit = {}
 ) {
     val textPrimary = DarkNavyText
     val brandEmerald = EmeraldPrimary
@@ -183,6 +185,7 @@ fun IncomeAnalyticsContent(
                     onPrevious = onPreviousMonth,
                     onNext = onNextMonth
                 )
+                monthlyData(uiState.selectedMonth)
 
                 // 2. Monthly Summary Card
                 val summary = uiState.monthlySummary ?: MonthlyIncomeSummary(
