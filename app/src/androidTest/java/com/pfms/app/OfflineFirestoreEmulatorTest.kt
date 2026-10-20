@@ -142,6 +142,40 @@ class OfflineFirestoreEmulatorTest {
         } finally { network(true); db.close() }
     }
 
+    @Test fun stage4HistoricalDatesAndManualRateSurviveOfflineAutomaticSync() = runBlocking {
+        enabled(); clients(); network(true)
+        val user = withTimeout(30_000) {
+            firebase.createUserWithEmailAndPassword("fr37-${UUID.randomUUID()}@example.test", "Fr37-Test-Password1!").await().user!!
+        }
+        repositories()
+        try {
+            network(false)
+            withTimeout(30_000) { connectivity.isOnline.first { !it } }
+            val before = System.currentTimeMillis()
+            incomes.addIncome(Income("fr37-income", user.uid, 10000, "USD", receivedDate = "2026-09-15",
+                amountLkrMinor = 3002500, exchangeRate = "300.25", exchangeRateDate = "2026-09-15"))
+            expenses.addExpense(Expense(id = "fr37-expense", amountMinor = 25000, date = "2025-09-20"))
+            assertEquals(2, db.pendingChangesDao().pendingCount(user.uid))
+            assertEquals("2026-09-15", incomes.getIncomeById("fr37-income")!!.receivedDate)
+            assertEquals("2025-09-20", expenses.getExpenseById("fr37-expense")!!.date)
+            network(true)
+            // The existing persisted, network-constrained jobs perform synchronization.
+            withTimeout(120_000) { while (db.pendingChangesDao().pendingCount(user.uid) > 0) delay(200) }
+            val income = firestore.collection("users").document(user.uid).collection("income").document("fr37-income").get(Source.SERVER).await()
+            val expense = firestore.collection("users").document(user.uid).collection("expenses").document("fr37-expense").get(Source.SERVER).await()
+            assertEquals("2026-09-15", income.getString("receivedDate"))
+            assertEquals("2025-09-20", expense.getString("date"))
+            assertEquals("300.25", income.getString("exchangeRate"))
+            assertEquals("2026-09-15", income.getString("exchangeRateDate"))
+            assertEquals(3002500L, income.getLong("amountLkrMinor"))
+            assertTrue(income.getLong("createdAt")!! >= before)
+            assertTrue(expense.getLong("createdAt")!! >= before)
+            assertTrue(incomes.syncPendingIncome().isSuccess); assertTrue(expenses.syncPending())
+            assertEquals(1, firestore.collection("users").document(user.uid).collection("income").get(Source.SERVER).await().size())
+            assertEquals(1, firestore.collection("users").document(user.uid).collection("expenses").get(Source.SERVER).await().size())
+        } finally { network(true); db.close() }
+    }
+
     @Test fun stage3RealTransactionsRetryLwwAndFirebaseUserIsolation() = runBlocking {
         enabled(); clients(); repositories(startWorkers = false)
         val uid = firebase.currentUser!!.uid
