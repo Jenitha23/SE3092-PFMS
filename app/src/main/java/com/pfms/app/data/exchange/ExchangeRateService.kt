@@ -97,15 +97,15 @@ class ExchangeRateService @Inject constructor() {
 
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
-                return ExchangeRateResult.Failure("API returned HTTP ${response.code}")
+                return ExchangeRateResult.Failure("The exchange rate service is unavailable. Try again or enter a rate manually.")
             }
 
             val body = response.body?.string()
-                ?: return ExchangeRateResult.Failure("Empty response from exchange rate API.")
+                ?: return ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
 
             val parsed = gson.fromJson(body, OpenErApiResponse::class.java)
             val lkr = parsed.rates["LKR"]
-                ?: return ExchangeRateResult.Failure("LKR rate not found in API response.")
+                ?: return ExchangeRateResult.Failure("This exchange rate is unavailable. Enter it manually.")
 
             ExchangeRateResult.Success(
                 rate = BigDecimal.valueOf(lkr),
@@ -116,7 +116,7 @@ class ExchangeRateService @Inject constructor() {
                 "Network error: Unable to reach exchange rate service. Check your internet connection."
             )
         } catch (e: Exception) {
-            ExchangeRateResult.Failure("Error fetching exchange rate: ${e.message}")
+            ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
         }
     }
 
@@ -130,23 +130,23 @@ class ExchangeRateService @Inject constructor() {
 
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
-                return ExchangeRateResult.Failure("API returned HTTP ${response.code}")
+                return ExchangeRateResult.Failure("The exchange rate service is unavailable. Try again or enter a rate manually.")
             }
 
             val body = response.body?.string()
-                ?: return ExchangeRateResult.Failure("Empty response from exchange rate API.")
+                ?: return ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
 
             val parsed = gson.fromJson(body, ExchangeRateResponse::class.java)
             val usdMap = parsed.usd
             val lkr = usdMap?.get("lkr")
-                ?: return ExchangeRateResult.Failure("LKR rate not found in fallback API.")
+                ?: return ExchangeRateResult.Failure("This exchange rate is unavailable. Enter it manually.")
 
             ExchangeRateResult.Success(
                 rate = BigDecimal.valueOf(lkr),
                 rateDate = parsed.date
             )
         } catch (e: Exception) {
-            ExchangeRateResult.Failure("Error: ${e.message}")
+            ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
         }
     }
 }

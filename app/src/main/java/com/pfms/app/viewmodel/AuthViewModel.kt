@@ -92,7 +92,7 @@ class AuthViewModel @Inject constructor(
                 onSuccess = { _uiState.value = AuthUiState(infoMessage = successMessage) },
                 onFailure = { error ->
                     _uiState.value = AuthUiState(
-                        errorMessage = error.message ?: "Something went wrong. Please try again."
+                        errorMessage = if (error is com.pfms.app.domain.model.AuthException) error.message else "Something went wrong. Please try again."
                     )
                 }
             )

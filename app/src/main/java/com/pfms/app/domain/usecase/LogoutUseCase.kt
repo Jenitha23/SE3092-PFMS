@@ -20,7 +20,7 @@ class LogoutUseCase @Inject constructor(
                 localDataRepository.clearLocalData()
                 LogoutResult.Success
             },
-            onFailure = { LogoutResult.Failure(it.message ?: "Could not log out. Please try again.") }
+            onFailure = { LogoutResult.Failure("Could not log out. Please try again.") }
         )
     }
 }

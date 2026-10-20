@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +30,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ErrorBanner(
     message: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null
 ) {
     AnimatedVisibility(
         visible = message != null,
@@ -54,9 +56,11 @@ fun ErrorBanner(
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = message.orEmpty(),
+                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
+                if (onRetry != null) TextButton(onClick = onRetry) { Text("Retry") }
             }
         }
     }
