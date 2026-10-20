@@ -26,7 +26,8 @@ fun SalaryTemplateScreen(
     onSaveTemplate: (String) -> Unit,
     modifier: Modifier = Modifier,
     isSaving: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     var amount by rememberSaveable(initialTemplate?.id) {
         mutableStateOf(
@@ -139,12 +140,7 @@ fun SalaryTemplateScreen(
                 }
             }
 
-            errorMessage?.let {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
+            com.pfms.app.ui.component.ErrorBanner(errorMessage, onRetry = if (isSaving) null else onRetry)
 
             Button(
                 onClick = {

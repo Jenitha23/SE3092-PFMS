@@ -52,7 +52,7 @@ fun ExpenseListContent(
 
         onBack = onBack,
         onRepeatExpense = onRepeatExpense,
-        onRetry = viewModel::retryLoading,
+        onRetry = if (uiState.canRetry) viewModel::retry else null,
         onCategories = onCategories,
         onRecurring = onRecurring,
         onSubscriptions = onSubscriptions,

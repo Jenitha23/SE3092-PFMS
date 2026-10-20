@@ -44,7 +44,7 @@ fun ExpenseListScreen(
     expenses: List<Expense>, isLoading: Boolean, isDeleting: Boolean,
     onAddExpense: () -> Unit, onQuickAdd: () -> Unit, onEditExpense: (String) -> Unit,
     onDeleteExpense: (String) -> Unit, onBack: () -> Unit, errorMessage: String? = null,
-    onRepeatExpense: (String) -> Unit = {}, onRetry: () -> Unit = {},
+    onRepeatExpense: (String) -> Unit = {}, onRetry: (() -> Unit)? = null,
     onCategories: (() -> Unit)? = null, onRecurring: (() -> Unit)? = null,
     onSubscriptions: (() -> Unit)? = null, onHome: (() -> Unit)? = null, onIncome: (() -> Unit)? = null,
     onGoals: (() -> Unit)? = null, onInsights: (() -> Unit)? = null
@@ -226,7 +226,7 @@ fun ExpenseListScreen(
                 Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
                     Column(Modifier.padding(14.dp)) {
                         Text(errorMessage, color = MaterialTheme.colorScheme.onErrorContainer)
-                        TextButton(onClick = onRetry) { Text("Retry") }
+                        if (onRetry != null) TextButton(onClick = onRetry) { Text("Retry") }
                     }
                 }
             }

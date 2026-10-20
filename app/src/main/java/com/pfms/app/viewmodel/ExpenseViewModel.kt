@@ -1,6 +1,8 @@
 package com.pfms.app.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.pfms.app.data.error.ErrorAction
+import com.pfms.app.data.error.OperationErrors
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.domain.model.Expense
 import com.pfms.app.domain.model.ExpenseClassification
@@ -54,6 +56,7 @@ data class ExpenseUiState(
     val isDeleting: Boolean = false,
     val pendingDuplicate: Expense? = null,
     val errorMessage: String? = null,
+    val canRetry: Boolean = false,
     val operationSuccessful: Boolean = false,
     val successfulOperation: ExpenseOperation? = null,
     val lastUsedPaymentMethod: ExpensePaymentMethod =
@@ -76,16 +79,39 @@ class ExpenseViewModel @Inject constructor(
 
     private var observation: Job? = null
     private var storedConflict: Expense? = null
+    private var createId: String? = null
+    private var failedAction: (() -> Unit)? = null
+    private var loadFailed = false
+
+    fun beginForm() {
+        createId = null
+        clearError()
+        clearSuccess()
+    }
+
+    fun retry() {
+        if (_uiState.value.isSaving || _uiState.value.isDeleting || !_uiState.value.canRetry) return
+        failedAction?.invoke()
+    }
+
+    private fun failure(error: Throwable, action: ErrorAction, retry: () -> Unit) {
+        val problem = OperationErrors.present(error, action)
+        if (action != ErrorAction.LOAD) loadFailed = false
+        failedAction = retry.takeIf { problem.canRetry }
+        _uiState.value = _uiState.value.copy(isSaving = if (action == ErrorAction.LOAD) _uiState.value.isSaving else false,
+            isDeleting = if (action == ErrorAction.LOAD) _uiState.value.isDeleting else false,
+            errorMessage = problem.message, canRetry = problem.canRetry)
+    }
 
     init {
         observeExpenses()
         viewModelScope.launch {
-            repository.observeLastPaymentMethod().collect { method ->
+            repository.observeLastPaymentMethod().catch { error -> failure(error, ErrorAction.LOAD, ::retryLoading) }.collect { method ->
                 _uiState.value = _uiState.value.copy(lastUsedPaymentMethod = method)
             }
         }
         viewModelScope.launch {
-            repository.observeDuplicateConflict().collect { expense ->
+            repository.observeDuplicateConflict().catch { error -> failure(error, ErrorAction.LOAD, ::retryLoading) }.collect { expense ->
                 val old = storedConflict
                 storedConflict = expense
                 val pending = _uiState.value.pendingDuplicate
@@ -106,17 +132,16 @@ class ExpenseViewModel @Inject constructor(
             flow { emitAll(repository.observeExpenses()) }
                 .retryWhen { cause, attempt ->
                     if (cause is CancellationException) throw cause
-                    _uiState.value = _uiState.value.copy(isLoading = false,
-                        errorMessage = "Unable to load expenses. Retrying; tap Retry to try now.")
+                    loadFailed = true
+                    failure(cause, ErrorAction.LOAD, ::retryLoading)
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    if (!_uiState.value.canRetry) return@retryWhen false
                     delay((attempt + 1).coerceAtMost(15) * 2_000L)
                     true
                 }
-                .catch {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage =
-                            "Unable to load expenses. Please retry."
-                    )
+                .catch { error ->
+                    failure(error, ErrorAction.LOAD, ::retryLoading)
+                    _uiState.value = _uiState.value.copy(isLoading = false)
                 }
                 .collect { records ->
                     _uiState.value = _uiState.value.copy(
@@ -128,8 +153,10 @@ class ExpenseViewModel @Inject constructor(
                             }
                         ),
                         isLoading = false,
-                        errorMessage = null
+                        errorMessage = if (loadFailed) null else _uiState.value.errorMessage,
+                        canRetry = if (loadFailed) false else _uiState.value.canRetry
                     )
+                    loadFailed = false
                 }
         }
     }
@@ -207,7 +234,7 @@ class ExpenseViewModel @Inject constructor(
         val now = System.currentTimeMillis()
 
         val expense = Expense(
-            id = UUID.randomUUID().toString(),
+            id = createId ?: UUID.randomUUID().toString().also { createId = it },
 
             // Repository must derive and enforce
             // ownership using Firebase Auth.
@@ -231,6 +258,7 @@ class ExpenseViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             isSaving = true,
             errorMessage = null,
+            canRetry = false,
             operationSuccessful = false,
             successfulOperation = null
         )
@@ -245,7 +273,7 @@ class ExpenseViewModel @Inject constructor(
                 val duplicate =
                     ExpenseRules.isDuplicateWithin60Seconds(
                         newExpense = expense,
-                        recentExpenses = recentExpenses,
+                        recentExpenses = recentExpenses.filter { it.id != expense.id },
                         nowMillis = now
                     )
 
@@ -261,15 +289,9 @@ class ExpenseViewModel @Inject constructor(
 
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
-                _uiState.value = _uiState.value.copy(isSaving = false,
-                    errorMessage = "Connection timed out. Check your connection and retry.")
+                failure(e, ErrorAction.SAVE) { addExpense(input) }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage =
-                        "Unable to check recent expenses. " +
-                                "Please retry."
-                )
+                failure(e, ErrorAction.SAVE) { addExpense(input) }
             }
         }
     }
@@ -318,6 +340,7 @@ class ExpenseViewModel @Inject constructor(
     ) {
         try {
             networkOperation { repository.addExpenseChecked(expense, allowDuplicate) }
+            createId = null
 
             _uiState.value = _uiState.value.copy(
                 isSaving = false,
@@ -325,6 +348,7 @@ class ExpenseViewModel @Inject constructor(
                 operationSuccessful = true,
                 successfulOperation = ExpenseOperation.ADD,
                 errorMessage = null,
+                canRetry = false,
                 lastUsedPaymentMethod =
                     expense.paymentMethod
             )
@@ -333,15 +357,16 @@ class ExpenseViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isSaving = false, pendingDuplicate = expense)
         } catch (e: CancellationException) {
             if (e !is TimeoutCancellationException) throw e
-            _uiState.value = _uiState.value.copy(isSaving = false,
-                errorMessage = "Connection timed out. Check the list before retrying; this expense may still sync.")
+            failure(e, ErrorAction.SAVE) { retryNewExpense(expense, allowDuplicate) }
         } catch (e: Exception) {
-            _uiState.value = _uiState.value.copy(
-                isSaving = false,
-                errorMessage =
-                    "Unable to save expense. Please retry."
-            )
+            failure(e, ErrorAction.SAVE) { retryNewExpense(expense, allowDuplicate) }
         }
+    }
+
+    private fun retryNewExpense(expense: Expense, allowDuplicate: Boolean) {
+        if (_uiState.value.isSaving || _uiState.value.isDeleting) return
+        _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, canRetry = false)
+        viewModelScope.launch { persistNewExpense(expense, allowDuplicate) }
     }
 
     // -----------------------------------------
@@ -380,6 +405,7 @@ class ExpenseViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             isSaving = true,
             errorMessage = null,
+            canRetry = false,
             operationSuccessful = false,
             successfulOperation = null
         )
@@ -394,7 +420,8 @@ class ExpenseViewModel @Inject constructor(
                         _uiState.value.copy(
                             isSaving = false,
                             errorMessage =
-                                "Expense record not found."
+                                "This expense is no longer available. Return to the list and choose another record.",
+                            canRetry = false
                         )
                     return@launch
                 }
@@ -431,15 +458,9 @@ class ExpenseViewModel @Inject constructor(
 
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
-                _uiState.value = _uiState.value.copy(isSaving = false,
-                    errorMessage = "Connection timed out. Check the list before retrying; changes may still sync.")
+                failure(e, ErrorAction.SAVE) { updateExpense(expenseId, input) }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage =
-                        "Unable to update expense. " +
-                                "Please retry."
-                )
+                failure(e, ErrorAction.SAVE) { updateExpense(expenseId, input) }
             }
         }
     }
@@ -458,6 +479,7 @@ class ExpenseViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             isDeleting = true,
             errorMessage = null,
+            canRetry = false,
             operationSuccessful = false,
             successfulOperation = null
         )
@@ -473,15 +495,9 @@ class ExpenseViewModel @Inject constructor(
                 )
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
-                _uiState.value = _uiState.value.copy(isDeleting = false,
-                    errorMessage = "Connection timed out. Check the list before retrying; deletion may still sync.")
+                failure(e, ErrorAction.DELETE) { deleteExpense(expenseId) }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isDeleting = false,
-                    errorMessage =
-                        "Unable to delete expense. " +
-                                "Please retry."
-                )
+                failure(e, ErrorAction.DELETE) { deleteExpense(expenseId) }
             }
         }
     }
@@ -498,14 +514,15 @@ class ExpenseViewModel @Inject constructor(
     }
 
     fun clearError() {
+        failedAction = null
         _uiState.value = _uiState.value.copy(
-            errorMessage = null
+            errorMessage = null, canRetry = false
         )
     }
 
     private fun showError(message: String) {
         _uiState.value = _uiState.value.copy(
-            errorMessage = message
+            errorMessage = message, canRetry = false
         )
     }
 }

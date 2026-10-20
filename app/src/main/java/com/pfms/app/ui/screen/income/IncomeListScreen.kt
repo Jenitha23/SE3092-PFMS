@@ -58,7 +58,8 @@ fun IncomeListScreen(
     onNavigateToHome: (() -> Unit)? = null,
     onNavigateToExpenses: (() -> Unit)? = null,
     onNavigateToGoals: (() -> Unit)? = null,
-    currencyTotals: IncomeCurrencyTotals = IncomeSummaryCalculator.currencyTotals(incomes)
+    currencyTotals: IncomeCurrencyTotals = IncomeSummaryCalculator.currencyTotals(incomes),
+    onRetry: (() -> Unit)? = null
 ) {
     var incomeToDelete by remember { mutableStateOf<Income?>(null) }
     var selectedFilter by remember { mutableStateOf("All") }
@@ -449,11 +450,7 @@ fun IncomeListScreen(
             // Error display
             if (errorMessage != null) {
                 item {
-                    Text(
-                        text = errorMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    com.pfms.app.ui.component.ErrorBanner(errorMessage, onRetry = onRetry)
                 }
             }
 

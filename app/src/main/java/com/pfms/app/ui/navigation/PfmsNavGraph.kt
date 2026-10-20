@@ -467,6 +467,7 @@ fun PfmsNavGraph(
                 currencyTotals = incomeState.currencyTotals,
                 isLoading = incomeState.isLoading,
                 errorMessage = incomeState.errorMessage,
+                onRetry = if (incomeState.canRetry) incomeViewModel::retry else null,
 
                 totalRealizedIncomeMinor = incomeState.totalRealizedIncomeMinor,
                 monthlyRealizedIncomeMinor = incomeState.monthlyRealizedIncomeMinor,
@@ -545,6 +546,7 @@ fun PfmsNavGraph(
 
             IncomeFormScreen(
                 onBack = {
+                    incomeViewModel.discardDraft()
                     incomeViewModel.clearExchangeRate()
                     navController.popBackStack()
                 },
@@ -564,6 +566,7 @@ fun PfmsNavGraph(
                 },
                 isSaving = incomeState.isSaving,
                 errorMessage = incomeState.errorMessage,
+                canRetry = incomeState.canRetry,
                 exchangeRate = incomeState.exchangeRate,
                 exchangeRateDate = incomeState.exchangeRateDate,
                 isRateFetching = incomeState.isRateFetching,
@@ -610,6 +613,7 @@ fun PfmsNavGraph(
                 IncomeFormScreen(
                     initialIncome = incomeItem,
                     onBack = {
+                        incomeViewModel.discardDraft()
                         incomeViewModel.clearExchangeRate()
                         navController.popBackStack()
                     },
@@ -629,6 +633,7 @@ fun PfmsNavGraph(
                     },
                     isSaving = incomeState.isSaving,
                     errorMessage = incomeState.errorMessage,
+                    canRetry = incomeState.canRetry,
                     exchangeRate = incomeState.exchangeRate,
                     exchangeRateDate = incomeState.exchangeRateDate,
                     isRateFetching = incomeState.isRateFetching,
@@ -681,6 +686,7 @@ fun PfmsNavGraph(
                 initialTemplate = salaryState.template,
                 isSaving = salaryState.isSaving,
                 errorMessage = salaryState.errorMessage,
+                onRetry = if (salaryState.canRetry) salaryViewModel::retry else null,
                 onBack = {
                     navController.popBackStack()
                 },

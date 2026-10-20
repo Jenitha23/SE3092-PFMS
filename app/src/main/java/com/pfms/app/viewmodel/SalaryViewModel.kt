@@ -1,6 +1,9 @@
 
 package com.pfms.app.viewmodel
 
+import com.pfms.app.data.error.ErrorAction
+import com.pfms.app.data.error.OperationErrors
+import kotlinx.coroutines.Job
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.domain.model.SalaryTemplate
@@ -24,6 +27,7 @@ data class SalaryUiState(
     val isSaving: Boolean = false,
     val showConfirmation: Boolean = false,
     val errorMessage: String? = null,
+    val canRetry: Boolean = false,
     val operationSuccessful: Boolean = false
 )
 
@@ -43,6 +47,16 @@ class SalaryViewModel @Inject constructor(
 
     // Prevent a dismissed reminder from reopening
     // repeatedly during the same ViewModel session.
+    private var observation: Job? = null
+    private var failedAction: (() -> Unit)? = null
+    private var loadFailed = false
+    fun retry() { if (!_uiState.value.isSaving && _uiState.value.canRetry) failedAction?.invoke() }
+    private fun failure(error: Throwable, action: ErrorAction, retry: () -> Unit) {
+        val problem = OperationErrors.present(error, action)
+        failedAction = retry
+        _uiState.value = _uiState.value.copy(isSaving = false, isLoading = false,
+            errorMessage = problem.message, canRetry = problem.canRetry)
+    }
     private var dismissedMonth: String? = null
 
     init {
@@ -54,14 +68,12 @@ class SalaryViewModel @Inject constructor(
     // -----------------------------------------
 
     private fun observeTemplate() {
-        viewModelScope.launch {
+        observation?.cancel()
+        observation = viewModelScope.launch {
             repository.observeSalaryTemplate()
-                .catch {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage =
-                            "Unable to load salary template."
-                    )
+                .catch { error ->
+                    loadFailed = true
+                    failure(error, ErrorAction.LOAD, ::observeTemplate)
                 }
                 .collect { template ->
                     if (template?.id != _uiState.value.template?.id) dismissedMonth = null
@@ -84,8 +96,9 @@ class SalaryViewModel @Inject constructor(
                         template = template,
                         isLoading = false,
                         showConfirmation = shouldPrompt,
-                        errorMessage = null
+                        errorMessage = if (loadFailed) null else _uiState.value.errorMessage
                     )
+                    loadFailed = false
                 }
         }
     }
@@ -188,12 +201,7 @@ class SalaryViewModel @Inject constructor(
 
             } catch (e: Exception) {
 
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage =
-                        "Unable to save salary template. " +
-                                "Please try again."
-                )
+                failure(e, ErrorAction.SAVE) { saveSalaryTemplate(amount) }
             }
         }
     }
@@ -264,12 +272,7 @@ class SalaryViewModel @Inject constructor(
 
             } catch (e: Exception) {
 
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage =
-                        "Unable to confirm salary. " +
-                                "Please retry."
-                )
+                failure(e, ErrorAction.SAVE) { confirmSalary(amount) }
             }
         }
     }
@@ -319,7 +322,7 @@ class SalaryViewModel @Inject constructor(
     private fun showError(message: String) {
 
         _uiState.value = _uiState.value.copy(
-            errorMessage = message
+            errorMessage = message, canRetry = false
         )
     }
 

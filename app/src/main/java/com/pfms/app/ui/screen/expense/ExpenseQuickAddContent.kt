@@ -17,8 +17,7 @@ fun ExpenseQuickAddContent(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
-        viewModel.clearSuccess()
-        viewModel.clearError()
+        viewModel.beginForm()
     }
 
     LaunchedEffect(uiState.successfulOperation) {
@@ -33,6 +32,7 @@ fun ExpenseQuickAddContent(
         defaultPaymentMethod = uiState.lastUsedPaymentMethod,
         isSaving = uiState.isSaving,
         errorMessage = uiState.errorMessage,
+        canRetry = uiState.canRetry,
         onDismiss = onDismiss,
         onSave = { amount, categoryId, categoryName, default ->
             viewModel.quickAddExpense(amount, categoryId, categoryName, default)
