@@ -16,6 +16,8 @@ object FirestoreCollections {
     const val RECURRING_TEMPLATES = "recurringTemplates"
     const val REMINDERS = "reminders"
 
+    const val EXPENSE_DUPLICATE_GUARDS = "expenseDuplicateGuards"
+
     /**
      * Every subcollection under users/{uid}. Account deletion (FR-06) walks this list, so any
      * new subcollection MUST be added here (and to firestore.rules).
@@ -28,6 +30,7 @@ object FirestoreCollections {
         SAVINGS_GOALS,
         GOAL_CONTRIBUTIONS,
         RECURRING_TEMPLATES,
-        REMINDERS
+        REMINDERS,
+        EXPENSE_DUPLICATE_GUARDS
     )
 }
