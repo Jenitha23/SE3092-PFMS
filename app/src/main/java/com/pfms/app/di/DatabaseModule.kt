@@ -34,7 +34,8 @@ object DatabaseModule {
             .addMigrations(
                 PfmsDatabase.MIGRATION_1_4,
                 PfmsDatabase.MIGRATION_2_4,
-                PfmsDatabase.MIGRATION_3_4
+                PfmsDatabase.MIGRATION_3_4,
+                PfmsDatabase.MIGRATION_4_5
             )
             .fallbackToDestructiveMigration()
             .build()

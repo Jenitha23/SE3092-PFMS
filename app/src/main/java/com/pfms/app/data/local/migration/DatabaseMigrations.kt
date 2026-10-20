@@ -297,6 +297,17 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
 }
 
 /**
+ * Version 4 was used by both the expense-only and merged savings schemas. Bump the version so
+ * Room runs schema reconciliation instead of rejecting the older version 4 identity hash.
+ * The idempotent upgrade also preserves data on devices that already have the savings tables.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        upgradeToVersion4(db)
+    }
+}
+
+/**
  * Historical expense migration 1 -> 2 (retained for backward compatibility and tests).
  */
 val HISTORICAL_EXPENSE_MIGRATION_1_2 = object : Migration(1, 2) {

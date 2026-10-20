@@ -36,7 +36,7 @@ import com.pfms.app.data.local.migration.HISTORICAL_EXPENSE_MIGRATION_2_3
         ExpenseCategoryEntity::class,
         RecurringExpenseEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class PfmsDatabase : RoomDatabase() {
@@ -52,6 +52,7 @@ abstract class PfmsDatabase : RoomDatabase() {
         val MIGRATION_1_4: Migration = com.pfms.app.data.local.migration.MIGRATION_1_4
         val MIGRATION_2_4: Migration = com.pfms.app.data.local.migration.MIGRATION_2_4
         val MIGRATION_3_4: Migration = com.pfms.app.data.local.migration.MIGRATION_3_4
+        val MIGRATION_4_5: Migration = com.pfms.app.data.local.migration.MIGRATION_4_5
 
         // Retained for backward compatibility and tests.
         val MIGRATION_1_2: Migration = HISTORICAL_EXPENSE_MIGRATION_1_2

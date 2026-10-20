@@ -170,7 +170,7 @@ class OfflineExpenseIntegrationTest {
             it.version = 3
         }
         db = Room.databaseBuilder(context, PfmsDatabase::class.java, name)
-            .addMigrations(PfmsDatabase.MIGRATION_3_4).build()
+            .addMigrations(PfmsDatabase.MIGRATION_3_4, PfmsDatabase.MIGRATION_4_5).build()
         assertEquals("Rent", db.expenseCategoryDao().observeCategories(uid).first().single().name)
         assertTrue(db.expenseDao().observe(uid).first().isEmpty())
     }
