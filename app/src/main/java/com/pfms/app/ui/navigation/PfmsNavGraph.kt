@@ -26,7 +26,6 @@ import com.pfms.app.ui.screen.LockScreen
 import com.pfms.app.ui.screen.LoginScreen
 import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
-import com.pfms.app.ui.screen.PrivacyPolicyScreen
 import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.ui.screen.savings.SavingsGoalScreen
 import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
@@ -57,6 +56,8 @@ import com.pfms.app.ui.screen.expense.CategoriesScreen
 import com.pfms.app.ui.screen.expense.RecurringExpensesScreen
 import com.pfms.app.ui.screen.expense.ExpenseReminderPermission
 import com.pfms.app.viewmodel.ExpenseViewModel
+import com.pfms.app.viewmodel.SettingsViewModel
+import com.pfms.app.ui.screen.BiometricOnboardingDialog
 import com.pfms.app.viewmodel.SessionViewModel
 import com.pfms.app.viewmodel.IncomeOnboardingViewModel
 import com.pfms.app.ui.screen.income.IncomeOnboardingScreen
@@ -85,6 +86,10 @@ fun PfmsNavGraph(
     onReminderConsumed: () -> Unit = {}
 ) {
 
+    val biometricSettingsViewModel: SettingsViewModel = hiltViewModel()
+    val biometricPromptShown by biometricSettingsViewModel.biometricPromptShown.collectAsStateWithLifecycle()
+    val biometricEnabled by biometricSettingsViewModel.biometricEnabled.collectAsStateWithLifecycle()
+    val biometricAvailable = remember { biometricSettingsViewModel.isBiometricAvailable() }
     val advancedExpenseViewModel: AdvancedExpenseViewModel = hiltViewModel()
     val onboarding: IncomeOnboardingViewModel = hiltViewModel()
     val onboardingState by onboarding.uiState.collectAsStateWithLifecycle()
@@ -117,54 +122,49 @@ fun PfmsNavGraph(
     }
 
     // -----------------------------------------
-    // LIFECYCLE-AWARE APP LOCK
+    // LIFECYCLE-AWARE APP LOCK (FR-04)
     // -----------------------------------------
-
-    var hasResumedOnce by rememberSaveable {
-        mutableStateOf(false)
-    }
-
-    var wasAuthenticatedOnPause by rememberSaveable {
-        mutableStateOf(false)
-    }
-
+    // Only lock after the app has actually been hidden for at least 45 seconds.
+    // ON_PAUSE/ON_RESUME can occur during a permission dialog or account chooser,
+    // which should not instantly lock an already authenticated user.
+    val lockGracePeriodMs = 45_000L
     val lifecycleOwner = LocalLifecycleOwner.current
+    val authenticatedNow by rememberUpdatedState(session is SessionState.Authenticated)
+    var stoppedAtElapsedMs by remember { mutableLongStateOf(0L) }
+    var stoppedWhileAuthenticated by remember { mutableStateOf(false) }
 
-    DisposableEffect(lifecycleOwner) {
-
+    DisposableEffect(lifecycleOwner, sessionViewModel) {
         val observer = LifecycleEventObserver { _, event ->
-
             when (event) {
-
-                Lifecycle.Event.ON_RESUME -> {
-
-                    if (
-                        hasResumedOnce &&
-                        wasAuthenticatedOnPause
-                    ) {
-                        sessionViewModel.lockApp()
+                Lifecycle.Event.ON_STOP -> {
+                    stoppedWhileAuthenticated = authenticatedNow
+                    stoppedAtElapsedMs = if (authenticatedNow) {
+                        android.os.SystemClock.elapsedRealtime()
+                    } else {
+                        0L
                     }
-
-                    hasResumedOnce = true
                 }
 
-                Lifecycle.Event.ON_PAUSE -> {
-
-                    wasAuthenticatedOnPause =
-                        session is SessionState.Authenticated
+                Lifecycle.Event.ON_START -> {
+                    val elapsedMs = if (stoppedAtElapsedMs != 0L) {
+                        android.os.SystemClock.elapsedRealtime() - stoppedAtElapsedMs
+                    } else {
+                        0L
+                    }
+                    val shouldLock = stoppedWhileAuthenticated &&
+                            authenticatedNow &&
+                            stoppedAtElapsedMs != 0L &&
+                            elapsedMs >= lockGracePeriodMs
+                    stoppedAtElapsedMs = 0L
+                    stoppedWhileAuthenticated = false
+                    if (shouldLock) sessionViewModel.lockApp()
                 }
 
-                else -> {
-                    // No operation
-                }
+                else -> Unit
             }
         }
-
         lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // -----------------------------------------
@@ -424,17 +424,8 @@ fun PfmsNavGraph(
 
                 onNavigateBack = {
                     navController.popBackStack()
-                },
-                onNavigateToPrivacyPolicy = {
-                    navController.navigate(Routes.PrivacyPolicy) {
-                        launchSingleTop = true
-                    }
                 }
             )
-        }
-
-        composable(Routes.PrivacyPolicy) {
-            PrivacyPolicyScreen(onBack = { navController.popBackStack() })
         }
 
         // -------------------------------------
@@ -948,6 +939,25 @@ fun PfmsNavGraph(
     // Do not display it during login, while locked, or on form screens.
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
+    // FR-04: Ask once whether the signed-in user wants an optional biometric app lock.
+    // Wait until onboarding and unlocking are complete; never interrupt authentication.
+    val showBiometricOffer =
+        targetRoute == Routes.Dashboard &&
+                currentRoute == Routes.Dashboard &&
+                biometricPromptShown == false &&
+                !biometricEnabled &&
+                biometricAvailable &&
+                !salaryUiState.showConfirmation &&
+                expenseState.pendingDuplicate == null &&
+                !showDashboardQuickAdd
+
+    if (showBiometricOffer) {
+        BiometricOnboardingDialog(
+            onEnable = { biometricSettingsViewModel.enableBiometricFromPrompt() },
+            onNotNow = { biometricSettingsViewModel.dismissBiometricPrompt() }
+        )
+    }
+
     val canShowSalaryReminder =
         targetRoute == Routes.Dashboard &&
                 (currentRoute == Routes.Dashboard || currentRoute == Routes.IncomeList)
