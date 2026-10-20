@@ -33,5 +33,7 @@ data class SavingsGoalUiState(
     val isOverdue: Boolean = false,
 
     val errorMessage: String? = null,
-    val operationInProgress: Boolean = false
+    val operationInProgress: Boolean = false,
+    val canRetry: Boolean = false,
+    val successVersion: Long = 0L
 )

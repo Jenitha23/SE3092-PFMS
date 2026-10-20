@@ -625,7 +625,7 @@ class SavingsGoalViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals("An active savings goal already exists", state.errorMessage)
+        assertEquals("You already have an active savings goal. Edit or archive it before creating another.", state.errorMessage)
         assertEquals("g-1", state.activeGoal?.id)
     }
 
@@ -813,7 +813,7 @@ class SavingsGoalViewModelTest {
         viewModel.createGoal(goal)
         advanceUntilIdle()
 
-        assertEquals("Authentication required: no active user session", viewModel.uiState.value.errorMessage)
+        assertEquals("Please sign in again to continue.", viewModel.uiState.value.errorMessage)
         assertTrue(savingsGoalRepository.goals.value.isEmpty())
     }
 
@@ -825,7 +825,7 @@ class SavingsGoalViewModelTest {
         viewModel.createGoal(SavingsGoal(id = "g-1", status = GoalStatus.ACTIVE))
         advanceUntilIdle()
 
-        assertEquals("Firestore connection reset", viewModel.uiState.value.errorMessage)
+        assertEquals("Something went wrong while saving. Please try again.", viewModel.uiState.value.errorMessage)
     }
 
     // 35. operationInProgress resets after success
@@ -856,7 +856,7 @@ class SavingsGoalViewModelTest {
         viewModel.createGoal(SavingsGoal(id = "g-1", status = GoalStatus.ACTIVE))
         advanceUntilIdle()
 
-        assertEquals("Error", viewModel.uiState.value.errorMessage)
+        assertEquals("Something went wrong while saving. Please try again.", viewModel.uiState.value.errorMessage)
 
         viewModel.clearError()
         advanceUntilIdle()
@@ -905,5 +905,44 @@ class SavingsGoalViewModelTest {
         advanceUntilIdle()
 
         assertEquals("No active savings goal found", viewModel.uiState.value.errorMessage)
+    }
+
+    @Test fun newGoalWithDefaultIdCanRetryWithoutDuplicateCreation() = runTest {
+        savingsGoalRepository.failureException = java.io.IOException("private Firestore host")
+        val draft = SavingsGoal(name = "Emergency fund", targetAmountMinor = 500000,
+            targetDate = "2027-10-01", openingSavedAmountMinor = 1200)
+        viewModel.createGoal(draft)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.canRetry)
+        assertEquals(0L, viewModel.uiState.value.successVersion)
+        savingsGoalRepository.failureException = null
+        viewModel.retry(); viewModel.retry()
+        advanceUntilIdle()
+        val saved = savingsGoalRepository.goals.value.single()
+        assertTrue(saved.id.isNotBlank())
+        assertEquals("Emergency fund", saved.name)
+        assertEquals(500000L, saved.targetAmountMinor)
+        assertEquals("2027-10-01", saved.targetDate)
+        assertEquals(1200L, saved.openingSavedAmountMinor)
+        assertEquals(1L, viewModel.uiState.value.successVersion)
+        assertNull(viewModel.uiState.value.errorMessage)
+    }
+
+    @Test fun contributionRetryPreservesDraftAndCreatesOneLedgerEntry() = runTest {
+        savingsGoalRepository.goals.value = listOf(SavingsGoal(id = "goal", userId = testUser.uid, status = GoalStatus.ACTIVE))
+        advanceUntilIdle()
+        savingsGoalRepository.failureException = java.io.IOException("offline")
+        viewModel.addContribution("goal", 12345, "Bonus", "2026-10-01")
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.canRetry)
+        savingsGoalRepository.failureException = null
+        viewModel.retry(); viewModel.retry()
+        advanceUntilIdle()
+        val saved = savingsGoalRepository.transactions.value.single()
+        assertEquals(12345L, saved.amountMinor)
+        assertEquals("Bonus", saved.note)
+        assertEquals("2026-10-01", saved.date)
+        assertEquals(GoalTransactionType.CONTRIBUTION, saved.transactionType)
+        assertEquals(1L, viewModel.uiState.value.successVersion)
     }
 }
