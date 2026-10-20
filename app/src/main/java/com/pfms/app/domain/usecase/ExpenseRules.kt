@@ -63,9 +63,7 @@ object ExpenseRules {
             return "Select an expense category."
         }
 
-        try {
-            LocalDate.parse(date)
-        } catch (e: DateTimeParseException) {
+        if (FinancialEntryDate.parse(date) == null) {
             return "Select a valid expense date."
         }
 

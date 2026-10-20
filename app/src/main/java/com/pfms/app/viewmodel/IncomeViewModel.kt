@@ -316,9 +316,7 @@ class IncomeViewModel @Inject constructor(
                 return@launch
             }
 
-            try {
-                LocalDate.parse(receivedDate)
-            } catch (e: Exception) {
+            if (com.pfms.app.domain.usecase.FinancialEntryDate.parse(receivedDate) == null) {
                 showError("Invalid received date.")
                 return@launch
             }
@@ -507,9 +505,7 @@ class IncomeViewModel @Inject constructor(
                 return@launch
             }
 
-            try {
-                LocalDate.parse(receivedDate)
-            } catch (e: Exception) {
+            if (com.pfms.app.domain.usecase.FinancialEntryDate.parse(receivedDate) == null) {
                 showError("Invalid received date.")
                 return@launch
             }

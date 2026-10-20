@@ -1168,15 +1168,15 @@ fun IncomeFormScreen(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(
+                    enabled = datePickerState.selectedDateMillis != null,
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
                             val selectedLocalDate = Instant.ofEpochMilli(millis)
                                 .atZone(ZoneOffset.UTC)
                                 .toLocalDate()
-                            receivedDate = selectedLocalDate.toString()
-                            if (currency == "USD") {
-                                onClearExchangeRate()
-                                onFetchExchangeRate(receivedDate)
+                            if (receivedDate != selectedLocalDate.toString()) {
+                                receivedDate = selectedLocalDate.toString()
+                                if (currency == "USD") onClearExchangeRate()
                             }
                         }
                         showDatePicker = false
