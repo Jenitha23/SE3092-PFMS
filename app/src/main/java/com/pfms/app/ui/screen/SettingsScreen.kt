@@ -161,7 +161,7 @@ fun SettingsScreen(
             val logoutErrorMessage = (logoutResult as? LogoutResult.Failure)?.message
             val activeErrorMessage = uiState.errorMessage ?: logoutErrorMessage
 
-            ErrorBanner(message = activeErrorMessage)
+            ErrorBanner(message = activeErrorMessage, onRetry = if (uiState.canRetry) settingsViewModel::retry else null)
             if (activeErrorMessage != null) {
                 Spacer(modifier = Modifier.height(16.dp))
             }

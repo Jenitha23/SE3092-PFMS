@@ -23,7 +23,7 @@ fun IncomeOnboardingScreen(state: IncomeOnboardingState, onSave: (String) -> Uni
             enabled = !state.saving, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(onClick = { onSave(amount) }, enabled = !state.saving, modifier = Modifier.fillMaxWidth()) {
-            Text(if (state.saving) "Saving…" else "Continue")
+            Text(if (state.saving) "Saving…" else if (state.canRetry && state.error != null) "Retry" else "Continue")
         }
     }
 }

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.*
 import java.math.BigDecimal
 import javax.inject.Inject
 
-data class IncomeOnboardingState(val required: Boolean = false, val saving: Boolean = false, val error: String? = null)
+data class IncomeOnboardingState(val required: Boolean = false, val saving: Boolean = false, val error: String? = null, val canRetry: Boolean = false)
 
 @HiltViewModel
 class IncomeOnboardingViewModel @Inject constructor(private val users: UserRepository) : ViewModel() {
@@ -18,7 +18,12 @@ class IncomeOnboardingViewModel @Inject constructor(private val users: UserRepos
     private var userId: String? = null
     init {
         viewModelScope.launch {
-            users.observeProfile().collect { profile ->
+            users.observeProfile().retryWhen { error, _ ->
+                val problem = com.pfms.app.data.error.OperationErrors.present(error, com.pfms.app.data.error.ErrorAction.LOAD)
+                state.value = state.value.copy(error = problem.message, canRetry = problem.canRetry)
+                delay(2_000)
+                true
+            }.collect { profile ->
                 if (profile?.uid != userId) { userId = profile?.uid; state.value = IncomeOnboardingState() }
                 if (!state.value.saving) state.value = state.value.copy(required = profile != null &&
                     !profile.incomeOnboardingComplete && profile.estimatedMonthlyIncomeMinor == null)
@@ -37,8 +42,9 @@ class IncomeOnboardingViewModel @Inject constructor(private val users: UserRepos
                 if (savingUser == userId) state.value = IncomeOnboardingState()
             } catch (e: Exception) {
                 if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                val problem = com.pfms.app.data.error.OperationErrors.present(e)
                 if (savingUser == userId) state.value = IncomeOnboardingState(required = true,
-                    error = "Unable to save. Check your connection and try again.")
+                    error = problem.message, canRetry = problem.canRetry)
             }
         }
     }

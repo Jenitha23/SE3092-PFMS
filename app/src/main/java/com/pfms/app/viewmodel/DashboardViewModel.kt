@@ -31,7 +31,8 @@ data class DashboardUiState(
     val summary: MonthlySummary? = null,
     /** Latest 10 transactions of the selected month, newest first. */
     val latestTransactions: List<Transaction> = emptyList(),
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val canRetry: Boolean = true
 ) {
     val isCurrentMonth: Boolean get() = selectedMonth == AppClock.currentMonth()
 }
@@ -81,12 +82,13 @@ class DashboardViewModel @Inject constructor(
                 summary = bundle.summary,
                 latestTransactions = bundle.latest
             )
-        }.catch {
+        }.catch { error ->
+            val problem = com.pfms.app.data.error.OperationErrors.present(error, com.pfms.app.data.error.ErrorAction.LOAD)
             emit(
                 DashboardUiState(
                     isLoading = false,
                     selectedMonth = selectedMonth.value,
-                    errorMessage = "We couldn't load your dashboard. Please try again."
+                    errorMessage = problem.message, canRetry = problem.canRetry
                 )
             )
         }

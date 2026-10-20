@@ -153,7 +153,7 @@ fun TransactionHistoryContent(
                 item {
                     Column {
                         ErrorBanner(message = uiState.errorMessage)
-                        TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
+                        if (uiState.canRetry) TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
                             Text("Try again", color = EmeraldPrimary, fontWeight = FontWeight.SemiBold)
                         }
                     }

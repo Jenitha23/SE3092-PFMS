@@ -32,7 +32,8 @@ data class SpendingAnalyticsUiState(
     val summary: MonthlySummary? = null,
     val insights: SpendingInsights? = null,
     val trend: List<MonthlyTrendPoint> = emptyList(),
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val canRetry: Boolean = true
 ) {
     val isCurrentMonth: Boolean get() = selectedMonth == AppClock.currentMonth()
 }
@@ -66,12 +67,13 @@ class SpendingAnalyticsViewModel @Inject constructor(
                     trend = MonthlyFinanceCalculator.trend(incomes, expenses, month, TREND_MONTHS)
                 )
             }.flowOn(Dispatchers.Default)
-        }.catch {
+        }.catch { error ->
+            val problem = com.pfms.app.data.error.OperationErrors.present(error, com.pfms.app.data.error.ErrorAction.LOAD)
             emit(
                 SpendingAnalyticsUiState(
                     isLoading = false,
                     selectedMonth = selectedMonth.value,
-                    errorMessage = "We couldn't load your spending analytics. Please try again."
+                    errorMessage = problem.message, canRetry = problem.canRetry
                 )
             )
         }

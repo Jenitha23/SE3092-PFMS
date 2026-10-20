@@ -354,7 +354,7 @@ class IncomeAnalyticsViewModelTest {
         val viewModel = createViewModel()
         viewModel.setEstimatedMonthlyIncome(50000000L)
 
-        assertTrue(viewModel.uiState.value.errorMessage?.contains("Failed to save estimated income") == true)
+        assertEquals("Something went wrong while saving. Please try again.", viewModel.uiState.value.errorMessage)
     }
 
     @Test
@@ -445,7 +445,7 @@ class IncomeAnalyticsViewModelTest {
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
-        assertEquals("Unable to load income records.", state.errorMessage)
+        assertEquals("Unable to load your data. Please try again.", state.errorMessage)
     }
 
     @Test

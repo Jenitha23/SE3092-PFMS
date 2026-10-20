@@ -24,6 +24,8 @@ class FirestoreUserRepository @Inject constructor(
     private val authRepository: AuthRepository
 ) : UserRepository {
 
+    @Inject lateinit var issues: com.pfms.app.data.sync.SyncIssueStore
+
     /** Real-time listener; switches automatically when the signed-in user changes or signs out. */
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeProfile(): Flow<UserProfile?> =
@@ -35,8 +37,14 @@ class FirestoreUserRepository @Inject constructor(
         val registration = firestore.collection(FirestoreCollections.USERS)
             .document(uid)
             .addSnapshotListener { snapshot, error ->
-                // On error (e.g. permission denied right after logout) emit null, never crash.
-                trySend(if (error != null) null else snapshot?.toUserProfile())
+                // A failed read is not an empty profile; callers render a safe error and Retry.
+                if (error != null) {
+                    if (::issues.isInitialized) issues.failed(uid, "profile-load", error)
+                    close(error)
+                } else {
+                    if (::issues.isInitialized && snapshot?.metadata?.isFromCache == false) issues.recovered(uid, "profile-load")
+                    trySend(snapshot?.toUserProfile())
+                }
             }
         awaitClose { registration.remove() }
     }
@@ -54,6 +62,7 @@ class FirestoreUserRepository @Inject constructor(
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Result.failure(e)
         }
     }

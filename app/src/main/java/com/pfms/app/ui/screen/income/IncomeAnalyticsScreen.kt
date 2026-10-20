@@ -76,6 +76,7 @@ fun IncomeAnalyticsScreen(
         onSetEstimatedMonthlyIncome = viewModel::setEstimatedMonthlyIncome,
         onClearEstimatedMonthlyIncome = viewModel::clearEstimatedMonthlyIncome,
         onClearError = viewModel::clearError,
+        onRetry = viewModel::retry,
         onBack = onBack,
         onHome = onHome,
         onIncome = onIncome,
@@ -101,7 +102,8 @@ fun IncomeAnalyticsContent(
     onExpenses: (() -> Unit)? = null,
     onGoals: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    onAddIncome: () -> Unit = {}
+    onAddIncome: () -> Unit = {},
+    onRetry: () -> Unit = {}
 ) {
     val textPrimary = DarkNavyText
     val brandEmerald = EmeraldPrimary
@@ -170,6 +172,7 @@ fun IncomeAnalyticsContent(
                 AnimatedVisibility(visible = uiState.errorMessage != null) {
                     ErrorBanner(
                         message = uiState.errorMessage,
+                        onRetry = if (uiState.canRetry) onRetry else null,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -215,7 +218,8 @@ fun IncomeAnalyticsContent(
                     comparison = uiState.estimationComparison,
                     currentEstimateMinor = uiState.estimatedMonthlyIncomeMinor,
                     onApplyEstimate = onSetEstimatedMonthlyIncome,
-                    onClearEstimate = onClearEstimatedMonthlyIncome
+                    onClearEstimate = onClearEstimatedMonthlyIncome,
+                    isSaving = uiState.isSaving
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -662,7 +666,8 @@ fun EstimationComparisonSection(
     currentEstimateMinor: Long?,
     onApplyEstimate: (Long) -> Unit,
     onClearEstimate: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSaving: Boolean = false
 ) {
     val focusManager = LocalFocusManager.current
     var inputAmount by rememberSaveable { mutableStateOf("") }
@@ -703,7 +708,7 @@ fun EstimationComparisonSection(
                 )
 
                 if (currentEstimateMinor != null) {
-                    TextButton(onClick = onClearEstimate) {
+                    TextButton(onClick = onClearEstimate, enabled = !isSaving) {
                         Text(
                             text = "Reset",
                             style = MaterialTheme.typography.labelMedium.copy(color = SecondaryText)
@@ -730,6 +735,7 @@ fun EstimationComparisonSection(
                         inputError = null
                     },
                     label = { Text("Estimated Income (LKR)") },
+                    enabled = !isSaving,
                     placeholder = { Text("e.g. 150000.00") },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
@@ -754,6 +760,7 @@ fun EstimationComparisonSection(
                 )
 
                 Button(
+                    enabled = !isSaving,
                     onClick = {
                         focusManager.clearFocus()
                         val minor = parseInputToMinor(inputAmount)
@@ -768,7 +775,7 @@ fun EstimationComparisonSection(
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
                 ) {
-                    Text(text = "Compare", fontWeight = FontWeight.Bold)
+                    Text(text = if (isSaving) "Saving…" else "Compare", fontWeight = FontWeight.Bold)
                 }
             }
 
