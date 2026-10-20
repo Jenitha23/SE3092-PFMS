@@ -14,11 +14,13 @@ class ReminderPermissionDeniedTest {
         val f = ReminderFixture()
         val notifier = AndroidReminderNotifier(f.context)
         assertFalse(notifier.access().allowed)
-        f.change(ReminderType.DAILY_LOG, true, 20 * 60)
-        assertTrue(f.store.read(f.uid)[ReminderType.DAILY_LOG].enabled)
         val delivery = ReminderDelivery(f.store, f.auth, notifier, f.source, f.clock)
-        assertEquals(ReminderRunResult.COMPLETE, delivery.run(f.uid, ReminderType.DUE_RECURRING.key,
-            f.store.read(f.uid)[ReminderType.DUE_RECURRING].revision, 1))
+        for (type in ReminderType.entries) {
+            f.store.locked { f.store.update(f.uid, type, true, 0, 2) }
+            assertTrue(f.store.read(f.uid)[type].enabled)
+            assertEquals(ReminderRunResult.COMPLETE, delivery.run(f.uid, type.key,
+                f.store.read(f.uid)[type].revision, 1))
+        }
         assertEquals(0, f.source.calls)
     }
 }

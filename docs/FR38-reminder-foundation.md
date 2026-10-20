@@ -1,5 +1,7 @@
 # FR-38 foundation: reminders and notification settings
 
+Historical foundation-stage report. All seven financial reminder handlers are now implemented; see [the completed FR-38 report](FR38-financial-reminders.md) for current behavior and verification.
+
 ## Scope
 
 This stage implements shared infrastructure, persistent preferences, schedule configuration, permission handling, and cancellation. It does not introduce the seven financial eligibility rules.

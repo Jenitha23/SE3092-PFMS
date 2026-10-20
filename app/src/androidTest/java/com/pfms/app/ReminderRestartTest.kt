@@ -37,6 +37,8 @@ class ReminderRestartTest {
         val (store, scheduler) = setup(uid)
         store.locked {
             ReminderType.entries.forEach { store.update(uid, it, it == ReminderType.DAILY_LOG, 1439, null) }
+            assertTrue(store.claim(uid, ReminderType.FREELANCE_OVERDUE, "invoice", "2026-10-20", "pending:2026-10-05"))
+            assertEquals(1L, store.goalEpisode(uid, "behind:goal:100:2027-01-01", true))
         }
         scheduler.reconcile(store.read(uid))
         val jobs = WorkManager.getInstance(context).getWorkInfosForUniqueWork(ReminderWorkScheduler.workName(uid, ReminderType.DAILY_LOG))
@@ -49,6 +51,10 @@ class ReminderRestartTest {
         val uid = prefs.getString("uid", null)!!
         val (store, scheduler) = setup(uid)
         val settings = store.read(uid)
+        store.locked {
+            assertFalse(store.claim(uid, ReminderType.FREELANCE_OVERDUE, "invoice", "2026-10-21", "pending:2026-10-05"))
+            assertEquals(1L, store.goalEpisode(uid, "behind:goal:100:2027-01-01", true))
+        }
         assertTrue(settings[ReminderType.DAILY_LOG].enabled)
         assertEquals(1439, settings[ReminderType.DAILY_LOG].minuteOfDay)
         val manager = WorkManager.getInstance(context)
