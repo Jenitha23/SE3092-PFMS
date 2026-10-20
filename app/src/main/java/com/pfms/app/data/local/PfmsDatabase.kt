@@ -48,6 +48,7 @@ abstract class PfmsDatabase : RoomDatabase() {
     abstract fun expenseCategoryDao(): ExpenseCategoryDao
     abstract fun recurringExpenseDao(): RecurringExpenseDao
     abstract fun pendingChangesDao(): com.pfms.app.data.local.dao.PendingChangesDao
+    abstract fun financialActivityDao(): com.pfms.app.data.local.dao.FinancialActivityDao
 
     companion object {
         val MIGRATION_1_4: Migration = com.pfms.app.data.local.migration.MIGRATION_1_4
