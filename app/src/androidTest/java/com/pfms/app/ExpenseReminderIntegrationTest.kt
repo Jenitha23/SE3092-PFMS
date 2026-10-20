@@ -13,10 +13,13 @@ import com.pfms.app.data.local.PfmsDatabase
 import com.pfms.app.data.local.entity.RecurringExpenseEntity
 import com.pfms.app.data.sync.ExpenseReminderWorker
 import com.pfms.app.data.reminder.*
+import com.pfms.app.data.repository.CachedFinancialReminderRepository
 import com.pfms.app.domain.model.*
 import com.pfms.app.domain.repository.AdvancedExpenseRepository
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -46,6 +49,10 @@ class ExpenseReminderIntegrationTest {
         manager.cancelAll()
     }
     @After fun close() { manager.cancelAll(); db.close() }
+    private suspend fun awaitNotifications(count: Int) = withTimeout(5_000) {
+        // NotificationManager processes enqueue/cancel requests asynchronously in the system service.
+        while (manager.activeNotifications.size != count) delay(25)
+    }
     private val offlineRepository = object : AdvancedExpenseRepository {
         override fun categories() = flowOf(emptyList<ExpenseCategory>())
         override fun templates() = flowOf(emptyList<RecurringExpense>())
@@ -61,7 +68,7 @@ class ExpenseReminderIntegrationTest {
     private suspend fun worker(type: ReminderType): ExpenseReminderWorker {
         store.locked { store.update(uid, type, true, 0, null) }
         val revision = store.read(uid)[type].revision
-        val source = ExistingExpenseReminderSource(db.recurringExpenseDao(), offlineRepository, store, clock)
+        val source = FinancialReminderContentSource(CachedFinancialReminderRepository(db, auth), offlineRepository, store, clock, financialReminderRules())
         val delivery = ReminderDelivery(store, auth, AndroidReminderNotifier(context), source, clock)
         return TestListenableWorkerBuilder<ExpenseReminderWorker>(context)
         .setInputData(workDataOf(ReminderWorkScheduler.USER to uid, ReminderWorkScheduler.TYPE to type.key,
@@ -82,11 +89,13 @@ class ExpenseReminderIntegrationTest {
             base.copy(id = "paused", isActive = false), base.copy(id = "cancelled", isSubscription = true, flag = "CANCEL")))
         assertEquals(ListenableWorker.Result.success(), worker(ReminderType.DUE_RECURRING).doWork())
         assertEquals(ListenableWorker.Result.success(), worker(ReminderType.SUBSCRIPTION_REVIEW).doWork())
+        awaitNotifications(2)
         val titles = manager.activeNotifications.map { it.notification.extras.getString("android.title") }
         assertEquals(2, titles.size)
         assertTrue(titles.any { it?.startsWith("Recurring Expense Due") == true })
         assertTrue(titles.any { it?.startsWith("Subscription Review") == true })
         manager.cancelAll()
+        awaitNotifications(0)
         worker(ReminderType.DUE_RECURRING).doWork()
         worker(ReminderType.SUBSCRIPTION_REVIEW).doWork()
         assertEquals(0, manager.activeNotifications.size)
@@ -99,16 +108,20 @@ class ExpenseReminderIntegrationTest {
         val content = ReminderNotification("one", "Test", "Reminder", "recurring_expenses")
         assertTrue(notifier.post(uid, ReminderType.DUE_RECURRING, content))
         assertTrue(notifier.post(uid, ReminderType.SUBSCRIPTION_REVIEW, content))
+        awaitNotifications(2)
         assertEquals(2, manager.activeNotifications.size)
         notifier.cancelType(uid, ReminderType.DUE_RECURRING)
+        awaitNotifications(1)
         assertEquals(1, manager.activeNotifications.size)
         notifier.cancelOtherUsers("another-user")
+        awaitNotifications(0)
         assertEquals(0, manager.activeNotifications.size)
     }
 
-    @Test fun futureReminderTypesDoNotInventFinancialEligibilityOrMessages() = runBlocking {
-        val source = ExistingExpenseReminderSource(db.recurringExpenseDao(), offlineRepository, store, clock)
-        for (type in ReminderType.entries.filter { !it.available }) assertTrue(source.candidates(uid, type).isEmpty())
+    @Test fun missingSalaryInvoicesAndGoalsDoNotInventFinancialEligibility() = runBlocking {
+        val source = FinancialReminderContentSource(CachedFinancialReminderRepository(db, auth), offlineRepository, store, clock, financialReminderRules())
+        for (type in listOf(ReminderType.SALARY_DAY, ReminderType.FREELANCE_OVERDUE, ReminderType.GOAL_BEHIND))
+            assertTrue(source.candidates(uid, type).isEmpty())
         assertEquals(0, manager.activeNotifications.size)
     }
 }

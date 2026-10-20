@@ -30,7 +30,16 @@ class ReminderDelivery @Inject constructor(
             notifier.createChannels()
             if (!notifier.canPost(type)) return ReminderRunResult.COMPLETE
             val candidates = content.candidates(uid, type)
+            store.locked {
+                if (auth.currentUser.first()?.uid == uid && store.read(uid)[type].let { it.enabled && it.revision == revision })
+                    notifier.retainEligible(uid, type, candidates.map { it.key }.toSet())
+            }
             for (candidate in candidates) {
+                // Re-read cached eligibility after loading; a paid/confirmed/completed item must not be posted.
+                if (!content.isCurrent(uid, type, candidate)) {
+                    notifier.cancelItem(uid, type, candidate.key)
+                    continue
+                }
                 val outcome = store.locked {
                     currentCoroutineContext().ensureActive()
                     if (auth.currentUser.first()?.uid != uid) return@locked ReminderRunResult.COMPLETE
@@ -39,19 +48,19 @@ class ReminderDelivery @Inject constructor(
                     val slot = ReminderSchedulePolicy.deliverySlot(clock.instant(), type, latest)
                         ?: return@locked ReminderRunResult.RETRY
                     if (clock.millis() < notBefore) return@locked ReminderRunResult.RETRY
-                    if (store.claim(uid, type, candidate.key, slot)) {
+                    if (store.claim(uid, type, candidate.key, slot, candidate.occurrence)) {
                         try {
                             currentCoroutineContext().ensureActive()
                             if (auth.currentUser.first()?.uid != uid || !notifier.canPost(type)) {
-                                store.release(uid, type, candidate.key, slot)
+                                store.release(uid, type, candidate.key, slot, candidate.occurrence)
                                 return@locked ReminderRunResult.COMPLETE
                             }
                             if (!notifier.post(uid, type, candidate)) {
-                                store.release(uid, type, candidate.key, slot)
+                                store.release(uid, type, candidate.key, slot, candidate.occurrence)
                                 return@locked ReminderRunResult.RETRY
                             }
                         } catch (error: Exception) {
-                            store.release(uid, type, candidate.key, slot)
+                            store.release(uid, type, candidate.key, slot, candidate.occurrence)
                             throw error
                         }
                     }

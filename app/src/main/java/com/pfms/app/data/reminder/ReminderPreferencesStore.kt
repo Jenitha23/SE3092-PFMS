@@ -51,18 +51,38 @@ class ReminderPreferencesStore @Inject constructor(@param:ApplicationContext pri
     }
 
     /** Durable at-most-once claim, made before posting to close the process-death duplicate window. */
-    suspend fun claim(uid: String, type: ReminderType, item: String, slot: String): Boolean {
-        val key = stringPreferencesKey("sent_${prefix(uid, type)}_${identity(item)}")
+    suspend fun claim(uid: String, type: ReminderType, item: String, slot: String, occurrence: String? = null): Boolean {
+        val key = deliveryKey(uid, type, item, occurrence)
         var claimed = false
         context.reminderStore.edit { values ->
             // ISO date ordering also avoids duplicates after moving the device clock backwards.
-            if ((values[key] ?: "") < slot) { values[key] = slot; claimed = true }
+            val eligible = if (occurrence == null) (values[key] ?: "") < slot else values[key] != occurrence
+            if (eligible) { values[key] = occurrence ?: slot; claimed = true }
         }
         return claimed
     }
-    suspend fun release(uid: String, type: ReminderType, item: String, slot: String) {
-        val key = stringPreferencesKey("sent_${prefix(uid, type)}_${identity(item)}")
-        context.reminderStore.edit { if (it[key] == slot) it.remove(key) }
+    suspend fun release(uid: String, type: ReminderType, item: String, slot: String, occurrence: String? = null) {
+        val key = deliveryKey(uid, type, item, occurrence)
+        context.reminderStore.edit { if (it[key] == (occurrence ?: slot)) it.remove(key) }
+    }
+    private fun deliveryKey(uid: String, type: ReminderType, item: String, occurrence: String?) =
+        stringPreferencesKey("${if (occurrence == null) "sent" else "event"}_${prefix(uid, type)}_${identity(item)}")
+
+    /** Caller holds locked(). One durable episode per observed Behind state/configuration, not per day. */
+    suspend fun goalEpisode(uid: String, state: String, behind: Boolean): Long {
+        val stateKey = stringPreferencesKey("pace_state_${identity(uid)}")
+        val countKey = longPreferencesKey("pace_episode_${identity(uid)}")
+        var episode = 0L
+        context.reminderStore.edit {
+            episode = it[countKey] ?: 0L
+            // Missing/invalid data is not evidence of recovery and must not re-arm an unchanged alert.
+            if (!state.startsWith("unknown:")) {
+                if (behind && it[stateKey] != state) episode = Math.addExact(episode, 1)
+                it[stateKey] = state
+                it[countKey] = episode
+            }
+        }
+        return episode
     }
     companion object {
         fun identity(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
