@@ -16,7 +16,8 @@ class CustomTestRunner : AndroidJUnitRunner() {
         // HiltTestApplication doesn't implement production's Configuration.Provider. Initialize
         // test WorkManager so a previously scheduled JobService cannot crash ordinary UI tests.
         // Opt-in Firebase stages install their real worker factory to test persisted background work.
-        if (InstrumentationRegistry.getArguments().getString("fr35Emulators") != "true") {
+        if (InstrumentationRegistry.getArguments().getString("fr35Emulators") != "true" &&
+            InstrumentationRegistry.getArguments().getString("fr38PersistentWork") != "true") {
             WorkManagerTestInitHelper.initializeTestWorkManager(targetContext)
         }
         super.onStart()
