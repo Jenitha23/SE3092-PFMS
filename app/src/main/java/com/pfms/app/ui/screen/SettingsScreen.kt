@@ -338,6 +338,8 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // ── Section 3: Appearance ──────────────────────────────────
+            com.pfms.app.ui.component.ReminderSettingsSection()
+            Spacer(modifier = Modifier.height(24.dp))
             SectionHeader(title = "Appearance")
 
             ElevatedCard(
