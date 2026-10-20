@@ -54,7 +54,6 @@ import com.pfms.app.viewmodel.SalaryViewModel
 import com.pfms.app.viewmodel.AdvancedExpenseViewModel
 import com.pfms.app.ui.screen.expense.CategoriesScreen
 import com.pfms.app.ui.screen.expense.RecurringExpensesScreen
-import com.pfms.app.ui.screen.expense.ExpenseReminderPermission
 import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SessionViewModel
 import com.pfms.app.viewmodel.IncomeOnboardingViewModel
@@ -719,12 +718,10 @@ fun PfmsNavGraph(
             CategoriesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() })
         }
         composable(Routes.RecurringExpenses) {
-            ExpenseReminderPermission()
             LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
             RecurringExpensesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() })
         }
         composable(Routes.Subscriptions) {
-            ExpenseReminderPermission()
             LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
             RecurringExpensesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() }, subscriptionsOnly = true)
         }

@@ -20,14 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
-import android.Manifest
-import android.os.Build
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import com.pfms.app.data.sync.ExpenseReminderWorker
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pfms.app.domain.model.*
 import com.pfms.app.domain.usecase.ExpenseRules
@@ -42,23 +35,6 @@ import java.util.UUID
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-
-@Composable
-internal fun ExpenseReminderPermission() {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) ExpenseReminderWorker.runOnce(context)
-    }
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            ExpenseReminderWorker.runOnce(context)
-        }
-    }
-}
 
 @Composable
 private fun ClassificationChooser(
