@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface IncomeDao {
+    @Query("SELECT * FROM incomes WHERE userId=:userId AND isDeleted=0 ORDER BY receivedDate DESC, id")
+    suspend fun getActiveForReminders(userId: String): List<IncomeEntity>
+
     @Query("DELETE FROM incomes WHERE userId=:userId AND syncStatus='SYNCED' AND id NOT IN (:ids)")
     suspend fun removeMissingSynced(userId: String, ids: List<String>)
 

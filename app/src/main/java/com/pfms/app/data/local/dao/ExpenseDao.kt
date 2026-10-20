@@ -7,6 +7,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ExpenseDao {
+    @Query("SELECT * FROM expenses WHERE userId=:userId AND isDeleted=0 AND needsConfirmation=0 ORDER BY date DESC, id")
+    suspend fun getActiveForReminders(userId: String): List<ExpenseEntity>
+
     @Query("SELECT * FROM expenses WHERE userId=:userId AND isDeleted=0 AND needsConfirmation=0 ORDER BY date DESC, createdAt DESC")
     fun observe(userId: String): Flow<List<ExpenseEntity>>
 
