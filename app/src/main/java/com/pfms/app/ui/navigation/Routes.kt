@@ -13,6 +13,7 @@ object Routes {
     const val Dashboard = "dashboard"
     const val IncomeOnboarding = "income_onboarding"
     const val Settings = "settings"
+    const val PrivacyPolicy = "privacy_policy"
 
     // Dashboard, analytics and history
     const val SpendingAnalytics = "spending_analytics"

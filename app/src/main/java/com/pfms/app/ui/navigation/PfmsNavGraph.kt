@@ -26,6 +26,7 @@ import com.pfms.app.ui.screen.LockScreen
 import com.pfms.app.ui.screen.LoginScreen
 import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
+import com.pfms.app.ui.screen.PrivacyPolicyScreen
 import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.ui.screen.savings.SavingsGoalScreen
 import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
@@ -423,8 +424,17 @@ fun PfmsNavGraph(
 
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onNavigateToPrivacyPolicy = {
+                    navController.navigate(Routes.PrivacyPolicy) {
+                        launchSingleTop = true
+                    }
                 }
             )
+        }
+
+        composable(Routes.PrivacyPolicy) {
+            PrivacyPolicyScreen(onBack = { navController.popBackStack() })
         }
 
         // -------------------------------------
