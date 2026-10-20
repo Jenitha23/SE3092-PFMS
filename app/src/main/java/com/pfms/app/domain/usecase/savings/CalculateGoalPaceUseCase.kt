@@ -11,7 +11,6 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import javax.inject.Inject
-import kotlin.math.ceil
 
 /**
  * Pure calculation use case implementing FR-26:
@@ -98,8 +97,9 @@ class CalculateGoalPaceUseCase @Inject constructor(
             remainingAmount <= 0L -> referenceDate
             paceValue <= 0L -> null // Non-positive pace cannot project a valid completion date
             else -> {
-                val monthsNeeded = ceil(remainingAmount.toDouble() / paceValue.toDouble()).toLong()
-                referenceDate.plusMonths(monthsNeeded)
+                val monthsNeeded = remainingAmount / paceValue + if (remainingAmount % paceValue == 0L) 0L else 1L
+                // A very small pace can project beyond LocalDate's supported range.
+                runCatching { referenceDate.plusMonths(monthsNeeded) }.getOrNull()
             }
         }
 

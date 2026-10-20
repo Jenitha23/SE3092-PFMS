@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import com.pfms.app.domain.usecase.IncomeSummaryCalculator
+import com.pfms.app.domain.usecase.IncomeCurrencyTotals
 import kotlinx.coroutines.Job
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.data.exchange.ExchangeRateResult
@@ -33,6 +34,7 @@ import java.util.UUID
 
 data class IncomeUiState(
     val incomes: List<Income> = emptyList(),
+    val currencyTotals: IncomeCurrencyTotals = IncomeCurrencyTotals(),
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
@@ -104,6 +106,7 @@ class IncomeViewModel @Inject constructor(
                     )
                     _uiState.value = _uiState.value.copy(
                         incomes = sorted,
+                        currencyTotals = IncomeSummaryCalculator.currencyTotals(sorted),
                         isLoading = false,
                         errorMessage = null
                     )

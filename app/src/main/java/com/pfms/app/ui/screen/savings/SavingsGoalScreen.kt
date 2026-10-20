@@ -245,6 +245,7 @@ fun SavingsGoalContent(
                     item {
                         TransactionLedgerSection(
                             transactions = uiState.transactions,
+                            onAddContribution = { activeTransactionTypeForAdd = GoalTransactionType.CONTRIBUTION },
                             onEditTransaction = { tx -> transactionToEdit = tx },
                             onDeleteTransaction = { txId -> transactionIdToDelete = txId }
                         )

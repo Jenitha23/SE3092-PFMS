@@ -1,6 +1,7 @@
 package com.pfms.app.domain.usecase.savings
 
 import com.pfms.app.domain.model.GoalTransaction
+import com.pfms.app.domain.usecase.SafeCalculations
 import com.pfms.app.domain.model.SavingsGoal
 import com.pfms.app.domain.model.savings.SavingsGoalProgress
 import java.time.LocalDate
@@ -9,7 +10,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
-import kotlin.math.ceil
 
 /**
  * Pure domain use case implementing FR-25 and FR-28:
@@ -71,7 +71,7 @@ class CalculateGoalProgressUseCase @Inject constructor(
         val progressPercentage = if (targetAmount <= 0L) {
             0.0
         } else {
-            ((currentSaved.toDouble() / targetAmount.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+            SafeCalculations.percentage(currentSaved, targetAmount).coerceIn(0.0, 100.0)
         }
 
         val remainingMonths = if (isOverdue || targetDate == null) {
@@ -83,7 +83,7 @@ class CalculateGoalProgressUseCase @Inject constructor(
         val requiredMonthlySaving = when {
             remainingAmount == 0L -> 0L
             remainingMonths <= 0L -> remainingAmount // Overdue safe fallback: no divide-by-zero
-            else -> ceil(remainingAmount.toDouble() / remainingMonths.toDouble()).toLong()
+            else -> remainingAmount / remainingMonths + if (remainingAmount % remainingMonths == 0L) 0L else 1L
         }
 
         return SavingsGoalProgress(

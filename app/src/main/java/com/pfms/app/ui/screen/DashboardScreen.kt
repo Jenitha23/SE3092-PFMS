@@ -63,6 +63,8 @@ import com.pfms.app.ui.component.ArrowDownVector
 import com.pfms.app.ui.component.ArrowUpVector
 import com.pfms.app.ui.component.BellVectorIcon
 import com.pfms.app.ui.component.EmptyState
+import com.pfms.app.domain.model.dashboard.ClassificationSplit
+import com.pfms.app.domain.usecase.SafeCalculations
 import com.pfms.app.ui.component.ErrorBanner
 import com.pfms.app.ui.component.ExpensesNavIcon
 import com.pfms.app.ui.component.GoalVectorIcon
@@ -219,6 +221,14 @@ fun DashboardScreen(
                     ) { CircularProgressIndicator(color = EmeraldPrimary) }
                 } else {
                     val summary = uiState.summary
+                    if (summary != null && !summary.hasData && uiState.errorMessage == null) {
+                        EmptyState(
+                            title = "Start your monthly overview",
+                            message = "Income LKR 0.00 • Expenses LKR 0.00. Add income or an expense to get started.",
+                            actionLabel = "Add Income",
+                            onAction = onNavigateToAddIncome
+                        )
+                    }
                     SpendingBreakdownCard(
                         summary = summary,
                         onViewDetails = onNavigateToAnalytics,
@@ -583,6 +593,7 @@ private fun SpendingBreakdownCard(
     DashboardCard {
         CardHeader("Spending Breakdown", "View details \u2192", onViewDetails)
         Spacer(Modifier.height(8.dp))
+        SplitBar(split = summary?.split ?: ClassificationSplit(0L, 0L, 0.0, 0.0))
         if (summary == null || summary.totalExpenseMinor == 0L) {
             EmptyState(
                 title = "No spending recorded",
@@ -591,7 +602,6 @@ private fun SpendingBreakdownCard(
                 onAction = onQuickAdd
             )
         } else {
-            SplitBar(split = summary.split)
             summary.categories.firstOrNull()?.let { top ->
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -980,7 +990,7 @@ fun DashboardSavingsGoalCard(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Progress Bar & Percentage
-                val progressFraction = (uiState.progressPercent / 100.0).toFloat().coerceIn(0f, 1f)
+                val progressFraction = SafeCalculations.progressFraction(uiState.progressPercent)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -1006,7 +1016,7 @@ fun DashboardSavingsGoalCard(
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Text(
-                        text = "${uiState.progressPercent.toInt()}%",
+                        text = "${(progressFraction * 100).toInt()}%",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold
                         ),

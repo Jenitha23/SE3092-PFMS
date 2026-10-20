@@ -36,15 +36,19 @@ object MonthlyFinanceCalculator {
     }
 
     /** Largest to smallest. The amounts always add up to the total expenses (NFR-16). */
-    fun categoryBreakdown(expenses: List<Expense>): List<CategorySpend> {
+    fun categoryBreakdown(expenses: List<Expense>, visibleCategories: Int = Int.MAX_VALUE): List<CategorySpend> {
         val total = expenses.sumOf { it.amountMinor }
-        return expenses
+        val categories = expenses
             .groupBy { it.categoryName.trim().ifBlank { UNCATEGORISED } }
             .map { (name, rows) ->
                 val amount = rows.sumOf { it.amountMinor }
                 CategorySpend(name, amount, percentOf(amount, total))
             }
             .sortedWith(compareByDescending<CategorySpend> { it.amountMinor }.thenBy { it.categoryName })
+        val limit = visibleCategories.coerceAtLeast(0)
+        if (categories.size <= limit) return categories
+        val otherAmount = categories.drop(limit).sumOf { it.amountMinor }
+        return categories.take(limit) + CategorySpend("Other categories", otherAmount, percentOf(otherAmount, total))
     }
 
     fun split(expenses: List<Expense>): ClassificationSplit {
@@ -68,6 +72,7 @@ object MonthlyFinanceCalculator {
         endMonth: YearMonth,
         months: Int = 6
     ): List<MonthlyTrendPoint> {
+        if (months <= 0) return emptyList()
         val incomeByMonth = HashMap<YearMonth, Long>()
         for (income in incomes) {
             val ym = IncomeRealizedCalculator.parseYearMonth(income.receivedDate) ?: continue

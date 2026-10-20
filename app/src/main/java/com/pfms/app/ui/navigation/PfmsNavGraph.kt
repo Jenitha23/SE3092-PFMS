@@ -390,6 +390,8 @@ fun PfmsNavGraph(
         composable(Routes.SpendingAnalytics) {
             SpendingAnalyticsScreen(
                 onBack = { navController.popBackStack() },
+                onAddExpense = { navController.navigate(Routes.AddExpense) { launchSingleTop = true } },
+                onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onTransactionClick = openTransaction,
                 onOpenHistory = {
                     navController.navigate(Routes.TransactionHistory) { launchSingleTop = true }
@@ -407,6 +409,8 @@ fun PfmsNavGraph(
         composable(Routes.TransactionHistory) {
             TransactionHistoryScreen(
                 onBack = { navController.popBackStack() },
+                onAddExpense = { navController.navigate(Routes.AddExpense) { launchSingleTop = true } },
+                onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onTransactionClick = openTransaction
             )
         }
@@ -460,10 +464,12 @@ fun PfmsNavGraph(
 
             IncomeListScreen(
                 incomes = incomeState.incomes,
+                currencyTotals = incomeState.currencyTotals,
                 isLoading = incomeState.isLoading,
                 errorMessage = incomeState.errorMessage,
 
                 totalRealizedIncomeMinor = incomeState.totalRealizedIncomeMinor,
+                monthlyRealizedIncomeMinor = incomeState.monthlyRealizedIncomeMinor,
                 totalPendingFreelanceMinor = incomeState.totalPendingFreelanceMinor,
                 pendingFreelanceCount = incomeState.pendingFreelanceCount,
                 cryptoGainsMinor = incomeState.cryptoGainsMinor,
@@ -690,6 +696,7 @@ fun PfmsNavGraph(
 
         composable(Routes.IncomeAnalytics) {
             IncomeAnalyticsScreen(
+                onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onBack = {
                     navController.popBackStack()
                 },

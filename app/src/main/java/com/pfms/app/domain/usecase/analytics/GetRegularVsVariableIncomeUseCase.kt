@@ -1,6 +1,7 @@
 package com.pfms.app.domain.usecase.analytics
 
 import com.pfms.app.domain.model.Income
+import com.pfms.app.domain.usecase.SafeCalculations
 import com.pfms.app.domain.model.analytics.MonthlyIncomeSummary
 import com.pfms.app.domain.model.analytics.RegularVariableIncome
 import java.time.YearMonth
@@ -68,9 +69,8 @@ class GetRegularVsVariableIncomeUseCase @Inject constructor(
         if (total <= 0L) {
             return Pair(0.0, 0.0)
         }
-        val totalDouble = total.toDouble()
-        val regPct = (regular.toDouble() / totalDouble) * 100.0
-        val varPct = (variable.toDouble() / totalDouble) * 100.0
+        val regPct = SafeCalculations.percentage(regular, total)
+        val varPct = SafeCalculations.percentage(variable, total)
         return Pair(regPct, varPct)
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pfms.app.domain.model.dashboard.CategorySpend
+import com.pfms.app.domain.usecase.SafeCalculations
 import com.pfms.app.domain.model.dashboard.ClassificationSplit
 import com.pfms.app.domain.model.dashboard.MonthlyTrendPoint
 import com.pfms.app.ui.screen.income.formatAnalyticsLkrAmount
@@ -52,8 +53,10 @@ private val CategoryPalette = listOf(
 fun categoryChartColor(index: Int): Color = CategoryPalette[index % CategoryPalette.size]
 
 /** 45 -> "45%", 45.5 -> "45.5%". */
-fun formatPercent(percent: Double): String =
-    if (percent % 1.0 == 0.0) "${percent.toInt()}%" else String.format(Locale.US, "%.1f%%", percent)
+fun formatPercent(percent: Double): String {
+    val value = SafeCalculations.finiteOrZero(percent)
+    return String.format(Locale.US, if (value % 1.0 == 0.0) "%.0f%%" else "%.1f%%", value)
+}
 
 /**
  * Committed vs Discretionary as ONE split bar (FR-31). Both amounts and percentages are written out
@@ -118,9 +121,9 @@ fun CategoryDonutChart(
     modifier: Modifier = Modifier,
     centerContent: @Composable () -> Unit = {}
 ) {
-    val total = categories.sumOf { it.amountMinor }
+    val total = categories.sumOf { it.amountMinor.coerceAtLeast(0L).toDouble() }
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
-    val spoken = if (total == 0L) "No spending recorded for this month"
+    val spoken = if (total == 0.0) "No spending recorded for this month"
     else "Spending by category: " + categories.joinToString(", ") {
         "${it.categoryName} ${formatPercent(it.percent)}"
     }
@@ -135,12 +138,12 @@ fun CategoryDonutChart(
             val stroke = 26f
             val arcSize = Size(size.width - stroke, size.height - stroke)
             val topLeft = Offset(stroke / 2, stroke / 2)
-            if (total <= 0L) {
+            if (total <= 0.0) {
                 drawArc(trackColor, 0f, 360f, false, topLeft, arcSize, style = Stroke(stroke))
             } else {
                 var start = -90f
                 categories.forEachIndexed { index, item ->
-                    val sweep = 360f * item.amountMinor.toFloat() / total.toFloat()
+                    val sweep = (360.0 * SafeCalculations.ratio(item.amountMinor.coerceAtLeast(0L).toDouble(), total)).toFloat()
                     val gap = if (categories.size > 1 && sweep > 3f) 1.5f else 0f
                     drawArc(
                         color = categoryChartColor(index),
@@ -167,7 +170,8 @@ fun CategoryDonutChart(
 fun IncomeExpenseTrendChart(points: List<MonthlyTrendPoint>, modifier: Modifier = Modifier) {
     val maxValue = (points.maxOfOrNull { maxOf(it.incomeMinor, it.expenseMinor) } ?: 0L).coerceAtLeast(1L)
     val track = MaterialTheme.colorScheme.surfaceVariant
-    val spoken = "Six month trend. " + points.joinToString(". ") {
+    val spoken = if (points.isEmpty()) "No income or expenses recorded. Income LKR 0.00, expenses LKR 0.00."
+    else "Six month trend. " + points.joinToString(". ") {
         "${it.month.month.getDisplayName(TextStyle.FULL, Locale.US)}: income " +
                 "${formatAnalyticsLkrAmount(it.incomeMinor)}, expenses ${formatAnalyticsLkrAmount(it.expenseMinor)}"
     }
@@ -178,7 +182,10 @@ fun IncomeExpenseTrendChart(points: List<MonthlyTrendPoint>, modifier: Modifier 
                 .fillMaxWidth()
                 .height(140.dp)
         ) {
-            if (points.isEmpty()) return@Canvas
+            if (points.isEmpty()) {
+                drawLine(track, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 2f)
+                return@Canvas
+            }
             val groupWidth = size.width / points.size
             val barWidth = groupWidth * 0.28f
             val radius = CornerRadius(6f, 6f)

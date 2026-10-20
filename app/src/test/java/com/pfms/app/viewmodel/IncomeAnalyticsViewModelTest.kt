@@ -122,7 +122,36 @@ class IncomeAnalyticsViewModelTest {
             getIncomeTrendsUseCase = getTrends,
             getIncomeEstimationComparisonUseCase = getEstimationComparison,
             getIncomeAnalyticsUseCase = getAnalytics
-        )
+        ).also { mainDispatcherRule.track(it) }
+    }
+
+    @Test
+    fun emptyUserWithMissingProfileGetsZeroAnalyticsAndAnAddIncomeState() = runTest {
+        profileFlow.value = null
+        incomeFlow.tryEmit(emptyList())
+        val state = createViewModel().uiState.value
+        assertFalse(state.isLoading)
+        assertFalse(state.hasMonthlyIncome)
+        assertEquals(0L, state.monthlySummary!!.totalRealizedMinor)
+        assertEquals(0.0, state.regularVariable!!.regularPercentage, 0.0)
+        assertEquals(0.0, state.regularVariable.variablePercentage, 0.0)
+        assertTrue(state.trendPoints.all { it.amountMinor == 0L })
+        assertNull(state.estimationComparison)
+        assertNull(state.errorMessage)
+    }
+
+    @Test
+    fun zeroNetIncomeWithRecordsIsNotAnEmptyMonth() = runTest {
+        incomeFlow.tryEmit(listOf(
+            Income(amountMinor = 100, receivedDate = "2026-10-01"),
+            Income(amountMinor = 100, source = "Crypto", cryptoType = "Loss", receivedDate = "2026-10-01")
+        ))
+        val vm = createViewModel()
+        vm.selectMonth(YearMonth.of(2026, 10))
+        assertTrue(vm.uiState.value.hasMonthlyIncome)
+        assertEquals(0L, vm.uiState.value.monthlySummary!!.totalRealizedMinor)
+        vm.selectMonth(YearMonth.of(2026, 9))
+        assertFalse(vm.uiState.value.hasMonthlyIncome)
     }
 
     @Test

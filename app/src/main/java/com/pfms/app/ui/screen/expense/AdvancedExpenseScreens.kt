@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.pfms.app.ui.component.EmptyState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -267,9 +268,12 @@ private fun CategoriesScreenContent(vm: AdvancedExpenseViewModel, onBack: () -> 
             } else {
                 // Archived Categories Tab
                 if (archivedCategories.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No archived categories.")
-                    }
+                    EmptyState(
+                        title = "No archived categories",
+                        message = "Your active categories are ready to organise expenses.",
+                        actionLabel = "View active categories",
+                        onAction = { selectedTab = 0 }
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -823,9 +827,12 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
             // Template list
             if (relevantTemplates.isEmpty() && !showForm) {
                 item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text(if (subscriptionsOnly) "No subscriptions added yet." else "No recurring templates configured.")
-                    }
+                    EmptyState(
+                        title = if (subscriptionsOnly) "No subscriptions added yet" else "No recurring expenses yet",
+                        message = "Add a template to track upcoming payments and reminders.",
+                        actionLabel = if (subscriptionsOnly) "Add Subscription" else "Add Recurring Expense",
+                        onAction = { editingTemplate = null; showForm = true }
+                    )
                 }
             } else {
                 items(relevantTemplates, key = { it.id }) { item ->

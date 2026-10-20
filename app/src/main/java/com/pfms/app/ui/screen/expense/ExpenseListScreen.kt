@@ -25,11 +25,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pfms.app.domain.model.*
+import com.pfms.app.domain.usecase.dashboard.MonthlyFinanceCalculator
+import com.pfms.app.domain.usecase.analytics.IncomeRealizedCalculator
+import com.pfms.app.domain.usecase.SafeCalculations
+import com.pfms.app.ui.component.formatPercent
 import com.pfms.app.ui.component.HomeNavIcon
 import com.pfms.app.ui.component.IncomeNavIcon
 import com.pfms.app.ui.component.ExpensesNavIcon
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -58,7 +61,9 @@ fun ExpenseListScreen(
         (expenses.mapNotNull { runCatching { YearMonth.from(LocalDate.parse(it.date)).toString() }.getOrNull() } +
             YearMonth.now(ZoneId.of("Asia/Colombo")).toString()).distinct().sortedDescending()
     }
-    val monthly = remember(expenses, month) { expenses.filter { it.date.startsWith(month) } }
+    val monthly = remember(expenses, month) {
+        expenses.filter { IncomeRealizedCalculator.parseYearMonth(it.date)?.toString() == month }
+    }
     val categories = remember(monthly) { monthly.map { it.categoryName }.distinct().sorted() }
     val filtered = remember(monthly, query, category, classification) {
         monthly.filter { item ->
@@ -240,6 +245,11 @@ fun ExpenseListScreen(
                             Modifier.align(Alignment.CenterHorizontally), fontWeight = FontWeight.SemiBold)
                         Text(if (query.isNotBlank() || category != null || classification != null) "Try a different search or clear your filters." else "Add your first expense to see your spending here.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (query.isNotBlank() || category != null || classification != null) {
+                            TextButton(onClick = { query = ""; category = null; classification = null }) { Text("Clear filters") }
+                        } else {
+                            Button(onClick = onAddExpense) { Text("Add Expense") }
+                        }
                     }
                 }
                 else -> items(filtered, key = { "expense-${it.id}" }) { expense ->
@@ -258,10 +268,9 @@ fun ExpenseListScreen(
 
 @Composable
 private fun MonthlySpendingOverview(expenses: List<Expense>) {
-    val total = expenses.fold(BigDecimal.ZERO) { sum, item -> sum + BigDecimal.valueOf(item.amountMinor, 2) }
-    val grouped = expenses.groupBy { it.categoryName }.mapValues { (_, items) -> items.fold(BigDecimal.ZERO) { sum, item -> sum + BigDecimal.valueOf(item.amountMinor, 2) } }
-        .entries.sortedByDescending { it.value }
-    val slices = grouped.take(4).map { it.key to it.value } + if (grouped.size > 4) listOf("Other categories" to grouped.drop(4).fold(BigDecimal.ZERO) { sum, item -> sum + item.value }) else emptyList()
+    val split = remember(expenses) { MonthlyFinanceCalculator.split(expenses) }
+    val total = BigDecimal.valueOf(split.totalMinor, 2)
+    val slices = remember(expenses) { MonthlyFinanceCalculator.categoryBreakdown(expenses, visibleCategories = 4) }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         val emptyColor = MaterialTheme.colorScheme.outlineVariant
         Box(Modifier.size(104.dp).semantics { contentDescription = "Spending by category. Total LKR ${expenseMoney(total)}" }, contentAlignment = Alignment.Center) {
@@ -271,7 +280,7 @@ private fun MonthlySpendingOverview(expenses: List<Expense>) {
                 var start = -90f
                 if (total.signum() <= 0) drawArc(emptyColor, 0f, 360f, false, Offset(stroke/2, stroke/2), arcSize, style = Stroke(stroke))
                 else slices.forEach { (name, value) ->
-                    val sweep = value.divide(total, 8, RoundingMode.HALF_UP).toFloat() * 360f
+                    val sweep = (SafeCalculations.ratio(value.coerceAtLeast(0L).toDouble(), split.totalMinor.toDouble()) * 360).toFloat()
                     drawArc(categoryColor(name), start, (sweep - 1.5f).coerceAtLeast(0f), false, Offset(stroke/2, stroke/2), arcSize, style = Stroke(stroke))
                     start += sweep
                 }
@@ -289,21 +298,21 @@ private fun MonthlySpendingOverview(expenses: List<Expense>) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box(Modifier.size(7.dp).background(categoryColor(name), RoundedCornerShape(50)))
                     Text(name, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(expenseMoney(value), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    Text(expenseMoney(BigDecimal.valueOf(value, 2)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         ExpenseClassification.entries.forEach { type ->
-            val amount = expenses.filter { it.classification == type }.fold(BigDecimal.ZERO) { sum, item -> sum + BigDecimal.valueOf(item.amountMinor, 2) }
+            val amount = BigDecimal.valueOf(if (type == ExpenseClassification.COMMITTED) split.committedMinor else split.discretionaryMinor, 2)
             val color = if (type == ExpenseClassification.COMMITTED) ExpenseOrange else ExpensePurple
             Surface(Modifier.weight(1f), shape = RoundedCornerShape(12.dp), color = color.copy(alpha = 0.08f), border = BorderStroke(1.dp, color.copy(alpha = 0.15f))) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val percent = if (total.signum() == 0) 0 else amount.multiply(BigDecimal(100)).divide(total, 0, RoundingMode.HALF_UP).toInt()
+                    val percent = if (type == ExpenseClassification.COMMITTED) split.committedPercent else split.discretionaryPercent
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(if (type == ExpenseClassification.COMMITTED) "Committed" else "Discretionary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("$percent%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(formatPercent(percent), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text("LKR ${expenseMoney(amount)}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                 }

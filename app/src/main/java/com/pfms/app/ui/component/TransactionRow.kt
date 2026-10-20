@@ -37,7 +37,7 @@ private val rowDateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MM
 
 /** "22 Sep 2025"; falls back to the raw text if the stored date cannot be parsed. */
 fun formatTransactionDate(isoDate: String): String =
-    runCatching { LocalDate.parse(isoDate.trim().take(10)).format(rowDateFormat) }.getOrDefault(isoDate)
+    runCatching { LocalDate.parse(isoDate.trim().take(10)).format(rowDateFormat) }.getOrDefault(isoDate.ifBlank { "Date unavailable" })
 
 /** Text for the signed amount, e.g. "+ LKR 130,000.00" or "- LKR 2,500.00". Never colour-only (NFR-21). */
 fun transactionAmountText(tx: Transaction): String {

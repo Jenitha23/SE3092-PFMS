@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pfms.app.domain.model.dashboard.CategorySpend
+import com.pfms.app.domain.model.dashboard.ClassificationSplit
 import com.pfms.app.domain.model.dashboard.MonthlySummary
 import com.pfms.app.domain.model.dashboard.MonthlyTrendPoint
 import com.pfms.app.domain.model.dashboard.SpendingInsights
@@ -72,7 +73,9 @@ fun SpendingAnalyticsScreen(
     onTransactionClick: (Transaction) -> Unit = {},
     onOpenHistory: () -> Unit = {},
     onOpenIncomeAnalytics: () -> Unit = {},
-    viewModel: SpendingAnalyticsViewModel = hiltViewModel()
+    viewModel: SpendingAnalyticsViewModel = hiltViewModel(),
+    onAddExpense: () -> Unit = {},
+    onAddIncome: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     SpendingAnalyticsContent(
@@ -83,7 +86,9 @@ fun SpendingAnalyticsScreen(
         onRetry = viewModel::retry,
         onTransactionClick = onTransactionClick,
         onOpenHistory = onOpenHistory,
-        onOpenIncomeAnalytics = onOpenIncomeAnalytics
+        onOpenIncomeAnalytics = onOpenIncomeAnalytics,
+        onAddExpense = onAddExpense,
+        onAddIncome = onAddIncome
     )
 }
 
@@ -97,7 +102,9 @@ fun SpendingAnalyticsContent(
     onRetry: () -> Unit,
     onTransactionClick: (Transaction) -> Unit,
     onOpenHistory: () -> Unit,
-    onOpenIncomeAnalytics: () -> Unit
+    onOpenIncomeAnalytics: () -> Unit,
+    onAddExpense: () -> Unit = {},
+    onAddIncome: () -> Unit = {}
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -148,13 +155,22 @@ fun SpendingAnalyticsContent(
             }
 
             val summary = uiState.summary
-            val hasExpenses = summary != null && summary.totalExpenseMinor > 0L
+            val hasExpenses = summary != null && summary.expenseCount > 0
+
+            if (!hasExpenses && uiState.errorMessage == null) {
+                EmptyState(
+                    title = "No expenses this month",
+                    message = "Add an expense to see your spending breakdown and insights.",
+                    actionLabel = "Add Expense",
+                    onAction = onAddExpense
+                )
+            }
 
             CategoryCard(summary, hasExpenses)
             SplitCard(summary, hasExpenses)
             InsightsCard(uiState.insights, hasExpenses)
             TopExpensesCard(uiState.insights?.largestExpenses.orEmpty(), onTransactionClick, onOpenHistory)
-            TrendCard(uiState.trend)
+            TrendCard(uiState.trend, onAddIncome)
 
             TextButton(
                 onClick = onOpenIncomeAnalytics,
@@ -196,24 +212,22 @@ private fun AnalyticsCard(title: String, subtitle: String? = null, content: @Com
 @Composable
 private fun CategoryCard(summary: MonthlySummary?, hasExpenses: Boolean) {
     AnalyticsCard("Spending by category", "Largest to smallest") {
+        CategoryDonutChart(categories = summary?.categories.orEmpty()) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    formatAnalyticsLkrAmount(summary?.totalExpenseMinor ?: 0L),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+        }
         if (!hasExpenses || summary == null) {
             EmptyState(
                 title = "No spending this month",
                 message = "Once you record expenses, your categories appear here."
             )
             return@AnalyticsCard
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            CategoryDonutChart(categories = summary.categories) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        formatAnalyticsLkrAmount(summary.totalExpenseMinor),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(horizontal = 24.dp)
-                    )
-                }
-            }
         }
         Spacer(Modifier.height(14.dp))
         summary.categories.forEachIndexed { index, item ->
@@ -254,13 +268,12 @@ private fun CategoryLegendRow(index: Int, item: CategorySpend) {
 @Composable
 private fun SplitCard(summary: MonthlySummary?, hasExpenses: Boolean) {
     AnalyticsCard("Committed vs Discretionary", "Bills you have to pay compared with choices you make") {
+        SplitBar(split = summary?.split ?: ClassificationSplit(0L, 0L, 0.0, 0.0))
         if (!hasExpenses || summary == null) {
             EmptyState(
                 title = "Nothing to compare yet",
                 message = "Your split appears after your first expense this month."
             )
-        } else {
-            SplitBar(split = summary.split)
         }
     }
 }
@@ -269,6 +282,7 @@ private fun SplitCard(summary: MonthlySummary?, hasExpenses: Boolean) {
 private fun InsightsCard(insights: SpendingInsights?, hasExpenses: Boolean) {
     AnalyticsCard("Spending insights") {
         if (!hasExpenses || insights == null) {
+            InsightLine("Discretionary share", "0% of this month's spending")
             EmptyState(
                 title = "No insights yet",
                 message = "Add a few expenses and we'll point out where your money goes."
@@ -325,16 +339,17 @@ private fun TopExpensesCard(
 }
 
 @Composable
-private fun TrendCard(points: List<MonthlyTrendPoint>) {
+private fun TrendCard(points: List<MonthlyTrendPoint>, onAddIncome: () -> Unit) {
     AnalyticsCard("Income vs expenses", "Last six months") {
+        IncomeExpenseTrendChart(points)
         if (points.isEmpty() || points.all { it.incomeMinor == 0L && it.expenseMinor == 0L }) {
             EmptyState(
                 title = "No trend yet",
-                message = "Your six-month trend builds as you record income and expenses. Months with fewer entries may look partial."
+                message = "Income LKR 0.00 • Expenses LKR 0.00. Record income and expenses to build your trend.",
+                actionLabel = "Add Income",
+                onAction = onAddIncome
             )
-            return@AnalyticsCard
         }
-        IncomeExpenseTrendChart(points)
         Spacer(Modifier.height(12.dp))
         // Exact figures as text so the chart is never the only source of information.
         points.forEach { p ->

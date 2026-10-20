@@ -75,7 +75,9 @@ import java.time.ZoneOffset
 fun TransactionHistoryScreen(
     onBack: () -> Unit,
     onTransactionClick: (Transaction) -> Unit = {},
-    viewModel: TransactionHistoryViewModel = hiltViewModel()
+    viewModel: TransactionHistoryViewModel = hiltViewModel(),
+    onAddIncome: () -> Unit = {},
+    onAddExpense: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     TransactionHistoryContent(
@@ -90,7 +92,9 @@ fun TransactionHistoryScreen(
         onSetExpenseCategory = viewModel::setExpenseCategory,
         onSetPaymentMethod = viewModel::setPaymentMethod,
         onSetClassification = viewModel::setClassification,
-        onClearFilters = viewModel::clearFilters
+        onClearFilters = viewModel::clearFilters,
+        onAddIncome = onAddIncome,
+        onAddExpense = onAddExpense
     )
 }
 
@@ -108,7 +112,9 @@ fun TransactionHistoryContent(
     onSetExpenseCategory: (String?) -> Unit,
     onSetPaymentMethod: (ExpensePaymentMethod?) -> Unit,
     onSetClassification: (ExpenseClassification?) -> Unit,
-    onClearFilters: () -> Unit
+    onClearFilters: () -> Unit,
+    onAddIncome: () -> Unit = {},
+    onAddExpense: () -> Unit = {}
 ) {
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -178,8 +184,13 @@ fun TransactionHistoryContent(
                     if (!uiState.hasAnyTransactions) {
                         EmptyState(
                             title = "No transactions yet",
-                            message = "Income and expenses you record will be listed here, newest first."
+                            message = "Income and expenses you record will be listed here, newest first.",
+                            actionLabel = "Add Income",
+                            onAction = onAddIncome
                         )
+                        TextButton(onClick = onAddExpense, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text("Add Expense")
+                        }
                     } else {
                         EmptyState(
                             title = "No transactions match these filters",

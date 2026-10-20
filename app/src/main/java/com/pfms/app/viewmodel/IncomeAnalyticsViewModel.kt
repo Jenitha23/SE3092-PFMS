@@ -14,6 +14,7 @@ import com.pfms.app.domain.repository.UserRepository
 import com.pfms.app.domain.usecase.analytics.GetIncomeAnalyticsUseCase
 import com.pfms.app.domain.usecase.analytics.GetIncomeEstimationComparisonUseCase
 import com.pfms.app.domain.usecase.analytics.GetIncomeTrendsUseCase
+import com.pfms.app.domain.usecase.analytics.IncomeRealizedCalculator
 import com.pfms.app.domain.usecase.analytics.GetMonthlyIncomeSummaryUseCase
 import com.pfms.app.domain.usecase.analytics.GetRegularVsVariableIncomeUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,6 +38,7 @@ data class IncomeAnalyticsUiState(
     val analyticsSummary: IncomeAnalyticsSummary? = null,
     val estimationComparison: IncomeEstimationComparison? = null,
     val estimatedMonthlyIncomeMinor: Long? = null,
+    val hasMonthlyIncome: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -99,6 +101,7 @@ class IncomeAnalyticsViewModel @Inject constructor(
                                 analyticsSummary = null,
                                 estimationComparison = null,
                                 estimatedMonthlyIncomeMinor = null,
+                                hasMonthlyIncome = false,
                                 errorMessage = null
                             )
                         }
@@ -224,6 +227,7 @@ class IncomeAnalyticsViewModel @Inject constructor(
                 it.copy(
                     isLoading = false,
                     monthlySummary = monthlySummary,
+                    hasMonthlyIncome = records.any { IncomeRealizedCalculator.matchesMonth(it, month) },
                     regularVariable = regularVsVariable,
                     trendPoints = trends,
                     analyticsSummary = analytics,

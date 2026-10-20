@@ -1,6 +1,7 @@
 package com.pfms.app.ui.screen.savings
 
 import com.pfms.app.domain.model.savings.DiscretionarySpendingImpact
+import com.pfms.app.domain.usecase.SafeCalculations
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.LocalDate
@@ -30,7 +31,7 @@ object SavingsGoalUiFormatter {
      */
     fun formatLkr(amountMinor: Long, showSign: Boolean = false): String {
         val isNegative = amountMinor < 0L
-        val absAmount = BigDecimal.valueOf(Math.abs(amountMinor), 2)
+        val absAmount = BigDecimal.valueOf(amountMinor, 2).abs()
         val formatted = numberFormat.format(absAmount)
         val prefix = when {
             isNegative -> "- LKR "
@@ -57,7 +58,7 @@ object SavingsGoalUiFormatter {
         return try {
             val decimal = BigDecimal(cleaned)
             if (decimal < BigDecimal.ZERO) null
-            else decimal.movePointRight(2).toLong()
+            else decimal.movePointRight(2).longValueExact()
         } catch (e: Exception) {
             null
         }
@@ -89,7 +90,7 @@ object SavingsGoalUiFormatter {
         if (isCompleted || impact.requiredMonthlySavingMinor <= 0L) {
             return "Goal target reached — no monthly savings required this month."
         }
-        val pct = shortNumberFormat.format(impact.percentageOfRequiredSaving)
+        val pct = shortNumberFormat.format(SafeCalculations.finiteOrZero(impact.percentageOfRequiredSaving))
         return "Your discretionary spending this month equals $pct% of one month's required saving."
     }
 

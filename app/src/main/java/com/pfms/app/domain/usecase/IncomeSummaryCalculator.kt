@@ -19,7 +19,15 @@ data class IncomeSummary(
     val ytdNetCryptoMinor get() = ytdCryptoGainsMinor - ytdCryptoLossesMinor
 }
 
+data class IncomeCurrencyTotals(val lkrMinor: Long = 0L, val usdInLkrMinor: Long = 0L, val usdMinor: Long = 0L)
+
 object IncomeSummaryCalculator {
+    fun currencyTotals(records: List<Income>) = IncomeCurrencyTotals(
+        lkrMinor = records.filter { it.currency == "LKR" && it.source != "Crypto" }.sumOf { it.amountMinor },
+        usdInLkrMinor = records.filter { it.currency == "USD" }.sumOf { it.amountLkrMinor ?: 0L },
+        usdMinor = records.filter { it.currency == "USD" }.sumOf { it.amountMinor }
+    )
+
     fun lkrAmount(income: Income): Long = when (income.currency) {
         "LKR" -> income.amountMinor
         "USD" -> income.amountLkrMinor ?: 0L

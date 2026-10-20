@@ -1,7 +1,9 @@
 package com.pfms.app.domain.usecase.analytics
 
 import com.pfms.app.domain.model.Income
+import com.pfms.app.domain.usecase.IncomeSummaryCalculator
 import java.time.YearMonth
+import java.time.LocalDate
 
 /**
  * Shared calculation rules for realized income evaluation.
@@ -29,10 +31,10 @@ object IncomeRealizedCalculator {
     /**
      * Resolves the effective amount in minor LKR units.
      * Uses historical [Income.amountLkrMinor] when available (for USD entries),
-     * otherwise falls back to [Income.amountMinor].
+     * Unconverted foreign amounts contribute zero until their historical LKR value is available.
      */
     fun getEffectiveLkrMinor(income: Income): Long {
-        return income.amountLkrMinor ?: income.amountMinor
+        return IncomeSummaryCalculator.lkrAmount(income)
     }
 
     /**
@@ -71,11 +73,8 @@ object IncomeRealizedCalculator {
         if (dateString.isNullOrBlank()) return null
         return try {
             val trimmed = dateString.trim()
-            if (trimmed.length >= 7) {
-                YearMonth.parse(trimmed.substring(0, 7))
-            } else {
-                null
-            }
+            if (trimmed.length == 7) YearMonth.parse(trimmed)
+            else YearMonth.from(LocalDate.parse(trimmed.take(10)))
         } catch (e: Exception) {
             null
         }
