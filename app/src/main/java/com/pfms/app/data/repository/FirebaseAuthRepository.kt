@@ -59,9 +59,17 @@ class FirebaseAuthRepository @Inject constructor(
      */
     private val googleCheckInProgress = MutableStateFlow(false)
 
+    /**
+     * Firebase signs in a newly registered email user before profile initialization completes.
+     * Keep the session gate closed until the required Firestore profile/defaults are ready.
+     */
+    private val emailRegistrationInProgress = MutableStateFlow(false)
+
     override val currentUser: Flow<AuthUser?> =
-        combine(firebaseUser, googleCheckInProgress) { user, checking -> if (checking) null else user }
-            .distinctUntilChanged()
+        combine(firebaseUser, googleCheckInProgress, emailRegistrationInProgress) {
+                user, googleChecking, emailRegistering ->
+            if (googleChecking || emailRegistering) null else user
+        }.distinctUntilChanged()
 
     // ------------------------------------------------------------------ FR-01 register
 
@@ -77,19 +85,24 @@ class FirebaseAuthRepository @Inject constructor(
             return Result.failure(AuthException(it, AuthErrorType.VALIDATION))
         }
 
-        return authCall {
-            val firebaseUser = firebaseAuth.createUserWithEmailAndPassword(mail, password)
-                .await().user
-                ?: throw AuthException(
-                    "Your account could not be created. Please try again.",
-                    AuthErrorType.UNKNOWN
-                )
+        emailRegistrationInProgress.value = true
+        return try {
+            authCall {
+                val firebaseUser = firebaseAuth.createUserWithEmailAndPassword(mail, password)
+                    .await().user
+                    ?: throw AuthException(
+                        "Your account could not be created. Please try again.",
+                        AuthErrorType.UNKNOWN
+                    )
 
-            firebaseUser.updateProfile(userProfileChangeRequest { this.displayName = name }).await()
+                firebaseUser.updateProfile(userProfileChangeRequest { this.displayName = name }).await()
 
-            initialiseProfileOrSignOut(firebaseUser, name)
+                initialiseProfileOrSignOut(firebaseUser, name)
 
-            firebaseUser.toAuthUser().copy(displayName = name)
+                firebaseUser.toAuthUser().copy(displayName = name)
+            }
+        } finally {
+            emailRegistrationInProgress.value = false
         }
     }
 
