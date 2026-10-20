@@ -11,6 +11,9 @@ import com.pfms.app.domain.model.*
 import com.pfms.app.domain.repository.ExpenseRepository
 import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.data.sync.ExpenseSyncScheduler
+import com.pfms.app.data.sync.SyncVersion
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.pfms.app.domain.usecase.ExpenseRules
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
@@ -31,7 +34,8 @@ class OfflineFirstExpenseRepository @Inject constructor(
     private val dao get() = db.expenseDao()
     private val prefs = context.getSharedPreferences("expense_defaults", Context.MODE_PRIVATE)
     private val preferenceChanges = MutableStateFlow(0)
-    private suspend fun uid() = auth.currentUser.first()?.uid ?: error("Authentication required")
+    private suspend fun uid() = auth.currentUser.first()?.uid?.takeIf { it.isNotBlank() } ?: error("Authentication required")
+    private val syncing = Mutex()
 
     internal var transactionRunner: suspend (suspend () -> Unit) -> Unit = {
         db.withTransaction(it)
@@ -51,7 +55,14 @@ class OfflineFirstExpenseRepository @Inject constructor(
                 remote.observe(user).retryWhen { error, _ ->
                     if (error is CancellationException) throw error
                     delay(2_000); true
-                }.collect { snapshot -> dao.reconcile(user, snapshot.rows.map { it.toEntity() }, snapshot.authoritative) }
+                }.collect { snapshot ->
+                    val rows = snapshot.rows.map { it.copy(userId = user).toEntity().copy(revision = snapshot.versions[it.id]?.revision.orEmpty()) } +
+                        snapshot.deletions.map { deletion ->
+                            Expense(id = deletion.id, userId = user, updatedAt = deletion.version.updatedAt).toEntity()
+                                .copy(isDeleted = true, revision = deletion.version.revision)
+                        }
+                    dao.reconcile(user, rows, snapshot.authoritative)
+                }
             }
             dao.observe(user).collect { send(it.map { row -> row.toDomain() }) }
         }.onStart { emit(emptyList()) }
@@ -73,6 +84,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
 
     override suspend fun addExpenseChecked(expense: Expense, allowDuplicate: Boolean) = withContext(Dispatchers.IO) {
         val user = uid()
+        require(expense.userId.isBlank() || expense.userId == user) { "Cross-user write prevented" }
         val row = expense.copy(userId = user, id = expense.id.ifBlank { UUID.randomUUID().toString() })
         transactionRunner {
             val existing = dao.get(user, row.id)
@@ -81,7 +93,9 @@ class OfflineFirstExpenseRepository @Inject constructor(
                     dao.recent(user, row.createdAt - 60_000).filter { it.id != row.id }.map { it.toDomain() }, row.createdAt)) {
                 throw DuplicateExpenseException()
             }
-            dao.upsert(row.toEntity().copy(syncStatus = "PENDING_INSERT", revision = UUID.randomUUID().toString(), allowDuplicate = allowDuplicate))
+            val now = SyncVersion.nextTimestamp(existing?.updatedAt ?: 0L, row.updatedAt)
+            dao.upsert(row.copy(createdAt = row.createdAt.takeIf { it > 0 } ?: now, updatedAt = now).toEntity()
+                .copy(syncStatus = "PENDING_INSERT", revision = UUID.randomUUID().toString(), allowDuplicate = allowDuplicate))
         }
         savePayment(user, row.paymentMethod)
         scheduler.enqueue()
@@ -89,9 +103,11 @@ class OfflineFirstExpenseRepository @Inject constructor(
 
     override suspend fun updateExpense(expense: Expense) = withContext(Dispatchers.IO) {
         val user = uid()
+        require(expense.userId.isBlank() || expense.userId == user) { "Cross-user write prevented" }
         transactionRunner {
             val old = dao.get(user, expense.id)?.takeUnless { it.isDeleted } ?: error("Expense not found")
-            dao.upsert(expense.copy(userId = user, createdAt = old.createdAt).toEntity().copy(
+            dao.upsert(expense.copy(userId = user, createdAt = old.createdAt,
+                updatedAt = SyncVersion.nextTimestamp(old.updatedAt, expense.updatedAt)).toEntity().copy(
                 syncStatus = if (old.syncStatus == "PENDING_INSERT") "PENDING_INSERT" else "PENDING_UPDATE",
                 revision = UUID.randomUUID().toString(), allowDuplicate = old.allowDuplicate))
         }
@@ -104,7 +120,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
         transactionRunner {
             val old = dao.get(user, expenseId) ?: return@transactionRunner
             dao.upsert(old.copy(isDeleted = true, needsConfirmation = false,
-                syncStatus = "PENDING_DELETE", revision = UUID.randomUUID().toString()))
+                syncStatus = "PENDING_DELETE", updatedAt = SyncVersion.nextTimestamp(old.updatedAt), revision = UUID.randomUUID().toString()))
         }
         scheduler.enqueue()
     }
@@ -123,20 +139,19 @@ class OfflineFirstExpenseRepository @Inject constructor(
     }
 
     suspend fun syncPending(): Boolean = withContext(Dispatchers.IO) {
+        syncing.withLock {
         val user = auth.currentUser.first()?.uid ?: return@withContext true
         var success = true
         for (row in dao.pending(user)) {
             if (auth.currentUser.first()?.uid != user) return@withContext true
             try {
-                withTimeout(15_000) {
-                    when (row.syncStatus) {
-                        "PENDING_DELETE" -> remote.delete(user, row.id)
-                        "PENDING_INSERT" -> remote.insert(user, row.toDomain(), row.allowDuplicate)
-                        "PENDING_UPDATE" -> remote.update(user, row.toDomain())
-                    }
+                val result = withTimeout(15_000) {
+                    remote.synchronize(user, row.toDomain(), SyncVersion(row.updatedAt, row.revision, row.isDeleted),
+                        insert = row.syncStatus == "PENDING_INSERT", allowDuplicate = row.allowDuplicate)
                 }
-                if (row.isDeleted) dao.deleteRevision(user, row.id, row.revision)
-                else dao.acknowledge(user, row.id, row.revision)
+                val winner = result.row?.copy(userId = user)?.toEntity() ?: row.copy(isDeleted = true)
+                dao.completeSync(row, winner.copy(updatedAt = result.version.updatedAt, revision = result.version.revision,
+                    isDeleted = result.version.deleted, syncStatus = "SYNCED", needsConfirmation = false))
             } catch (e: Exception) {
                 if (e is CancellationException && e !is TimeoutCancellationException) throw e
                 if (generateSequence<Throwable>(e) { it.cause }.any { it is DuplicateExpenseException }) {
@@ -145,5 +160,6 @@ class OfflineFirstExpenseRepository @Inject constructor(
             }
         }
         success
+        }
     }
 }

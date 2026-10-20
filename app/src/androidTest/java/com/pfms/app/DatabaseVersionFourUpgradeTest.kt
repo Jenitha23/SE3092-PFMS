@@ -29,7 +29,7 @@ class DatabaseVersionFourUpgradeTest {
     private val userId = "migration-user"
 
     private fun open(): PfmsDatabase = Room.databaseBuilder(context, PfmsDatabase::class.java, name)
-        .addMigrations(PfmsDatabase.MIGRATION_4_5)
+        .addMigrations(PfmsDatabase.MIGRATION_4_5, PfmsDatabase.MIGRATION_5_6)
         .build().also { db = it }
 
     @After
@@ -66,7 +66,7 @@ class DatabaseVersionFourUpgradeTest {
         assertEquals(expense, upgraded.expenseDao().get(userId, expense.id))
         assertEquals(category, upgraded.expenseCategoryDao().observeCategories(userId).first().single())
         assertNull(upgraded.savingsGoalDao().getActiveGoal(userId))
-        assertEquals(5, upgraded.openHelper.writableDatabase.version)
+        assertEquals(6, upgraded.openHelper.writableDatabase.version)
         upgraded.close()
         assertEquals(expense, open().expenseDao().get(userId, expense.id))
     }
@@ -85,6 +85,6 @@ class DatabaseVersionFourUpgradeTest {
         }
 
         assertEquals(goal, open().savingsGoalDao().getActiveGoal(userId))
-        assertEquals(5, db!!.openHelper.writableDatabase.version)
+        assertEquals(6, db!!.openHelper.writableDatabase.version)
     }
 }

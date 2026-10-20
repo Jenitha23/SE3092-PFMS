@@ -206,13 +206,7 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
 
         // Remote sync attempts (idempotent, failures remain safely pending)
         scheduleSync()
-        try {
-            withTimeout(10_000) { incomeRemoteDataSource.upsertIncome(user.uid, salaryIncome) }
-            incomeDao.updateSyncStatus(user.uid, deterministicIncomeId, SyncStatus.SYNCED)
-        } catch (e: Exception) {
-            // Retains PENDING_INSERT locally
-        }
-
+        // Income is owned by the Room queue; don't also queue the same write in the Firestore SDK.
         try {
             withTimeout(10_000) { salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, updatedTemplateEntity.toDomain()) }
             salaryTemplateDao.updateSyncStatus(user.uid, SyncStatus.SYNCED)

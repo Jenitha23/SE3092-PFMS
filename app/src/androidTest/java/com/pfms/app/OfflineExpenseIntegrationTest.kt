@@ -90,7 +90,8 @@ class OfflineExpenseIntegrationTest {
         assertNotNull(db.expenseDao().get(uid, "one"))
         server.online = true
         assertTrue(repository.syncPending())
-        assertNull(db.expenseDao().get(uid, "one"))
+        assertTrue(db.expenseDao().get(uid, "one")!!.isDeleted)
+        assertEquals("SYNCED", db.expenseDao().get(uid, "one")!!.syncStatus)
         assertTrue(server.rows.isEmpty())
     }
 
@@ -170,7 +171,7 @@ class OfflineExpenseIntegrationTest {
             it.version = 3
         }
         db = Room.databaseBuilder(context, PfmsDatabase::class.java, name)
-            .addMigrations(PfmsDatabase.MIGRATION_3_4, PfmsDatabase.MIGRATION_4_5).build()
+            .addMigrations(PfmsDatabase.MIGRATION_3_4, PfmsDatabase.MIGRATION_4_5, PfmsDatabase.MIGRATION_5_6).build()
         assertEquals("Rent", db.expenseCategoryDao().observeCategories(uid).first().single().name)
         assertTrue(db.expenseDao().observe(uid).first().isEmpty())
     }

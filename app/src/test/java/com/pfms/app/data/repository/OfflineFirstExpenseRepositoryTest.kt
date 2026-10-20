@@ -15,6 +15,9 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.*
+import com.pfms.app.data.sync.SyncVersion
+import com.pfms.app.data.sync.FinancialSyncResult
+import kotlinx.coroutines.runBlocking
 
 class OfflineFirstExpenseRepositoryTest {
 
@@ -54,6 +57,12 @@ class OfflineFirstExpenseRepositoryTest {
         whenever(prefs.edit()).thenReturn(editor)
         whenever(editor.putString(any(), any())).thenReturn(editor)
         whenever(editor.commit()).thenReturn(true)
+        runBlocking {
+            whenever(remote.synchronize(any(), any(), any(), any(), any())).thenAnswer { call ->
+                val version = call.getArgument<SyncVersion>(2)
+                FinancialSyncResult(call.getArgument<Expense>(1).takeUnless { version.deleted }, version)
+            }
+        }
 
         repository = OfflineFirstExpenseRepository(db, remote, auth, context, scheduler).apply {
             transactionRunner = { it() }
@@ -165,12 +174,12 @@ class OfflineFirstExpenseRepositoryTest {
         assertTrue("Sync should return true on success", result)
 
         // Verify remote calls
-        verify(remote).insert(eq("user_abc"), argThat { id == "exp_insert" }, eq(false))
-        verify(remote).delete("user_abc", "exp_delete")
+        verify(remote).synchronize(eq("user_abc"), argThat { id == "exp_insert" }, eq(SyncVersion(100L, "rev_1")), eq(true), eq(false))
+        verify(remote).synchronize(eq("user_abc"), argThat { id == "exp_delete" }, eq(SyncVersion(200L, "rev_2", true)), eq(false), eq(false))
 
         // Verify Room acknowledgment
-        verify(dao).acknowledge("user_abc", "exp_insert", "rev_1")
-        verify(dao).deleteRevision("user_abc", "exp_delete", "rev_2")
+        verify(dao).completeSync(eq(pendingInsert), argThat { syncStatus == "SYNCED" && !isDeleted })
+        verify(dao).completeSync(eq(pendingDelete), argThat { syncStatus == "SYNCED" && isDeleted })
     }
 
     @Test
@@ -182,7 +191,7 @@ class OfflineFirstExpenseRepositoryTest {
             createdAt = 100L, updatedAt = 100L, syncStatus = "PENDING_INSERT", revision = "rev_dup"
         )
         whenever(dao.pending("user_abc")).thenReturn(listOf(pendingInsert))
-        whenever(remote.insert(any(), any(), any())).thenThrow(DuplicateExpenseException())
+        whenever(remote.synchronize(any(), any(), any(), any(), any())).thenThrow(DuplicateExpenseException())
 
         val result = repository.syncPending()
         assertTrue(result)

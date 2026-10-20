@@ -11,6 +11,13 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import androidx.work.BackoffPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.ExistingPeriodicWorkPolicy
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 
 /**
  * AndroidX WorkManager [CoroutineWorker] that executes pending local sync for income records
@@ -25,19 +32,26 @@ class IncomeSyncWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         return try {
-            val result = syncCoordinator.syncAllPending()
+            val result = withTimeout(60_000) { syncCoordinator.syncAllPending() }
             if (result.isSuccess) {
                 Result.success()
             } else {
                 Result.retry()
             }
         } catch (e: Exception) {
+            if (e is CancellationException && e !is TimeoutCancellationException) throw e
             Result.retry()
         }
     }
 
     companion object {
         const val UNIQUE_WORK_NAME = "pfms_pending_income_sync"
+        fun enqueuePeriodic(context: Context) {
+            val work = PeriodicWorkRequestBuilder<IncomeSyncWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork("pfms_income_sync_recovery", ExistingPeriodicWorkPolicy.KEEP, work)
+        }
 
         /**
          * Enqueues a one-time sync worker constrained by network connectivity.
@@ -52,6 +66,7 @@ class IncomeSyncWorker @AssistedInject constructor(
                 .build()
 
             val syncWorkRequest = OneTimeWorkRequestBuilder<IncomeSyncWorker>()
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .setConstraints(constraints)
                 .build()
 

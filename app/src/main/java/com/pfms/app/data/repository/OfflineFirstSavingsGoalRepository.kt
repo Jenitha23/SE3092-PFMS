@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.pfms.app.data.sync.IncomeSyncWorker
+import androidx.work.ExistingWorkPolicy
 
 /**
  * Offline-first implementation of [SavingsGoalRepository].
@@ -42,6 +46,10 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     private val savingsGoalRemoteDataSource: SavingsGoalRemoteDataSource,
     private val authRepository: AuthRepository
 ) : SavingsGoalRepository, SavingsGoalPendingSyncable {
+    @Inject @ApplicationContext lateinit var syncContext: Context
+    private fun scheduleSync() {
+        if (::syncContext.isInitialized) IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
+    }
 
     private suspend fun requireUser(): AuthUser {
         val user = authRepository.currentUser.first()
@@ -111,6 +119,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             savingsGoalDao.insertActiveGoalGuarded(localEntity)
+            scheduleSync()
 
             // 2. Immediately attempt remote Firestore upsert
             try {
@@ -151,6 +160,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             savingsGoalDao.updateActiveGoalGuarded(updatedEntity)
+            scheduleSync()
 
             // 2. Immediately attempt remote upsert
             try {
@@ -184,6 +194,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             savingsGoalDao.upsertGoal(updatedEntity)
+            scheduleSync()
 
             try {
                 val remoteResult = savingsGoalRemoteDataSource.upsertGoal(user.uid, archived)
@@ -214,6 +225,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 updatedAt = System.currentTimeMillis()
             )
 
+            scheduleSync()
             // 2. Attempt remote deletion
             try {
                 val remoteResult = savingsGoalRemoteDataSource.deleteGoal(user.uid, goalId)
@@ -252,6 +264,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             goalTransactionDao.upsertTransaction(localEntity)
+            scheduleSync()
 
             // 2. Immediately attempt remote upsert
             try {
@@ -296,6 +309,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             goalTransactionDao.upsertTransaction(updatedEntity)
+            scheduleSync()
 
             try {
                 val remoteResult = savingsGoalRemoteDataSource.upsertTransaction(user.uid, txToUpdate)
@@ -326,6 +340,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 updatedAt = System.currentTimeMillis()
             )
 
+            scheduleSync()
             // 2. Attempt remote delete
             try {
                 val remoteResult = savingsGoalRemoteDataSource.deleteTransaction(user.uid, transactionId)

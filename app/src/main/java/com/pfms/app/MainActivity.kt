@@ -6,6 +6,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import com.pfms.app.viewmodel.SyncStatusViewModel
+import com.pfms.app.ui.component.OfflineSyncBanner
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
@@ -27,6 +34,7 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : FragmentActivity() {
 
     private val themeViewModel: ThemeViewModel by viewModels()
+    private val syncStatusViewModel: SyncStatusViewModel by viewModels()
     private var pendingReminderRoute by mutableStateOf<String?>(null)
 
     private fun readReminderIntent(intent: Intent?) {
@@ -47,18 +55,26 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         setContent {
             val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
+            val syncState by syncStatusViewModel.uiState.collectAsStateWithLifecycle()
             PFMSTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    PfmsNavGraph(
-                        pendingReminderRoute = pendingReminderRoute,
-                        onReminderConsumed = {
-                            pendingReminderRoute = null
-                            intent?.removeExtra(ExpenseReminderWorker.EXTRA_DESTINATION_ROUTE)
+                    Column(Modifier.fillMaxSize()) {
+                        OfflineSyncBanner(syncState)
+                        val contentModifier = Modifier.weight(1f)
+                        Box(if (!syncState.isOnline || syncState.pendingChanges > 0)
+                            contentModifier.consumeWindowInsets(WindowInsets.statusBars) else contentModifier) {
+                            PfmsNavGraph(
+                                pendingReminderRoute = pendingReminderRoute,
+                                onReminderConsumed = {
+                                    pendingReminderRoute = null
+                                    intent?.removeExtra(ExpenseReminderWorker.EXTRA_DESTINATION_ROUTE)
+                                }
+                            )
                         }
-                    )
+                    }
                 }
             }
         }
