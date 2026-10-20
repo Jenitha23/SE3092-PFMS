@@ -36,8 +36,10 @@ class MainActivity : FragmentActivity() {
     private val themeViewModel: ThemeViewModel by viewModels()
     private val syncStatusViewModel: SyncStatusViewModel by viewModels()
     private var pendingReminderRoute by mutableStateOf<String?>(null)
+    private var pendingReminderUser by mutableStateOf<String?>(null)
 
     private fun readReminderIntent(intent: Intent?) {
+        pendingReminderUser = intent?.getStringExtra(com.pfms.app.data.reminder.AndroidReminderNotifier.EXTRA_USER_ID)
         pendingReminderRoute = Routes.reminderDestination(
             intent?.getStringExtra(ExpenseReminderWorker.EXTRA_DESTINATION_ROUTE)
         )
@@ -68,8 +70,11 @@ class MainActivity : FragmentActivity() {
                             contentModifier.consumeWindowInsets(WindowInsets.statusBars) else contentModifier) {
                             PfmsNavGraph(
                                 pendingReminderRoute = pendingReminderRoute,
+                                pendingReminderUser = pendingReminderUser,
                                 onReminderConsumed = {
                                     pendingReminderRoute = null
+                                    pendingReminderUser = null
+                                    intent?.removeExtra(com.pfms.app.data.reminder.AndroidReminderNotifier.EXTRA_USER_ID)
                                     intent?.removeExtra(ExpenseReminderWorker.EXTRA_DESTINATION_ROUTE)
                                 }
                             )

@@ -187,7 +187,7 @@ class SavingsGoalNavigationAndDashboardTest {
         assertEquals(Routes.RecurringExpenses, Routes.reminderDestination(Routes.RecurringExpenses))
         assertEquals(Routes.Subscriptions, Routes.reminderDestination(Routes.Subscriptions))
         assertNull(Routes.reminderDestination(Routes.ExpenseList))
-        assertNull(Routes.reminderDestination(Routes.SavingsGoal))
+        assertEquals(Routes.SavingsGoal, Routes.reminderDestination(Routes.SavingsGoal))
         assertNull(Routes.reminderDestination(null))
     }
 }

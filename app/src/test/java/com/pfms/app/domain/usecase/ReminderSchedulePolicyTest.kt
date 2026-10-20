@@ -17,7 +17,7 @@ class ReminderSchedulePolicyTest {
         assertTrue(settings[ReminderType.DUE_RECURRING].enabled)
         assertTrue(settings[ReminderType.SUBSCRIPTION_REVIEW].enabled)
         assertFalse(settings[ReminderType.DAILY_LOG].enabled)
-        assertEquals(2, ReminderType.entries.count { it.available })
+        assertEquals(7, ReminderType.entries.count { it.available })
     }
     @Test fun dailyBeforeTimeSchedulesToday() {
         assertEquals(instant("2026-10-20", 20), ReminderSchedulePolicy.nextAt(instant("2026-10-20", 19), ReminderType.DAILY_LOG, daily))

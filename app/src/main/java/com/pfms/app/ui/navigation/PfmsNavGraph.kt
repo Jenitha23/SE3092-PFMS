@@ -80,7 +80,8 @@ fun PfmsNavGraph(
     salaryViewModel: SalaryViewModel = hiltViewModel(),
     expenseViewModel: ExpenseViewModel = hiltViewModel(),
     pendingReminderRoute: String? = null,
-    onReminderConsumed: () -> Unit = {}
+    onReminderConsumed: () -> Unit = {},
+    pendingReminderUser: String? = null
 ) {
 
     val advancedExpenseViewModel: AdvancedExpenseViewModel = hiltViewModel()
@@ -228,10 +229,12 @@ fun PfmsNavGraph(
     // -----------------------------------------
 
     // Consume reminder destinations only after authentication and app unlock.
-    LaunchedEffect(pendingReminderRoute, targetRoute) {
+    LaunchedEffect(pendingReminderRoute, pendingReminderUser, targetRoute, session) {
         val destination = Routes.reminderDestination(pendingReminderRoute)
         if (destination != null && targetRoute == Routes.Dashboard) {
-            navController.navigate(destination) { launchSingleTop = true }
+            if (Routes.reminderMatchesUser(pendingReminderUser, (session as? SessionState.Authenticated)?.user?.uid)) {
+                navController.navigate(destination) { launchSingleTop = true }
+            }
             onReminderConsumed()
         }
     }

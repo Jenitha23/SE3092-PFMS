@@ -77,8 +77,6 @@ fun ReminderSettingsContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(type.title, style = MaterialTheme.typography.bodyLarge)
-                            if (!type.available) Text("Preference saved; notifications not available yet.", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(schedule.enabled, { onEnabled(type, it) }, enabled = !state.isSaving,
                             modifier = Modifier.semantics { contentDescription = type.title })

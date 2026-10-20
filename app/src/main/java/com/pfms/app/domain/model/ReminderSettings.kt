@@ -1,6 +1,6 @@
 package com.pfms.app.domain.model
 
-enum class ReminderType(val key: String, val title: String, val available: Boolean = false) {
+enum class ReminderType(val key: String, val title: String, val available: Boolean = true) {
     DAILY_LOG("daily_log", "Daily log reminder"),
     SALARY_DAY("salary_day", "Salary day reminder"),
     DUE_RECURRING("due_recurring", "Due recurring items reminder", true),

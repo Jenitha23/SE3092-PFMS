@@ -661,7 +661,7 @@ fun IncomeFormScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Date Received",
+                        text = if (source == "Freelance" && paymentStatus == "Expected") "Invoice Date" else "Date Received",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = textPrimary,
