@@ -68,7 +68,7 @@ interface SavingsGoalDao {
     suspend fun insertActiveGoalGuarded(entity: SavingsGoalEntity) {
         if (entity.status == "ACTIVE" && !entity.isDeleted) {
             val existingActive = getActiveGoal(entity.userId)
-            if (existingActive != null) {
+            if (existingActive != null && existingActive.id != entity.id) {
                 throw IllegalStateException("An active savings goal already exists")
             }
         }

@@ -31,6 +31,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val scheduler: ExpenseSyncScheduler
 ) : ExpenseRepository {
+    @Inject lateinit var issues: com.pfms.app.data.sync.SyncIssueStore
     private val dao get() = db.expenseDao()
     private val prefs = context.getSharedPreferences("expense_defaults", Context.MODE_PRIVATE)
     private val preferenceChanges = MutableStateFlow(0)
@@ -50,12 +51,14 @@ class OfflineFirstExpenseRepository @Inject constructor(
 
     override fun observeExpenses(): Flow<List<Expense>> = auth.currentUser.map { it?.uid }.distinctUntilChanged().flatMapLatest { user ->
         if (user == null) flowOf(emptyList()) else channelFlow {
-            scheduler.enqueue()
+            runCatching { scheduler.enqueue() }
             launch {
                 remote.observe(user).retryWhen { error, _ ->
                     if (error is CancellationException) throw error
+                    if (::issues.isInitialized) issues.failed(user, "expense-load", error)
                     delay(2_000); true
                 }.collect { snapshot ->
+                    if (snapshot.authoritative && ::issues.isInitialized) issues.recovered(user, "expense-load")
                     val rows = snapshot.rows.map { it.copy(userId = user).toEntity().copy(revision = snapshot.versions[it.id]?.revision.orEmpty()) } +
                         snapshot.deletions.map { deletion ->
                             Expense(id = deletion.id, userId = user, updatedAt = deletion.version.updatedAt).toEntity()
@@ -97,7 +100,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
             dao.upsert(row.copy(createdAt = row.createdAt.takeIf { it > 0 } ?: now, updatedAt = now).toEntity()
                 .copy(syncStatus = "PENDING_INSERT", revision = UUID.randomUUID().toString(), allowDuplicate = allowDuplicate))
         }
-        savePayment(user, row.paymentMethod)
+        runCatching { savePayment(user, row.paymentMethod) }
         scheduler.enqueue()
     }
 
@@ -111,7 +114,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
                 syncStatus = if (old.syncStatus == "PENDING_INSERT") "PENDING_INSERT" else "PENDING_UPDATE",
                 revision = UUID.randomUUID().toString(), allowDuplicate = old.allowDuplicate))
         }
-        savePayment(user, expense.paymentMethod)
+        runCatching { savePayment(user, expense.paymentMethod) }
         scheduler.enqueue()
     }
 
@@ -156,9 +159,13 @@ class OfflineFirstExpenseRepository @Inject constructor(
                 if (e is CancellationException && e !is TimeoutCancellationException) throw e
                 if (generateSequence<Throwable>(e) { it.cause }.any { it is DuplicateExpenseException }) {
                     dao.markConflict(user, row.id, row.revision)
-                } else success = false
+                } else {
+                    success = false
+                    if (::issues.isInitialized) issues.failed(user, "expense-sync", e)
+                }
             }
         }
+        if (success && ::issues.isInitialized) issues.recovered(user, "expense-sync")
         success
         }
     }

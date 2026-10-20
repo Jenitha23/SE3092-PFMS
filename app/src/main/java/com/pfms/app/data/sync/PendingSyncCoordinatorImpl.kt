@@ -14,6 +14,8 @@ class PendingSyncCoordinatorImpl @Inject constructor(
     private val savingsGoalSyncable: SavingsGoalPendingSyncable
 ) : PendingSyncCoordinator {
 
+    @javax.inject.Inject lateinit var issues: SyncIssueStore
+
     override suspend fun syncAllPending(): Result<Unit> {
         val user = authRepository.currentUser.first()
         if (user == null || user.uid.isBlank()) {
@@ -78,6 +80,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
         }
 
         return if (incomeResult.isSuccess && templateResult.isSuccess && savingsGoalResult.isSuccess && savingsTxResult.isSuccess) {
+            if (::issues.isInitialized) issues.recovered(user.uid, "financial-sync")
             Result.success(Unit)
         } else {
             val failure = incomeResult.exceptionOrNull()
@@ -85,6 +88,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
                 ?: savingsGoalResult.exceptionOrNull()
                 ?: savingsTxResult.exceptionOrNull()
                 ?: RuntimeException("Failed to synchronize pending changes")
+            if (::issues.isInitialized) issues.failed(user.uid, "financial-sync", failure)
             Result.failure(failure)
         }
     }

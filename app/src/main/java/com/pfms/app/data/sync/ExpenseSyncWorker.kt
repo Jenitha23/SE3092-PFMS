@@ -26,11 +26,11 @@ class ExpenseSyncWorker @AssistedInject constructor(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork("pfms_expense_sync_recovery", ExistingPeriodicWorkPolicy.KEEP, work)
         }
-        fun enqueue(context: Context) {
+        fun enqueue(context: Context, policy: ExistingWorkPolicy = ExistingWorkPolicy.APPEND_OR_REPLACE) {
             val work = OneTimeWorkRequestBuilder<ExpenseSyncWorker>()
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
-            WorkManager.getInstance(context).enqueueUniqueWork("pfms_expense_sync", ExistingWorkPolicy.APPEND_OR_REPLACE, work)
+            WorkManager.getInstance(context).enqueueUniqueWork("pfms_expense_sync", policy, work)
         }
     }
 }

@@ -53,9 +53,10 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
     private val database: PfmsDatabase,
     private val authRepository: AuthRepository
 ) : SalaryTemplateRepository, SalaryTemplatePendingSyncable {
+    @Inject lateinit var issues: com.pfms.app.data.sync.SyncIssueStore
     @Inject @ApplicationContext lateinit var syncContext: Context
     private fun scheduleSync() {
-        if (::syncContext.isInitialized) IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        if (::syncContext.isInitialized) runCatching { IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE) }
     }
 
     internal var transactionRunner: suspend (suspend () -> Unit) -> Unit = { block ->
@@ -80,8 +81,11 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
                     launch {
                         salaryTemplateRemoteDataSource.observeSnapshots(user.uid).retryWhen { e, _ ->
                             if (e is CancellationException) throw e
+                            if (::issues.isInitialized) issues.failed(user.uid, "salary-load", e)
                             delay(2_000); true
-                        }.collect { snapshot -> salaryTemplateDao.reconcile(user.uid,
+                        }.collect { snapshot ->
+                            if (snapshot.authoritative && ::issues.isInitialized) issues.recovered(user.uid, "salary-load")
+                            salaryTemplateDao.reconcile(user.uid,
                             snapshot.rows.map { it.copy(userId = user.uid).toEntity() }, snapshot.authoritative) }
                     }
                     salaryTemplateDao.observeSalaryTemplate(user.uid).collect { send(it?.takeIf { row -> !row.isDeleted }?.toDomain()) }

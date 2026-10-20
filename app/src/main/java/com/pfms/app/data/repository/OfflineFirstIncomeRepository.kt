@@ -32,12 +32,13 @@ class OfflineFirstIncomeRepository @Inject constructor(
     private val incomeRemoteDataSource: IncomeRemoteDataSource,
     private val authRepository: AuthRepository
 ) : IncomeRepository, IncomePendingSyncable {
+    @Inject lateinit var issues: com.pfms.app.data.sync.SyncIssueStore
     @Inject @ApplicationContext lateinit var syncContext: Context
     private val mutations = Mutex()
     private val syncing = Mutex()
 
     private fun scheduleSync() {
-        if (::syncContext.isInitialized) IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        if (::syncContext.isInitialized) runCatching { IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE) }
     }
 
     private suspend fun requireUser(): AuthUser = authRepository.currentUser.first()
@@ -49,8 +50,10 @@ class OfflineFirstIncomeRepository @Inject constructor(
                 launch {
                     incomeRemoteDataSource.observeSnapshots(uid).retryWhen { error, _ ->
                         if (error is CancellationException) throw error
+                        if (::issues.isInitialized) issues.failed(uid, "income-load", error)
                         delay(2_000); true
                     }.collect { snapshot ->
+                        if (snapshot.authoritative && ::issues.isInitialized) issues.recovered(uid, "income-load")
                         val rows = snapshot.rows.map {
                             it.copy(userId = uid).toEntity().copy(revision = snapshot.versions[it.id]?.revision.orEmpty())
                         } + snapshot.deletions.map {
@@ -135,6 +138,9 @@ class OfflineFirstIncomeRepository @Inject constructor(
                         if (error is CancellationException && error !is TimeoutCancellationException) throw error
                         failure = error
                     }
+                }
+                if (::issues.isInitialized) {
+                    if (failure == null) issues.recovered(user.uid, "income-sync") else issues.failed(user.uid, "income-sync", failure)
                 }
                 failure?.let { Result.failure(it) } ?: Result.success(count)
             } catch (error: Exception) {

@@ -62,9 +62,9 @@ class MainActivity : FragmentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Column(Modifier.fillMaxSize()) {
-                        OfflineSyncBanner(syncState)
+                        OfflineSyncBanner(syncState, onRetry = syncStatusViewModel::retry)
                         val contentModifier = Modifier.weight(1f)
-                        Box(if (!syncState.isOnline || syncState.pendingChanges > 0)
+                        Box(if (!syncState.isOnline || syncState.pendingChanges > 0 || syncState.errorMessage != null)
                             contentModifier.consumeWindowInsets(WindowInsets.statusBars) else contentModifier) {
                             PfmsNavGraph(
                                 pendingReminderRoute = pendingReminderRoute,

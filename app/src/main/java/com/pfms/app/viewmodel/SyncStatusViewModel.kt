@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
 @HiltViewModel
-class SyncStatusViewModel @Inject constructor(repository: SyncStatusRepository) : ViewModel() {
+class SyncStatusViewModel @Inject constructor(private val repository: SyncStatusRepository) : ViewModel() {
     val uiState = repository.status
+    fun retry() = repository.retry()
 }
