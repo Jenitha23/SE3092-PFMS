@@ -21,6 +21,9 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE userId=:userId AND syncStatus!='SYNCED' AND needsConfirmation=0 ORDER BY createdAt")
     suspend fun pending(userId: String): List<ExpenseEntity>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM expenses WHERE userId=:userId AND (syncStatus!='SYNCED' OR needsConfirmation=1))")
+    suspend fun hasPendingOrConflicting(userId: String): Boolean
+
     @Upsert
     suspend fun upsert(row: ExpenseEntity)
 
