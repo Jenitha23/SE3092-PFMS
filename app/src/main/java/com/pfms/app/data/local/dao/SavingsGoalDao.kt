@@ -17,6 +17,14 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface SavingsGoalDao {
+    /** An upload acknowledgement must not consume an edit made while that upload was running. */
+    @Transaction
+    suspend fun completeSync(submitted: SavingsGoalEntity) {
+        if (getPendingGoals(submitted.userId).none { it == submitted }) return
+        if (submitted.isDeleted) hardDeleteGoal(submitted.userId, submitted.id)
+        else markGoalSynced(submitted.userId, submitted.id)
+    }
+
 
     /**
      * Observes the active, non-deleted savings goal for a user.

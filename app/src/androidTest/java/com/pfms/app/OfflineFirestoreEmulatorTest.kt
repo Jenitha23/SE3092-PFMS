@@ -72,7 +72,9 @@ class OfflineFirestoreEmulatorTest {
     private fun network(enabled: Boolean) {
         val mode = if (enabled) "enable" else "disable"
         listOf("svc wifi $mode", "svc data $mode").forEach { command ->
-            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).close()
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).let {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() }
+            }
         }
     }
 
@@ -225,5 +227,31 @@ class OfflineFirestoreEmulatorTest {
             auth.users.value = AuthUser(uid, "A", "a@example.test", true)
             assertEquals(77777L, repository.getIncomeById("income-0")!!.amountMinor)
         } finally { network(true); db.close() }
+    }
+
+    @Test fun stage5ProductionAuthRepositoryRegistersLogsInAndKeepsNewUserFinancesEmpty() = runBlocking {
+        enabled(); clients(); network(true)
+        val repository = FirebaseAuthRepository(firebase, firestore,
+            com.pfms.app.data.firebase.UserProfileInitializer(firestore))
+        val email = "review-${UUID.randomUUID()}@example.test"
+        val password = "Review-Password123!"
+        withTimeout(60_000) {
+            val registered = repository.register("Review User", email, password).getOrThrow()
+            assertEquals(registered.uid, repository.currentUser.first { it != null }!!.uid)
+            val profile = firestore.collection("users").document(registered.uid).get(Source.SERVER).await()
+            assertEquals("Review User", profile.getString("displayName"))
+            assertFalse(firestore.collection("users").document(registered.uid).collection("categories").get(Source.SERVER).await().isEmpty)
+            assertTrue(firestore.collection("users").document(registered.uid).collection("income").get(Source.SERVER).await().isEmpty)
+            assertTrue(firestore.collection("users").document(registered.uid).collection("expenses").get(Source.SERVER).await().isEmpty)
+            assertTrue(repository.logout().isSuccess)
+            assertNull(repository.currentUser.first())
+            val failure = repository.login(email, "Wrong-Password123!").exceptionOrNull()
+            assertTrue(failure is AuthException)
+            assertFalse(failure!!.message.orEmpty().contains("Firebase"))
+            assertFalse(failure.message.orEmpty().contains("INVALID_LOGIN_CREDENTIALS"))
+            assertEquals(registered.uid, repository.login(email, password).getOrThrow().uid)
+            assertEquals(registered.uid, repository.currentUser.first { it != null }!!.uid)
+        }
+        firebase.signOut()
     }
 }

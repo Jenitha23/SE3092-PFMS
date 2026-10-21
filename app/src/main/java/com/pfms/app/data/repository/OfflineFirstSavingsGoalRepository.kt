@@ -128,7 +128,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             try {
                 val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertGoal(user.uid, goalToSave) }
                 if (remoteResult?.isSuccess == true) {
-                    savingsGoalDao.markGoalSynced(user.uid, goalToSave.id, SyncStatus.SYNCED)
+                    savingsGoalDao.completeSync(localEntity)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -170,7 +170,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             try {
                 val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertGoal(user.uid, goalToUpdate) }
                 if (remoteResult?.isSuccess == true) {
-                    savingsGoalDao.markGoalSynced(user.uid, goalToUpdate.id, SyncStatus.SYNCED)
+                    savingsGoalDao.completeSync(updatedEntity)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -204,7 +204,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             try {
                 val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertGoal(user.uid, archived) }
                 if (remoteResult?.isSuccess == true) {
-                    savingsGoalDao.markGoalSynced(user.uid, archived.id, SyncStatus.SYNCED)
+                    savingsGoalDao.completeSync(updatedEntity)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -224,11 +224,12 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             }
 
             // 1. Soft delete locally with PENDING_DELETE so it immediately disappears from active views
+            val deletedAt = com.pfms.app.data.sync.SyncVersion.nextTimestamp(existing.updatedAt)
             savingsGoalDao.markGoalDeleted(
                 userId = user.uid,
                 goalId = goalId,
                 syncStatus = SyncStatus.PENDING_DELETE,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = deletedAt
             )
 
             scheduleSync()
@@ -236,7 +237,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             try {
                 val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.deleteGoal(user.uid, goalId) }
                 if (remoteResult?.isSuccess == true) {
-                    savingsGoalDao.hardDeleteGoal(user.uid, goalId)
+                    savingsGoalDao.completeSync(existing.copy(isDeleted = true, syncStatus = SyncStatus.PENDING_DELETE, updatedAt = deletedAt))
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -277,7 +278,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             try {
                 val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertTransaction(user.uid, txToSave) }
                 if (remoteResult?.isSuccess == true) {
-                    goalTransactionDao.markTransactionSynced(user.uid, txToSave.id, SyncStatus.SYNCED)
+                    goalTransactionDao.completeSync(localEntity)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -322,7 +323,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             try {
                 val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertTransaction(user.uid, txToUpdate) }
                 if (remoteResult?.isSuccess == true) {
-                    goalTransactionDao.markTransactionSynced(user.uid, txToUpdate.id, SyncStatus.SYNCED)
+                    goalTransactionDao.completeSync(updatedEntity)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -342,11 +343,12 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             }
 
             // 1. Soft-delete locally with PENDING_DELETE
+            val deletedAt = com.pfms.app.data.sync.SyncVersion.nextTimestamp(existing.updatedAt)
             goalTransactionDao.markTransactionDeleted(
                 userId = user.uid,
                 transactionId = transactionId,
                 syncStatus = SyncStatus.PENDING_DELETE,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = deletedAt
             )
 
             scheduleSync()
@@ -354,7 +356,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             try {
                 val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.deleteTransaction(user.uid, transactionId) }
                 if (remoteResult?.isSuccess == true) {
-                    goalTransactionDao.hardDeleteTransaction(user.uid, transactionId)
+                    goalTransactionDao.completeSync(existing.copy(isDeleted = true, syncStatus = SyncStatus.PENDING_DELETE, updatedAt = deletedAt))
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -371,13 +373,15 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             var failureException: Throwable? = null
 
             for (record in pendingList) {
+                if (authRepository.currentUser.first()?.uid != user.uid) break
+                if (savingsGoalDao.getPendingGoals(user.uid).none { it == record }) continue
                 try {
                     when (record.syncStatus) {
                         SyncStatus.PENDING_INSERT,
                         SyncStatus.PENDING_UPDATE -> {
                             val res = savingsGoalRemoteDataSource.upsertGoal(user.uid, record.toDomain())
                             if (res.isSuccess) {
-                                savingsGoalDao.markGoalSynced(user.uid, record.id, SyncStatus.SYNCED)
+                                savingsGoalDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()
@@ -386,7 +390,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                         SyncStatus.PENDING_DELETE -> {
                             val res = savingsGoalRemoteDataSource.deleteGoal(user.uid, record.id)
                             if (res.isSuccess) {
-                                savingsGoalDao.hardDeleteGoal(user.uid, record.id)
+                                savingsGoalDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()
@@ -416,13 +420,15 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             var failureException: Throwable? = null
 
             for (record in pendingList) {
+                if (authRepository.currentUser.first()?.uid != user.uid) break
+                if (goalTransactionDao.getPendingTransactions(user.uid).none { it == record }) continue
                 try {
                     when (record.syncStatus) {
                         SyncStatus.PENDING_INSERT,
                         SyncStatus.PENDING_UPDATE -> {
                             val res = savingsGoalRemoteDataSource.upsertTransaction(user.uid, record.toDomain())
                             if (res.isSuccess) {
-                                goalTransactionDao.markTransactionSynced(user.uid, record.id, SyncStatus.SYNCED)
+                                goalTransactionDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()
@@ -431,7 +437,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                         SyncStatus.PENDING_DELETE -> {
                             val res = savingsGoalRemoteDataSource.deleteTransaction(user.uid, record.id)
                             if (res.isSuccess) {
-                                goalTransactionDao.hardDeleteTransaction(user.uid, record.id)
+                                goalTransactionDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()

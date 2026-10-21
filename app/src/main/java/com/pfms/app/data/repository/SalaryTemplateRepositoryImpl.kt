@@ -121,8 +121,9 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
         try {
             withTimeout(10_000) { salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, templateToSave) }
             // 3. Mark synced on success
-            salaryTemplateDao.updateSyncStatus(user.uid, SyncStatus.SYNCED)
+            salaryTemplateDao.completeSync(entity)
         } catch (e: Exception) {
+            if (e is CancellationException && e !is TimeoutCancellationException) throw e
             // Offline-first: remains pending on failure
         }
     }
@@ -213,8 +214,9 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
         // Income is owned by the Room queue; don't also queue the same write in the Firestore SDK.
         try {
             withTimeout(10_000) { salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, updatedTemplateEntity.toDomain()) }
-            salaryTemplateDao.updateSyncStatus(user.uid, SyncStatus.SYNCED)
+            salaryTemplateDao.completeSync(updatedTemplateEntity)
         } catch (e: Exception) {
+            if (e is CancellationException && e !is TimeoutCancellationException) throw e
             // Retains PENDING_UPDATE locally
         }
     }
@@ -229,20 +231,23 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
             var failureException: Exception? = null
 
             for (record in pendingList) {
+                if (authRepository.currentUser.first()?.uid != user.uid) break
+                if (salaryTemplateDao.getPendingSync(user.uid).none { it == record }) continue
                 try {
                     when (record.syncStatus) {
                         SyncStatus.PENDING_INSERT,
                         SyncStatus.PENDING_UPDATE -> {
                             salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, record.toDomain())
-                            salaryTemplateDao.updateSyncStatus(user.uid, SyncStatus.SYNCED)
+                            salaryTemplateDao.completeSync(record)
                         }
                         SyncStatus.PENDING_DELETE -> {
                             salaryTemplateRemoteDataSource.deleteSalaryTemplate(user.uid, record.id)
-                            salaryTemplateDao.hardDeleteSalaryTemplate(user.uid)
+                            salaryTemplateDao.completeSync(record)
                         }
                         SyncStatus.SYNCED -> Unit
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     // Retains pending state
                     failureException = e
                 }
@@ -253,6 +258,7 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
                 Result.success(Unit)
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Result.failure(e)
         }
     }

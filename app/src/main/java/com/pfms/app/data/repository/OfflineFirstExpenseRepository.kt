@@ -38,6 +38,12 @@ class OfflineFirstExpenseRepository @Inject constructor(
     private suspend fun uid() = auth.currentUser.first()?.uid?.takeIf { it.isNotBlank() } ?: error("Authentication required")
     private val syncing = Mutex()
 
+    private fun scheduleSync() {
+        // Room has already committed. Scheduling failure must not turn a durable save into a
+        // failed form submission; startup/reconnection and periodic recovery repair the schedule.
+        runCatching { scheduler.enqueue() }
+    }
+
     internal var transactionRunner: suspend (suspend () -> Unit) -> Unit = {
         db.withTransaction(it)
     }
@@ -101,7 +107,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
                 .copy(syncStatus = "PENDING_INSERT", revision = UUID.randomUUID().toString(), allowDuplicate = allowDuplicate))
         }
         runCatching { savePayment(user, row.paymentMethod) }
-        scheduler.enqueue()
+        scheduleSync()
     }
 
     override suspend fun updateExpense(expense: Expense) = withContext(Dispatchers.IO) {
@@ -115,7 +121,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
                 revision = UUID.randomUUID().toString(), allowDuplicate = old.allowDuplicate))
         }
         runCatching { savePayment(user, expense.paymentMethod) }
-        scheduler.enqueue()
+        scheduleSync()
     }
 
     override suspend fun deleteExpense(expenseId: String) = withContext(Dispatchers.IO) {
@@ -125,7 +131,7 @@ class OfflineFirstExpenseRepository @Inject constructor(
             dao.upsert(old.copy(isDeleted = true, needsConfirmation = false,
                 syncStatus = "PENDING_DELETE", updatedAt = SyncVersion.nextTimestamp(old.updatedAt), revision = UUID.randomUUID().toString()))
         }
-        scheduler.enqueue()
+        scheduleSync()
     }
 
     override suspend fun dismissDuplicate(expenseId: String) = withContext(Dispatchers.IO) {
