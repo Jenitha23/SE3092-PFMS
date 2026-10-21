@@ -34,17 +34,17 @@ class GetMonthlyIncomeSummaryUseCase @Inject constructor() {
 
             val amount = IncomeRealizedCalculator.getEffectiveLkrMinor(income)
 
-            when (income.source) {
-                IncomeRealizedCalculator.SOURCE_SALARY -> {
+            when {
+                income.source.equals(IncomeRealizedCalculator.SOURCE_SALARY, true) -> {
                     salaryMinor += amount
                 }
-                IncomeRealizedCalculator.SOURCE_FREELANCE -> {
+                income.source.equals(IncomeRealizedCalculator.SOURCE_FREELANCE, true) -> {
                     freelanceMinor += amount
                 }
-                IncomeRealizedCalculator.SOURCE_GOOGLE_ADSENSE -> {
+                income.source.equals(IncomeRealizedCalculator.SOURCE_GOOGLE_ADSENSE, true) -> {
                     adsenseMinor += amount
                 }
-                IncomeRealizedCalculator.SOURCE_CRYPTO -> {
+                income.source.equals(IncomeRealizedCalculator.SOURCE_CRYPTO, true) -> {
                     if (income.cryptoType.equals(IncomeRealizedCalculator.CRYPTO_LOSS, ignoreCase = true)) {
                         cryptoNetMinor -= amount
                     } else {
