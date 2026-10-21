@@ -124,4 +124,39 @@ class ExpenseReminderIntegrationTest {
             assertTrue(source.candidates(uid, type).isEmpty())
         assertEquals(0, manager.activeNotifications.size)
     }
+
+    @Test fun allSevenTypesPostToAndroidOnceAndDisabledSettingsCancelEveryVisibleType() = runBlocking {
+        val notifier = AndroidReminderNotifier(context)
+        val prefix = "pfms_reminder_${ReminderPreferencesStore.identity(uid)}_"
+        fun visible() = manager.activeNotifications.filter { it.tag?.startsWith(prefix) == true }
+        suspend fun awaitVisible(count: Int) = withTimeout(5_000) {
+            // Android can create its own auto-group summary once several notifications exist.
+            // Count our stable, user-scoped notification tags rather than that system summary.
+            while (visible().size != count) delay(25)
+        }
+        // Financial eligibility is separately exercised against real Room snapshots. Here the
+        // controlled content isolates the actual Android channels, posting, claims and cancellation.
+        val source = object : ReminderContentSource {
+            override suspend fun candidates(uid: String, type: ReminderType) = listOf(
+                ReminderNotification("item", type.title, "Integration review", "dashboard"))
+        }
+        val delivery = ReminderDelivery(store, auth, notifier, source, clock)
+        for ((index, type) in ReminderType.entries.withIndex()) {
+            store.locked { store.update(uid, type, true, 0, 2) }
+            val revision = store.read(uid)[type].revision
+            assertEquals(ReminderRunResult.COMPLETE, delivery.run(uid, type.key, revision, 1))
+            awaitVisible(index + 1)
+            assertEquals(ReminderRunResult.COMPLETE, delivery.run(uid, type.key, revision, 1))
+            assertEquals(index + 1, visible().size)
+        }
+        assertEquals(ReminderType.entries.map { it.title }.toSet(),
+            visible().map { it.notification.extras.getString("android.title") }.toSet())
+        for (type in ReminderType.entries) store.locked { store.update(uid, type, false, null, null) }
+        ReminderWorkScheduler(context, clock, notifier).reconcile(store.read(uid))
+        awaitVisible(0)
+        for (type in ReminderType.entries) {
+            delivery.run(uid, type.key, store.read(uid)[type].revision, 1)
+        }
+        assertEquals(0, visible().size)
+    }
 }
