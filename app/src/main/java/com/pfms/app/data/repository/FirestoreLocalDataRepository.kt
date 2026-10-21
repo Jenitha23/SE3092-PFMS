@@ -2,12 +2,13 @@ package com.pfms.app.data.repository
 
 import android.content.Context
 import androidx.work.WorkManager
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.pfms.app.data.auth.BiometricPreferences
 import com.pfms.app.data.local.CacheClearFlag
 import com.pfms.app.data.local.PfmsDatabase
 import com.pfms.app.domain.repository.LocalDataRepository
+import com.pfms.app.domain.repository.AuthRepository
+import kotlinx.coroutines.flow.first
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -21,19 +22,14 @@ class FirestoreLocalDataRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val biometricPreferences: BiometricPreferences,
     private val database: PfmsDatabase,
-    private val firebaseAuth: FirebaseAuth
+    private val authRepository: AuthRepository
 ) : LocalDataRepository {
 
     override suspend fun hasUnsynchronizedData(): Boolean {
-        val uid = firebaseAuth.currentUser?.uid ?: return false
-
-        // Room is the source of truth for queued local financial mutations.
-        val roomPending = database.incomeDao().getPendingSync(uid).isNotEmpty() ||
-                database.expenseDao().hasPendingOrConflicting(uid) ||
-                database.salaryTemplateDao().getPendingSync(uid).isNotEmpty() ||
-                database.savingsGoalDao().getPendingGoals(uid).isNotEmpty() ||
-                database.goalTransactionDao().getPendingTransactions(uid).isNotEmpty()
-        if (roomPending) return true
+        val uid = authRepository.currentUser.first()?.uid
+        // Keep the shared queue count and main's warning for expenses awaiting confirmation.
+        if (uid != null && (database.pendingChangesDao().pendingCount(uid) > 0 ||
+                    database.expenseDao().hasPendingOrConflicting(uid))) return true
 
         // Firestore can have additional pending changes made outside Room.
         val allSynced = withTimeoutOrNull(1_000L) {

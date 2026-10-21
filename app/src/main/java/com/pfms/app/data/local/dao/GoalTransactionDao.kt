@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
+import androidx.room.Transaction
 import com.pfms.app.data.local.entity.GoalTransactionEntity
 import com.pfms.app.data.local.entity.SyncStatus
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,13 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface GoalTransactionDao {
+    @Transaction
+    suspend fun completeSync(submitted: GoalTransactionEntity) {
+        if (getPendingTransactions(submitted.userId).none { it == submitted }) return
+        if (submitted.isDeleted) hardDeleteTransaction(submitted.userId, submitted.id)
+        else markTransactionSynced(submitted.userId, submitted.id)
+    }
+
 
     /**
      * Observes all active (non-deleted) transactions for a specific goal, ordered by date ASC, createdAt ASC.

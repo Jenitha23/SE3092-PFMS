@@ -3,7 +3,10 @@ package com.pfms.app.ui.navigation
 /** Centralized route names for the PFMS navigation graph. */
 object Routes {
     fun reminderDestination(route: String?): String? =
-        route?.takeIf { it == RecurringExpenses || it == Subscriptions }
+        route?.takeIf { it in setOf(Dashboard, IncomeList, SpendingAnalytics, SavingsGoal, RecurringExpenses, Subscriptions) }
+
+    fun reminderMatchesUser(expectedUser: String?, currentUser: String?): Boolean =
+        currentUser != null && (expectedUser == null || expectedUser == currentUser)
 
     const val Splash = "splash"
     const val Login = "login"

@@ -78,7 +78,7 @@ class SavingsGoalPendingSyncIntegrationTest {
 
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrNull())
-        verify(savingsGoalDao).markGoalSynced("user-123", "g-update", SyncStatus.SYNCED)
+        verify(savingsGoalDao).completeSync(pendingGoal)
     }
 
     @Test
@@ -96,7 +96,7 @@ class SavingsGoalPendingSyncIntegrationTest {
 
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrNull())
-        verify(goalTransactionDao).markTransactionSynced("user-123", "tx-insert", SyncStatus.SYNCED)
+        verify(goalTransactionDao).completeSync(pendingTx)
     }
 
     @Test
@@ -115,7 +115,7 @@ class SavingsGoalPendingSyncIntegrationTest {
 
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrNull())
-        verify(goalTransactionDao).hardDeleteTransaction("user-123", "tx-del")
+        verify(goalTransactionDao).completeSync(pendingDeleteTx)
     }
 
     @Test
@@ -132,8 +132,7 @@ class SavingsGoalPendingSyncIntegrationTest {
         val result = syncable.syncPendingTransactions()
 
         assertFalse(result.isSuccess)
-        verify(goalTransactionDao, never()).markTransactionSynced(any(), any(), any())
-        verify(goalTransactionDao, never()).hardDeleteTransaction(any(), any())
+        verify(goalTransactionDao, never()).completeSync(any())
     }
 
     @Test

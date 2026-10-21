@@ -17,6 +17,14 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface SavingsGoalDao {
+    /** An upload acknowledgement must not consume an edit made while that upload was running. */
+    @Transaction
+    suspend fun completeSync(submitted: SavingsGoalEntity) {
+        if (getPendingGoals(submitted.userId).none { it == submitted }) return
+        if (submitted.isDeleted) hardDeleteGoal(submitted.userId, submitted.id)
+        else markGoalSynced(submitted.userId, submitted.id)
+    }
+
 
     /**
      * Observes the active, non-deleted savings goal for a user.
@@ -68,7 +76,7 @@ interface SavingsGoalDao {
     suspend fun insertActiveGoalGuarded(entity: SavingsGoalEntity) {
         if (entity.status == "ACTIVE" && !entity.isDeleted) {
             val existingActive = getActiveGoal(entity.userId)
-            if (existingActive != null) {
+            if (existingActive != null && existingActive.id != entity.id) {
                 throw IllegalStateException("An active savings goal already exists")
             }
         }

@@ -3,10 +3,9 @@ package com.pfms.app.domain.usecase.savings
 import com.pfms.app.domain.model.Expense
 import com.pfms.app.domain.model.Income
 import com.pfms.app.domain.usecase.analytics.GetMonthlyIncomeSummaryUseCase
-import java.time.LocalDate
+import com.pfms.app.domain.usecase.analytics.IncomeRealizedCalculator
 import java.time.YearMonth
 import java.time.ZoneId
-import java.time.format.DateTimeParseException
 import javax.inject.Inject
 
 /**
@@ -38,11 +37,7 @@ class CalculateMonthlyNetSavingsUseCase @Inject constructor(
 
         var totalExpensesMinor = 0L
         for (expense in expenses) {
-            val expenseMonth = try {
-                YearMonth.from(LocalDate.parse(expense.date))
-            } catch (e: DateTimeParseException) {
-                null
-            }
+            val expenseMonth = IncomeRealizedCalculator.parseYearMonth(expense.date)
             if (expenseMonth == targetMonth) {
                 totalExpensesMinor += expense.amountMinor
             }

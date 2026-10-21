@@ -1,6 +1,7 @@
 package com.pfms.app.domain.usecase.savings
 
 import com.pfms.app.domain.model.Expense
+import com.pfms.app.domain.usecase.SafeCalculations
 import com.pfms.app.domain.model.ExpenseClassification
 import com.pfms.app.domain.model.savings.DiscretionarySpendingImpact
 import java.time.LocalDate
@@ -49,7 +50,7 @@ class CalculateDiscretionaryImpactUseCase @Inject constructor() {
         val percentage = if (requiredMonthlySavingMinor <= 0L || discretionaryMinor <= 0L) {
             0.0
         } else {
-            (discretionaryMinor.toDouble() / requiredMonthlySavingMinor.toDouble()) * 100.0
+            SafeCalculations.percentage(discretionaryMinor, requiredMonthlySavingMinor)
         }
 
         return DiscretionarySpendingImpact(

@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.pfms.app.ui.component.EmptyState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,14 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
-import android.Manifest
-import android.os.Build
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import com.pfms.app.data.sync.ExpenseReminderWorker
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pfms.app.domain.model.*
 import com.pfms.app.domain.usecase.ExpenseRules
@@ -41,23 +35,6 @@ import java.util.UUID
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-
-@Composable
-internal fun ExpenseReminderPermission() {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) ExpenseReminderWorker.runOnce(context)
-    }
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            ExpenseReminderWorker.runOnce(context)
-        }
-    }
-}
 
 @Composable
 private fun ClassificationChooser(
@@ -91,10 +68,11 @@ private fun CategoriesScreenContent(vm: AdvancedExpenseViewModel, onBack: () -> 
     val categories by vm.categories.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val canRetry by vm.canRetry.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Active, 1: Archived
-    var name by remember { mutableStateOf("") }
-    var classification by remember { mutableStateOf(ExpenseClassification.DISCRETIONARY) }
+    var name by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var classification by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(ExpenseClassification.DISCRETIONARY) }
     var editingCategory by remember { mutableStateOf<ExpenseCategory?>(null) }
     var categoryToArchive by remember { mutableStateOf<ExpenseCategory?>(null) }
     val activeListState = rememberLazyListState()
@@ -143,7 +121,7 @@ private fun CategoriesScreenContent(vm: AdvancedExpenseViewModel, onBack: () -> 
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = { vm.retryLoading() }) { Text("Retry") }
+                        if (canRetry && !busy) TextButton(onClick = vm::retry) { Text("Retry") }
                         TextButton(onClick = { vm.clearMessage() }) { Text("Dismiss") }
                     }
                 }
@@ -267,9 +245,12 @@ private fun CategoriesScreenContent(vm: AdvancedExpenseViewModel, onBack: () -> 
             } else {
                 // Archived Categories Tab
                 if (archivedCategories.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No archived categories.")
-                    }
+                    EmptyState(
+                        title = "No archived categories",
+                        message = "Your active categories are ready to organise expenses.",
+                        actionLabel = "View active categories",
+                        onAction = { selectedTab = 0 }
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -359,23 +340,24 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
     val totalMonthly by vm.monthlySubscriptionMinor.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val canRetry by vm.canRetry.collectAsStateWithLifecycle()
 
     var showForm by remember { mutableStateOf(false) }
     var editingTemplate by remember { mutableStateOf<RecurringExpense?>(null) }
     var newTemplateId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var templateToDelete by remember { mutableStateOf<RecurringExpense?>(null) }
     var confirmDueItem by remember { mutableStateOf<RecurringExpense?>(null) }
-    var adjustedAmount by remember { mutableStateOf("") }
+    var adjustedAmount by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
 
     // Form fields
-    var title by remember { mutableStateOf("") }
-    var amountText by remember { mutableStateOf("") }
-    var due by remember { mutableStateOf(LocalDate.now(RecurringExpenseCalculator.COLOMBO_ZONE).toString()) }
-    var reminder by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf("") }
-    var recurrence by remember { mutableStateOf(Recurrence.MONTHLY) }
-    var flag by remember { mutableStateOf(SubscriptionFlag.NONE) }
-    var paymentMethod by remember { mutableStateOf(ExpensePaymentMethod.CASH) }
+    var title by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var amountText by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var due by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(LocalDate.now(RecurringExpenseCalculator.COLOMBO_ZONE).toString()) }
+    var reminder by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var selectedCategoryId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var recurrence by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(Recurrence.MONTHLY) }
+    var flag by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(SubscriptionFlag.NONE) }
+    var paymentMethod by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(ExpensePaymentMethod.CASH) }
     var showDueDatePicker by remember { mutableStateOf(false) }
     var showReminderDatePicker by remember { mutableStateOf(false) }
 
@@ -449,7 +431,7 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
                     ) {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(message ?: "", color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { vm.retryLoading() }) { Text("Retry") }
+                            if (canRetry && !busy) TextButton(onClick = vm::retry) { Text("Retry") }
                             TextButton(onClick = { vm.clearMessage() }) { Text("Dismiss") }
                         }
                     }
@@ -823,9 +805,12 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
             // Template list
             if (relevantTemplates.isEmpty() && !showForm) {
                 item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text(if (subscriptionsOnly) "No subscriptions added yet." else "No recurring templates configured.")
-                    }
+                    EmptyState(
+                        title = if (subscriptionsOnly) "No subscriptions added yet" else "No recurring expenses yet",
+                        message = "Add a template to track upcoming payments and reminders.",
+                        actionLabel = if (subscriptionsOnly) "Add Subscription" else "Add Recurring Expense",
+                        onAction = { editingTemplate = null; showForm = true }
+                    )
                 }
             } else {
                 items(relevantTemplates, key = { it.id }) { item ->
@@ -921,6 +906,7 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
             title = { Text("Confirm Recurring Expense") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.pfms.app.ui.component.ErrorBanner(message)
                     Text("Confirm recording of '${template.title}' into your expense records?")
                     Text("Category: ${template.categoryName}")
                     Text("Due Date: ${template.nextDueDate}")
@@ -938,11 +924,10 @@ private fun RecurringExpensesScreenContent(vm: AdvancedExpenseViewModel, onBack:
                     onClick = {
                         val parsed = ExpenseRules.parseAmount(adjustedAmount) ?: template.amountMinor
                         val updated = template.copy(amountMinor = parsed)
-                        confirmDueItem = null
-                        vm.confirm(updated)
+                        vm.confirm(updated) { confirmDueItem = null }
                     }
                 ) {
-                    Text("Confirm & Record")
+                    Text(if (busy) "Saving…" else if (canRetry && message != null) "Retry" else "Confirm & Record")
                 }
             },
             dismissButton = {

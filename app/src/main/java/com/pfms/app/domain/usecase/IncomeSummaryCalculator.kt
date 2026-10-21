@@ -1,6 +1,7 @@
 package com.pfms.app.domain.usecase
 
 import com.pfms.app.domain.model.Income
+import com.pfms.app.domain.usecase.analytics.IncomeRealizedCalculator
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -19,7 +20,15 @@ data class IncomeSummary(
     val ytdNetCryptoMinor get() = ytdCryptoGainsMinor - ytdCryptoLossesMinor
 }
 
+data class IncomeCurrencyTotals(val lkrMinor: Long = 0L, val usdInLkrMinor: Long = 0L, val usdMinor: Long = 0L)
+
 object IncomeSummaryCalculator {
+    fun currencyTotals(records: List<Income>) = IncomeCurrencyTotals(
+        lkrMinor = records.filter { it.currency == "LKR" && !it.source.equals("Crypto", true) }.sumOf { it.amountMinor },
+        usdInLkrMinor = records.filter { it.currency == "USD" }.sumOf { it.amountLkrMinor ?: 0L },
+        usdMinor = records.filter { it.currency == "USD" }.sumOf { it.amountMinor }
+    )
+
     fun lkrAmount(income: Income): Long = when (income.currency) {
         "LKR" -> income.amountMinor
         "USD" -> income.amountLkrMinor ?: 0L
@@ -27,12 +36,11 @@ object IncomeSummaryCalculator {
     }
 
     fun calculate(records: List<Income>, today: LocalDate): IncomeSummary {
-        val pending = records.filter { it.source == "Freelance" && it.paymentStatus == "Expected" }
-        val realized = records.filterNot { it.source == "Freelance" && it.paymentStatus != "Received" }
-        fun signedAmount(income: Income): Long =
-            if (income.source == "Crypto" && income.cryptoType == "Loss") -lkrAmount(income)
-            else lkrAmount(income)
-        val crypto = records.filter { it.source == "Crypto" }
+        val pending = records.filter { it.source.equals("Freelance", true) &&
+            (it.paymentStatus.equals("Expected", true) || it.paymentStatus.equals("Pending", true)) }
+        val realized = records.filter(IncomeRealizedCalculator::isRealized)
+        fun signedAmount(income: Income) = IncomeRealizedCalculator.getRealizedSignedAmountMinor(income)
+        val crypto = records.filter { it.source.equals("Crypto", true) }
         val ytd = crypto.filter {
             val date = runCatching { LocalDate.parse(it.receivedDate) }.getOrNull()
             date != null && date.year == today.year && !date.isAfter(today)
@@ -41,14 +49,14 @@ object IncomeSummaryCalculator {
         return IncomeSummary(
             realizedMinor = realized.sumOf(::signedAmount),
             monthlyRealizedMinor = realized.filter {
-                runCatching { YearMonth.from(LocalDate.parse(it.receivedDate)) == month }.getOrDefault(false)
+                IncomeRealizedCalculator.matchesMonth(it, month)
             }.sumOf(::signedAmount),
             pendingFreelanceMinor = pending.sumOf(::lkrAmount),
             pendingFreelanceCount = pending.size,
-            cryptoGainsMinor = crypto.filter { it.cryptoType == "Gain" }.sumOf(::lkrAmount),
-            cryptoLossesMinor = crypto.filter { it.cryptoType == "Loss" }.sumOf(::lkrAmount),
-            ytdCryptoGainsMinor = ytd.filter { it.cryptoType == "Gain" }.sumOf(::lkrAmount),
-            ytdCryptoLossesMinor = ytd.filter { it.cryptoType == "Loss" }.sumOf(::lkrAmount)
+            cryptoGainsMinor = crypto.filter { it.cryptoType.equals("Gain", true) }.sumOf(::lkrAmount),
+            cryptoLossesMinor = crypto.filter { it.cryptoType.equals("Loss", true) }.sumOf(::lkrAmount),
+            ytdCryptoGainsMinor = ytd.filter { it.cryptoType.equals("Gain", true) }.sumOf(::lkrAmount),
+            ytdCryptoLossesMinor = ytd.filter { it.cryptoType.equals("Loss", true) }.sumOf(::lkrAmount)
         )
     }
 }

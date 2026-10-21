@@ -1,5 +1,12 @@
 package com.pfms.app.viewmodel
 
+import com.pfms.app.data.error.ErrorAction
+import com.pfms.app.data.error.OperationErrors
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onEach
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.domain.model.GoalTransaction
@@ -64,6 +71,14 @@ class SavingsGoalViewModel @Inject constructor(
     private val _operationInProgress = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
 
+    private val reload = MutableStateFlow(0)
+    private val successVersion = MutableStateFlow(0L)
+    private val canRetry = MutableStateFlow(false)
+    private var failedAction: (() -> Unit)? = null
+    private var createGoalId: String? = null
+    private var transactionId: String? = null
+    private var lastState = SavingsGoalUiState()
+
     private val activeGoalAndTransactionsFlow = savingsGoalRepository.observeActiveGoal()
         .flatMapLatest { goal ->
             if (goal == null) {
@@ -75,7 +90,7 @@ class SavingsGoalViewModel @Inject constructor(
             }
         }
 
-    val uiState: StateFlow<SavingsGoalUiState> = combine(
+    val uiState: StateFlow<SavingsGoalUiState> = reload.flatMapLatest { combine(
         activeGoalAndTransactionsFlow,
         incomeRepository.observeIncome(),
         expenseRepository.observeExpenses(),
@@ -138,7 +153,13 @@ class SavingsGoalViewModel @Inject constructor(
                 operationInProgress = inProgress
             )
         }
-    }.stateIn(
+    }.catch { error ->
+        val problem = OperationErrors.present(error, ErrorAction.LOAD)
+        failedAction = ::retryLoading
+        emit(lastState.copy(isLoading = false, errorMessage = problem.message, canRetry = problem.canRetry))
+    } }.combine(successVersion) { state, version -> state.copy(successVersion = version) }
+        .combine(canRetry) { state, retry -> state.copy(canRetry = state.canRetry || retry) }
+        .onEach { lastState = it }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
         initialValue = SavingsGoalUiState(isLoading = true)
@@ -146,287 +167,110 @@ class SavingsGoalViewModel @Inject constructor(
 
     fun clearError() {
         _errorMessage.value = null
+        canRetry.value = false
+        failedAction = null
+    }
+
+    fun beginForm() {
+        createGoalId = null
+        transactionId = null
+        clearError()
+    }
+
+    fun retry() {
+        if (!_operationInProgress.value && uiState.value.canRetry) failedAction?.invoke()
+    }
+
+    private fun retryLoading() { reload.value++ }
+
+    private fun perform(action: ErrorAction = ErrorAction.SAVE, block: suspend (String) -> Result<Unit>) {
+        if (_operationInProgress.value) return
+        _operationInProgress.value = true
+        _errorMessage.value = null
+        canRetry.value = false
+        viewModelScope.launch {
+            try {
+                val user = authRepository.currentUser.first()?.uid?.takeIf { it.isNotBlank() }
+                    ?: error("Authentication required: no active user session")
+                withTimeout(20_000) { block(user).getOrThrow() }
+                failedAction = null
+                createGoalId = null
+                transactionId = null
+                successVersion.value++
+            } catch (error: Exception) {
+                val problem = OperationErrors.present(error, action)
+                _errorMessage.value = problem.message
+                canRetry.value = problem.canRetry
+                failedAction = { perform(action, block) }
+            } finally {
+                _operationInProgress.value = false
+            }
+        }
     }
 
     fun createGoal(goal: SavingsGoal) {
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                // The create dialog builds the goal without an id, so generate one here.
-                // Keep an id if the caller already supplied one (e.g. tests, imports).
-                val goalWithUser = goal.copy(
-                    id = goal.id.ifBlank { UUID.randomUUID().toString() },
-                    userId = goal.userId.ifBlank { user.uid }
-                )
-                val result = savingsGoalRepository.createGoal(goalWithUser)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to create savings goal"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while creating savings goal"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
+        if (_operationInProgress.value) return
+        // Generate missing IDs here, retaining the same ID when a failed save is retried.
+        val id = goal.id.ifBlank { createGoalId ?: UUID.randomUUID().toString().also { createGoalId = it } }
+        perform { uid -> savingsGoalRepository.createGoal(goal.copy(id = id, userId = goal.userId.ifBlank { uid })) }
     }
 
-    fun updateGoal(goal: SavingsGoal) {
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                val goalWithUser = if (goal.userId.isBlank()) goal.copy(userId = user.uid) else goal
-                val result = savingsGoalRepository.updateGoal(goalWithUser)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to update savings goal"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while updating savings goal"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
+    fun updateGoal(goal: SavingsGoal) = perform { uid ->
+        savingsGoalRepository.updateGoal(goal.copy(userId = goal.userId.ifBlank { uid }))
     }
 
-    fun archiveGoal(goalId: String) {
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                val result = savingsGoalRepository.archiveGoal(goalId)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to archive savings goal"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while archiving savings goal"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
+    fun archiveGoal(goalId: String) = perform { savingsGoalRepository.archiveGoal(goalId) }
+
+    fun deleteGoal(goalId: String) = perform(ErrorAction.DELETE) { savingsGoalRepository.deleteGoal(goalId) }
+
+    fun addContribution(amountMinor: Long, note: String? = null, date: String? = null) {
+        val goal = uiState.value.activeGoal
+        if (goal == null) { _errorMessage.value = "No active savings goal found"; return }
+        addContribution(goal.id, amountMinor, note, date)
     }
 
-    fun deleteGoal(goalId: String) {
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                val result = savingsGoalRepository.deleteGoal(goalId)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to delete savings goal"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while deleting savings goal"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
+    fun addContribution(goalId: String, amountMinor: Long, note: String? = null, date: String? = null) =
+        addTransaction(goalId, amountMinor, note, date, GoalTransactionType.CONTRIBUTION)
+
+    fun addWithdrawal(amountMinor: Long, note: String? = null, date: String? = null) {
+        val goal = uiState.value.activeGoal
+        if (goal == null) { _errorMessage.value = "No active savings goal found"; return }
+        addWithdrawal(goal.id, amountMinor, note, date)
     }
 
-    fun addContribution(
-        amountMinor: Long,
-        note: String? = null,
-        date: String? = null
-    ) {
-        val active = uiState.value.activeGoal
-        if (active == null) {
-            _errorMessage.value = "No active savings goal found"
+    fun addWithdrawal(goalId: String, amountMinor: Long, note: String? = null, date: String? = null) =
+        addTransaction(goalId, amountMinor, note, date, GoalTransactionType.WITHDRAWAL)
+
+    private fun addTransaction(goalId: String, amount: Long, note: String?, date: String?, type: GoalTransactionType) {
+        if (_operationInProgress.value) return
+        if (amount <= 0L || (date != null && runCatching { LocalDate.parse(date) }.isFailure)) {
+            canRetry.value = false
+            _errorMessage.value = if (amount <= 0L) {
+                if (type == GoalTransactionType.CONTRIBUTION) "Contribution amount must be greater than zero"
+                else "Withdrawal amount must be greater than zero"
+            } else "Enter a valid transaction date."
             return
         }
-        addContribution(
-            goalId = active.id,
-            amountMinor = amountMinor,
-            note = note,
-            date = date
-        )
-    }
-
-    fun addContribution(
-        goalId: String,
-        amountMinor: Long,
-        note: String? = null,
-        date: String? = null
-    ) {
-        if (amountMinor <= 0L) {
-            _errorMessage.value = "Contribution amount must be greater than zero"
-            return
-        }
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                val txDate = if (!date.isNullOrBlank()) date else dateProvider().toString()
-                val tx = GoalTransaction(
-                    id = UUID.randomUUID().toString(),
-                    goalId = goalId,
-                    userId = user.uid,
-                    amountMinor = amountMinor,
-                    transactionType = GoalTransactionType.CONTRIBUTION,
-                    date = txDate,
-                    note = note?.trim()?.ifBlank { null },
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
-                )
-                val result = savingsGoalRepository.addTransaction(tx)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to record contribution"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while adding contribution"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
-    }
-
-    fun addWithdrawal(
-        amountMinor: Long,
-        note: String? = null,
-        date: String? = null
-    ) {
-        val active = uiState.value.activeGoal
-        if (active == null) {
-            _errorMessage.value = "No active savings goal found"
-            return
-        }
-        addWithdrawal(
-            goalId = active.id,
-            amountMinor = amountMinor,
-            note = note,
-            date = date
-        )
-    }
-
-    fun addWithdrawal(
-        goalId: String,
-        amountMinor: Long,
-        note: String? = null,
-        date: String? = null
-    ) {
-        if (amountMinor <= 0L) {
-            _errorMessage.value = "Withdrawal amount must be greater than zero"
-            return
-        }
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                val txDate = if (!date.isNullOrBlank()) date else dateProvider().toString()
-                val tx = GoalTransaction(
-                    id = UUID.randomUUID().toString(),
-                    goalId = goalId,
-                    userId = user.uid,
-                    amountMinor = amountMinor,
-                    transactionType = GoalTransactionType.WITHDRAWAL,
-                    date = txDate,
-                    note = note?.trim()?.ifBlank { null },
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
-                )
-                val result = savingsGoalRepository.addTransaction(tx)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to record withdrawal"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while recording withdrawal"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
+        val id = transactionId ?: UUID.randomUUID().toString().also { transactionId = it }
+        val txDate = date ?: dateProvider().toString()
+        val now = System.currentTimeMillis()
+        perform { uid -> savingsGoalRepository.addTransaction(GoalTransaction(id = id, goalId = goalId, userId = uid,
+            amountMinor = amount, transactionType = type, date = txDate,
+            note = note?.trim()?.ifBlank { null }, createdAt = now, updatedAt = now)) }
     }
 
     fun updateTransaction(transaction: GoalTransaction) {
         if (transaction.amountMinor <= 0L) {
             _errorMessage.value = "Transaction amount must be greater than zero"
+            canRetry.value = false
             return
         }
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                val txWithUser = if (transaction.userId.isBlank()) transaction.copy(userId = user.uid) else transaction
-                val result = savingsGoalRepository.updateTransaction(txWithUser)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to update transaction"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while updating transaction"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
+        perform { uid -> savingsGoalRepository.updateTransaction(transaction.copy(userId = transaction.userId.ifBlank { uid })) }
     }
 
-    fun deleteTransaction(transactionId: String) {
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            _errorMessage.value = null
-            try {
-                val user = authRepository.currentUser.first()
-                if (user == null || user.uid.isBlank()) {
-                    _errorMessage.value = "Authentication required: no active user session"
-                    return@launch
-                }
-                val result = savingsGoalRepository.deleteTransaction(transactionId)
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to delete transaction"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "An unexpected error occurred while deleting transaction"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
+    fun deleteTransaction(transactionId: String) = perform(ErrorAction.DELETE) {
+        savingsGoalRepository.deleteTransaction(transactionId)
     }
 
-    fun refreshRemoteData() {
-        viewModelScope.launch {
-            _operationInProgress.value = true
-            try {
-                val result = savingsGoalRepository.refreshRemoteSavingsData()
-                if (result.isFailure) {
-                    _errorMessage.value = result.exceptionOrNull()?.message ?: "Failed to refresh savings data"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "Failed to refresh savings data"
-            } finally {
-                _operationInProgress.value = false
-            }
-        }
-    }
+    fun refreshRemoteData() = perform(ErrorAction.LOAD) { savingsGoalRepository.refreshRemoteSavingsData().map { Unit } }
 }

@@ -14,6 +14,16 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface SalaryTemplateDao {
+    @Transaction
+    suspend fun completeSync(submitted: SalaryTemplateEntity) {
+        if (getPendingSync(submitted.userId).none { it == submitted }) return
+        if (submitted.isDeleted) deleteTemplateById(submitted.userId, submitted.id)
+        else upsertSalaryTemplate(submitted.copy(syncStatus = SyncStatus.SYNCED))
+    }
+
+    @Query("DELETE FROM salary_templates WHERE userId=:userId AND id=:templateId")
+    suspend fun deleteTemplateById(userId: String, templateId: String)
+
     @Query("DELETE FROM salary_templates WHERE userId=:userId AND syncStatus='SYNCED' AND id NOT IN (:ids)")
     suspend fun removeMissingSynced(userId: String, ids: List<String>)
 
@@ -21,7 +31,8 @@ interface SalaryTemplateDao {
     suspend fun reconcile(userId: String, rows: List<SalaryTemplateEntity>, authoritative: Boolean) {
         val local = getSalaryTemplate(userId)
         if (local == null || local.syncStatus == SyncStatus.SYNCED) {
-            rows.maxByOrNull { it.updatedAt }?.let { upsertSalaryTemplate(it) }
+            rows.maxByOrNull { it.updatedAt }?.takeIf { local == null || it.updatedAt >= local.updatedAt }
+                ?.let { upsertSalaryTemplate(it) }
         }
         if (authoritative) removeMissingSynced(userId, rows.map { it.id })
     }

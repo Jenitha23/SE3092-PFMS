@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pfms.app.domain.model.Income
+import com.pfms.app.domain.usecase.IncomeCurrencyTotals
+import com.pfms.app.domain.usecase.IncomeSummaryCalculator
 import com.pfms.app.ui.component.InsightsNavIcon
 import java.math.BigDecimal
 import java.text.NumberFormat
@@ -55,7 +57,9 @@ fun IncomeListScreen(
     onNavigateToAnalytics: () -> Unit = {},
     onNavigateToHome: (() -> Unit)? = null,
     onNavigateToExpenses: (() -> Unit)? = null,
-    onNavigateToGoals: (() -> Unit)? = null
+    onNavigateToGoals: (() -> Unit)? = null,
+    currencyTotals: IncomeCurrencyTotals = IncomeSummaryCalculator.currencyTotals(incomes),
+    onRetry: (() -> Unit)? = null
 ) {
     var incomeToDelete by remember { mutableStateOf<Income?>(null) }
     var selectedFilter by remember { mutableStateOf("All") }
@@ -69,18 +73,9 @@ fun IncomeListScreen(
     val borderLight = Color(0xFFE2E8F0)
     val bgScreen = Color(0xFFF8FAFC)
 
-    // Calculate currency totals for the Total Income Card
-    val lkrOnlyTotalMinor = incomes
-        .filter { it.currency == "LKR" && it.source != "Crypto" }
-        .sumOf { it.amountMinor }
-
-    val usdOnlyInLkrMinor = incomes
-        .filter { it.currency == "USD" }
-        .sumOf { it.amountLkrMinor ?: 0L }
-
-    val usdOnlyUsdMinor = incomes
-        .filter { it.currency == "USD" }
-        .sumOf { it.amountMinor }
+    val lkrOnlyTotalMinor = currencyTotals.lkrMinor
+    val usdOnlyInLkrMinor = currencyTotals.usdInLkrMinor
+    val usdOnlyUsdMinor = currencyTotals.usdMinor
 
     val filterChips = listOf("All", "Salary", "Freelance", "AdSense", "Crypto")
 
@@ -455,11 +450,7 @@ fun IncomeListScreen(
             // Error display
             if (errorMessage != null) {
                 item {
-                    Text(
-                        text = errorMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    com.pfms.app.ui.component.ErrorBanner(errorMessage, onRetry = onRetry)
                 }
             }
 
@@ -840,7 +831,7 @@ private fun formatDisplayDate(dateStr: String): String {
         val parsed = LocalDate.parse(dateStr)
         val month = parsed.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
         "${parsed.dayOfMonth} $month ${parsed.year}"
-    }.getOrDefault(dateStr)
+    }.getOrDefault(dateStr.ifBlank { "Date unavailable" })
 }
 
 /**

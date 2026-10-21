@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pfms.app.domain.model.analytics.*
+import com.pfms.app.domain.usecase.SafeCalculations
+import com.pfms.app.ui.component.EmptyState
 import com.pfms.app.ui.component.ErrorBanner
 import com.pfms.app.ui.theme.*
 import com.pfms.app.viewmodel.IncomeAnalyticsUiState
@@ -62,7 +64,8 @@ fun IncomeAnalyticsScreen(
     onHome: (() -> Unit)? = null,
     onIncome: (() -> Unit)? = null,
     onExpenses: (() -> Unit)? = null,
-    onGoals: (() -> Unit)? = null
+    onGoals: (() -> Unit)? = null,
+    onAddIncome: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -73,11 +76,14 @@ fun IncomeAnalyticsScreen(
         onSetEstimatedMonthlyIncome = viewModel::setEstimatedMonthlyIncome,
         onClearEstimatedMonthlyIncome = viewModel::clearEstimatedMonthlyIncome,
         onClearError = viewModel::clearError,
+        onRetry = viewModel::retry,
         onBack = onBack,
         onHome = onHome,
         onIncome = onIncome,
         onExpenses = onExpenses,
         onGoals = onGoals,
+        onAddIncome = onAddIncome,
+        monthlyData = { com.pfms.app.ui.component.MonthlyDataIndicator(it) },
         modifier = modifier
     )
 }
@@ -96,7 +102,10 @@ fun IncomeAnalyticsContent(
     onIncome: (() -> Unit)? = null,
     onExpenses: (() -> Unit)? = null,
     onGoals: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAddIncome: () -> Unit = {},
+    onRetry: () -> Unit = {},
+    monthlyData: @Composable (YearMonth) -> Unit = {}
 ) {
     val textPrimary = DarkNavyText
     val brandEmerald = EmeraldPrimary
@@ -165,6 +174,7 @@ fun IncomeAnalyticsContent(
                 AnimatedVisibility(visible = uiState.errorMessage != null) {
                     ErrorBanner(
                         message = uiState.errorMessage,
+                        onRetry = if (uiState.canRetry) onRetry else null,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -175,40 +185,44 @@ fun IncomeAnalyticsContent(
                     onPrevious = onPreviousMonth,
                     onNext = onNextMonth
                 )
+                monthlyData(uiState.selectedMonth)
 
                 // 2. Monthly Summary Card
-                val summary = uiState.monthlySummary
+                val summary = uiState.monthlySummary ?: MonthlyIncomeSummary(
+                    uiState.selectedMonth.toString(), 0L, 0L, 0L, 0L, 0L, 0L
+                )
                 MonthlySummaryCard(
                     monthName = formatMonthLong(uiState.selectedMonth),
-                    totalRealizedMinor = summary?.totalRealizedMinor ?: 0L,
+                    totalRealizedMinor = summary.totalRealizedMinor,
                     highestIncomeMonth = uiState.analyticsSummary?.highestIncomeMonth,
                     highestIncomeMinor = uiState.analyticsSummary?.highestIncomeMinor ?: 0L
                 )
 
-                // 3. Regular vs Variable Split
-                uiState.regularVariable?.let { rv ->
-                    RegularVsVariableCard(regularVariable = rv)
-                }
-
-                // 4. 6-Month Trend Chart
-                if (uiState.trendPoints.isNotEmpty()) {
-                    TrendChartCard(
-                        trendPoints = uiState.trendPoints,
-                        selectedMonthKey = uiState.selectedMonth.toString()
+                if (!uiState.hasMonthlyIncome && uiState.errorMessage == null) {
+                    EmptyState(
+                        title = "No income this month",
+                        message = "Record income to build your monthly breakdown and trends.",
+                        actionLabel = "Add Income",
+                        onAction = onAddIncome
                     )
                 }
 
+                RegularVsVariableCard(uiState.regularVariable ?: RegularVariableIncome(0L, 0L, 0L, 0.0, 0.0))
+                TrendChartCard(
+                    trendPoints = uiState.trendPoints,
+                    selectedMonthKey = uiState.selectedMonth.toString()
+                )
+
                 // 5. Source Breakdown List
-                if (summary != null) {
-                    SourceBreakdownCard(summary = summary)
-                }
+                SourceBreakdownCard(summary = summary)
 
                 // 6. Estimated vs Actual Comparison Section
                 EstimationComparisonSection(
                     comparison = uiState.estimationComparison,
                     currentEstimateMinor = uiState.estimatedMonthlyIncomeMinor,
                     onApplyEstimate = onSetEstimatedMonthlyIncome,
-                    onClearEstimate = onClearEstimatedMonthlyIncome
+                    onClearEstimate = onClearEstimatedMonthlyIncome,
+                    isSaving = uiState.isSaving
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -378,7 +392,7 @@ fun RegularVsVariableCard(
 
             // Segmented Bar
             val regFraction = if (regularVariable.totalMinor > 0L) {
-                (regularVariable.regularPercentage / 100.0).toFloat().coerceIn(0f, 1f)
+                SafeCalculations.progressFraction(regularVariable.regularPercentage)
             } else 0f
 
             Row(
@@ -396,7 +410,7 @@ fun RegularVsVariableCard(
                             .background(EmeraldPrimary)
                     )
                 }
-                if (1f - regFraction > 0f) {
+                if (regularVariable.totalMinor > 0L && 1f - regFraction > 0f) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
@@ -437,7 +451,7 @@ fun RegularVsVariableCard(
                         )
                     )
                     Text(
-                        text = String.format(Locale.US, "%.1f%% of total", regularVariable.regularPercentage),
+                        text = String.format(Locale.US, "%.1f%% of total", SafeCalculations.finiteOrZero(regularVariable.regularPercentage)),
                         style = MaterialTheme.typography.labelSmall.copy(color = EmeraldPrimary)
                     )
                 }
@@ -468,7 +482,7 @@ fun RegularVsVariableCard(
                         )
                     )
                     Text(
-                        text = String.format(Locale.US, "%.1f%% of total", regularVariable.variablePercentage),
+                        text = String.format(Locale.US, "%.1f%% of total", SafeCalculations.finiteOrZero(regularVariable.variablePercentage)),
                         style = MaterialTheme.typography.labelSmall.copy(color = PurpleAccent)
                     )
                 }
@@ -504,6 +518,9 @@ fun TrendChartCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            if (trendPoints.isEmpty() || trendPoints.all { it.amountMinor == 0L }) {
+                Text("No income trend yet. LKR 0.00", style = MaterialTheme.typography.bodySmall, color = SecondaryText)
+            }
             val maxAmount = trendPoints.maxOfOrNull { it.amountMinor }?.coerceAtLeast(1L) ?: 1L
 
             // Canvas Bar Chart
@@ -533,7 +550,7 @@ fun TrendChartCard(
                 trendPoints.forEachIndexed { index, point ->
                     val x = spacing + index * (barWidth + spacing)
                     val ratio = (point.amountMinor.toFloat() / maxAmount.toFloat()).coerceIn(0f, 1f)
-                    val barHeight = (ratio * maxBarHeight).coerceAtLeast(4.dp.toPx())
+                    val barHeight = ratio * maxBarHeight
                     val isSelected = point.yearMonth == selectedMonthKey
 
                     val barColor = if (isSelected) EmeraldPrimary else Color(0xFFCAD7E5)
@@ -652,7 +669,8 @@ fun EstimationComparisonSection(
     currentEstimateMinor: Long?,
     onApplyEstimate: (Long) -> Unit,
     onClearEstimate: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSaving: Boolean = false
 ) {
     val focusManager = LocalFocusManager.current
     var inputAmount by rememberSaveable { mutableStateOf("") }
@@ -693,7 +711,7 @@ fun EstimationComparisonSection(
                 )
 
                 if (currentEstimateMinor != null) {
-                    TextButton(onClick = onClearEstimate) {
+                    TextButton(onClick = onClearEstimate, enabled = !isSaving) {
                         Text(
                             text = "Reset",
                             style = MaterialTheme.typography.labelMedium.copy(color = SecondaryText)
@@ -720,6 +738,7 @@ fun EstimationComparisonSection(
                         inputError = null
                     },
                     label = { Text("Estimated Income (LKR)") },
+                    enabled = !isSaving,
                     placeholder = { Text("e.g. 150000.00") },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
@@ -744,6 +763,7 @@ fun EstimationComparisonSection(
                 )
 
                 Button(
+                    enabled = !isSaving,
                     onClick = {
                         focusManager.clearFocus()
                         val minor = parseInputToMinor(inputAmount)
@@ -758,7 +778,7 @@ fun EstimationComparisonSection(
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
                 ) {
-                    Text(text = "Compare", fontWeight = FontWeight.Bold)
+                    Text(text = if (isSaving) "Saving…" else "Compare", fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -819,7 +839,7 @@ fun EstimationComparisonSection(
                     )
                     MetricComparisonRow(
                         label = "Variance",
-                        value = "${formatAnalyticsLkrAmount(comparison.differenceMinor)} (${String.format(Locale.US, "%.1f%%", comparison.variancePercentage)})",
+                        value = "${formatAnalyticsLkrAmount(comparison.differenceMinor)} (${String.format(Locale.US, "%.1f%%", SafeCalculations.finiteOrZero(comparison.variancePercentage))})",
                         valueColor = if (comparison.differenceMinor >= 0L) EmeraldPrimary else ErrorExpense
                     )
                 }
@@ -865,7 +885,7 @@ private fun MetricComparisonRow(
 
 fun formatAnalyticsLkrAmount(amountMinor: Long): String {
     val isNegative = amountMinor < 0L
-    val absAmount = BigDecimal.valueOf(Math.abs(amountMinor), 2)
+    val absAmount = BigDecimal.valueOf(amountMinor, 2).abs()
     val formatter = NumberFormat.getNumberInstance(Locale.US).apply {
         minimumFractionDigits = 2
         maximumFractionDigits = 2

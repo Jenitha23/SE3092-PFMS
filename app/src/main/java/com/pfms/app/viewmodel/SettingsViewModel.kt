@@ -16,6 +16,10 @@ import com.pfms.app.domain.repository.UserRepository
 import com.pfms.app.domain.usecase.DeleteAccountUseCase
 import com.pfms.app.domain.validation.AuthValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +32,7 @@ data class SettingsUiState(
     val isLoading: Boolean = false,
     val message: String? = null,
     val errorMessage: String? = null,
+    val canRetry: Boolean = false,
     /** Becomes true after a successful deletion. The session flow will also flip to Unauthenticated. */
     val accountDeleted: Boolean = false
 )
@@ -51,7 +56,15 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Real-time profile (display name, default payment method). */
-    val profile: StateFlow<UserProfile?> = userRepository.observeProfile()
+    private val reloadProfile = MutableStateFlow(0)
+    private var failedAction: (() -> Unit)? = null
+    fun retry() { if (!_uiState.value.isLoading && _uiState.value.canRetry) failedAction?.invoke() }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val profile: StateFlow<UserProfile?> = reloadProfile.flatMapLatest { userRepository.observeProfile().catch { error ->
+        val problem = com.pfms.app.data.error.OperationErrors.present(error, com.pfms.app.data.error.ErrorAction.LOAD)
+        _uiState.value = SettingsUiState(errorMessage = problem.message, canRetry = problem.canRetry)
+        failedAction = { reloadProfile.value++ }
+    } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val biometricEnabled: StateFlow<Boolean> = biometricPreferences.biometricEnabled
@@ -125,7 +138,8 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearMessages() {
-        _uiState.value = _uiState.value.copy(message = null, errorMessage = null)
+        failedAction = null
+        _uiState.value = _uiState.value.copy(message = null, errorMessage = null, canRetry = false)
     }
 
     private fun deleteAccount(credentialProvider: suspend () -> Result<ReauthCredential>) {
@@ -139,7 +153,11 @@ class SettingsViewModel @Inject constructor(
             )
             result.fold(
                 onSuccess = { _uiState.value = SettingsUiState(accountDeleted = true) },
-                onFailure = { error -> _uiState.value = SettingsUiState(errorMessage = messageOf(error)) }
+                onFailure = { error ->
+                    val problem = com.pfms.app.data.error.OperationErrors.present(error)
+                    _uiState.value = SettingsUiState(errorMessage = problem.message, canRetry = problem.canRetry)
+                    failedAction = { deleteAccount(credentialProvider) }
+                }
             )
         }
     }
@@ -149,9 +167,17 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = SettingsUiState(isLoading = true)
 
         viewModelScope.launch {
-            action().fold(
+            val result = try { withTimeout(20_000) { action() } } catch (error: Exception) {
+                com.pfms.app.data.error.OperationErrors.present(error)
+                Result.failure(error)
+            }
+            result.fold(
                 onSuccess = { _uiState.value = SettingsUiState(message = success) },
-                onFailure = { error -> _uiState.value = SettingsUiState(errorMessage = messageOf(error)) }
+                onFailure = { error ->
+                    val problem = com.pfms.app.data.error.OperationErrors.present(error)
+                    _uiState.value = SettingsUiState(errorMessage = problem.message, canRetry = problem.canRetry)
+                    failedAction = { performAction(success, action) }
+                }
             )
         }
     }
@@ -161,5 +187,5 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun messageOf(error: Throwable) =
-        error.message ?: "Something went wrong. Please try again."
+        com.pfms.app.data.error.OperationErrors.present(error).message
 }

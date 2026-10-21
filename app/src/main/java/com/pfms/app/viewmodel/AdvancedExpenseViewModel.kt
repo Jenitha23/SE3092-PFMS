@@ -1,6 +1,9 @@
 package com.pfms.app.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.pfms.app.data.error.ErrorAction
+import com.pfms.app.data.error.OperationErrors
+import kotlinx.coroutines.flow.catch
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.domain.model.ExpenseCategory
 import com.pfms.app.domain.model.ExpenseClassification
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
+import java.util.UUID
 
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -37,17 +41,35 @@ class AdvancedExpenseViewModel @Inject constructor(
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+    private val _canRetry = MutableStateFlow(false)
+    val canRetry = _canRetry.asStateFlow()
+    private var categoryDraftId: String? = null
+    private var failedAction: (() -> Unit)? = null
+    fun retry() { if (!_busy.value && _canRetry.value) failedAction?.invoke() }
     private val reload = MutableStateFlow(0)
 
     private fun <T> observe(label: String, load: () -> Flow<List<T>>): StateFlow<List<T>> =
         reload.flatMapLatest {
+            var loadMessage: String? = null
             flow { emitAll(load()) }.retryWhen { cause, attempt ->
                 if (cause is CancellationException) throw cause
-                _message.value = "Unable to load $label. Retrying; you can also tap Retry."
+                val problem = OperationErrors.present(cause, ErrorAction.LOAD)
+                _message.value = problem.message
+                loadMessage = problem.message
+                _canRetry.value = problem.canRetry
+                failedAction = ::retryLoading
+                if (!problem.canRetry) return@retryWhen false
                 delay((attempt + 1).coerceAtMost(15) * 2_000L)
                 true
+            }.catch { cause ->
+                val problem = OperationErrors.present(cause, ErrorAction.LOAD)
+                _message.value = problem.message
+                _canRetry.value = problem.canRetry
             }.onEach {
-                if (_message.value == "Unable to load $label. Retrying; you can also tap Retry.") _message.value = null
+                if (loadMessage != null && _message.value == loadMessage) {
+                    _message.value = null
+                    _canRetry.value = false
+                }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(0, 0), emptyList())
 
@@ -56,6 +78,7 @@ class AdvancedExpenseViewModel @Inject constructor(
 
     fun retryLoading() {
         _message.value = null
+        _canRetry.value = false
         reload.value++
     }
 
@@ -79,16 +102,24 @@ class AdvancedExpenseViewModel @Inject constructor(
         if (_busy.value) return
         _busy.value = true
         _message.value = null
+        _canRetry.value = false
         viewModelScope.launch {
             try {
                 withTimeout(20_000) { block() }
+                failedAction = null
                 onSuccess()
             } catch (e: TimeoutCancellationException) {
-                _message.value = "The connection timed out. Check the list before retrying; pending changes may still sync."
+                val problem = OperationErrors.present(e)
+                _message.value = problem.message
+                _canRetry.value = problem.canRetry
+                failedAction = { runTask(onSuccess, block) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _message.value = e.message ?: "Operation failed. Please retry."
+                val problem = OperationErrors.present(e)
+                _message.value = problem.message
+                _canRetry.value = problem.canRetry
+                failedAction = { runTask(onSuccess, block) }
             } finally {
                 _busy.value = false
             }
@@ -97,10 +128,13 @@ class AdvancedExpenseViewModel @Inject constructor(
 
     fun clearMessage() {
         _message.value = null
+        _canRetry.value = false
+        failedAction = null
     }
 
-    fun createCategory(name: String, classification: ExpenseClassification, onSuccess: () -> Unit = {}) = runTask(onSuccess) {
-        repository.createCategory(name, classification)
+    fun createCategory(name: String, classification: ExpenseClassification, onSuccess: () -> Unit = {}) {
+        val id = categoryDraftId ?: UUID.randomUUID().toString().also { categoryDraftId = it }
+        runTask({ categoryDraftId = null; onSuccess() }) { repository.createCategoryWithId(id, name, classification) }
     }
 
     fun updateCategory(category: ExpenseCategory, onSuccess: () -> Unit = {}) = runTask(onSuccess) {
@@ -115,12 +149,13 @@ class AdvancedExpenseViewModel @Inject constructor(
         repository.deleteTemplate(templateId)
     }
 
-    fun confirm(template: RecurringExpense) = runTask {
+    fun confirm(template: RecurringExpense, onSuccess: () -> Unit = {}) = runTask(onSuccess) {
         repository.confirmDue(template)
     }
 
-    fun repeatExpense(expenseId: String) = runTask {
-        repository.repeatExpense(expenseId)
+    fun repeatExpense(expenseId: String) {
+        val id = UUID.randomUUID().toString()
+        runTask { repository.repeatExpenseWithId(expenseId, id) }
     }
 
     /**

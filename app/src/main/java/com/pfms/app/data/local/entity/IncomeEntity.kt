@@ -2,7 +2,7 @@ package com.pfms.app.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.Index
-import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
 
 /**
  * Room entity representing an income record stored locally for offline caching and synchronization.
@@ -11,6 +11,7 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "incomes",
+    primaryKeys = ["userId", "id"],
     indices = [
         Index(value = ["userId"]),
         Index(value = ["userId", "receivedDate"]),
@@ -19,7 +20,6 @@ import androidx.room.PrimaryKey
     ]
 )
 data class IncomeEntity(
-    @PrimaryKey
     val id: String,
     val userId: String,
     val amountMinor: Long = 0L,
@@ -43,5 +43,6 @@ data class IncomeEntity(
 
     // Offline sync metadata
     val syncStatus: SyncStatus = SyncStatus.SYNCED,
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val revision: String = ""
 )

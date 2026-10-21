@@ -136,7 +136,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
         val captor = argumentCaptor<SavingsGoalEntity>()
         verify(savingsGoalDao).insertActiveGoalGuarded(captor.capture())
         assertEquals(SyncStatus.PENDING_INSERT, captor.firstValue.syncStatus)
-        verify(savingsGoalDao, never()).markGoalSynced(any(), any(), any())
+        verify(savingsGoalDao, never()).completeSync(any())
     }
 
     // 6. online create becomes SYNCED
@@ -149,7 +149,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
         val result = repository.createGoal(goal)
 
         assertTrue(result.isSuccess)
-        verify(savingsGoalDao).markGoalSynced("user-123", "g-1", SyncStatus.SYNCED)
+        verify(savingsGoalDao).completeSync(org.mockito.kotlin.argThat { userId == "user-123" && id == "g-1" && syncStatus == SyncStatus.PENDING_INSERT })
     }
 
     // 7. update uses PENDING_UPDATE
@@ -181,7 +181,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
 
         assertTrue(result.isSuccess)
         verify(savingsGoalDao).markGoalDeleted(eq("user-123"), eq("g-1"), eq(SyncStatus.PENDING_DELETE), any())
-        verify(savingsGoalDao, never()).hardDeleteGoal(any(), any())
+        verify(savingsGoalDao, never()).completeSync(any())
     }
 
     // 9. online delete hard-deletes after remote success
@@ -195,7 +195,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
 
         assertTrue(result.isSuccess)
         verify(savingsGoalDao).markGoalDeleted(eq("user-123"), eq("g-1"), eq(SyncStatus.PENDING_DELETE), any())
-        verify(savingsGoalDao).hardDeleteGoal("user-123", "g-1")
+        verify(savingsGoalDao).completeSync(org.mockito.kotlin.argThat { userId == "user-123" && id == "g-1" && isDeleted })
     }
 
     // 10. add contribution persists locally first
@@ -284,7 +284,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
 
         assertTrue(result.isSuccess)
         verify(goalTransactionDao).markTransactionDeleted(eq("user-123"), eq("tx-1"), eq(SyncStatus.PENDING_DELETE), any())
-        verify(goalTransactionDao, never()).hardDeleteTransaction(any(), any())
+        verify(goalTransactionDao, never()).completeSync(any())
     }
 
     // 15. pending goal sync succeeds and marks SYNCED
@@ -298,7 +298,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
 
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrNull())
-        verify(savingsGoalDao).markGoalSynced("user-123", "g-p1", SyncStatus.SYNCED)
+        verify(savingsGoalDao).completeSync(pendingGoal)
     }
 
     // 16. pending transaction sync succeeds and marks SYNCED
@@ -312,7 +312,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
 
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrNull())
-        verify(goalTransactionDao).markTransactionSynced("user-123", "tx-p1", SyncStatus.SYNCED)
+        verify(goalTransactionDao).completeSync(pendingTx)
     }
 
     // 17. PENDING_DELETE remote success hard-deletes locally
@@ -325,7 +325,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
         val result = repository.syncPendingGoals()
 
         assertTrue(result.isSuccess)
-        verify(savingsGoalDao).hardDeleteGoal("user-123", "g-del")
+        verify(savingsGoalDao).completeSync(pendingDeleteGoal)
     }
 
     // 18. failed pending sync remains pending
@@ -338,8 +338,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
         val result = repository.syncPendingGoals()
 
         assertTrue(result.isFailure)
-        verify(savingsGoalDao, never()).markGoalSynced(any(), any(), any())
-        verify(savingsGoalDao, never()).hardDeleteGoal(any(), any())
+        verify(savingsGoalDao, never()).completeSync(any())
     }
 
     // 19. user A cannot mutate user B goal
@@ -458,7 +457,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
         verify(savingsGoalDao).upsertGoal(captor.capture())
         assertEquals("ARCHIVED", captor.firstValue.status)
         assertEquals(SyncStatus.PENDING_UPDATE, captor.firstValue.syncStatus)
-        verify(savingsGoalDao).markGoalSynced("user-123", "g-1", SyncStatus.SYNCED)
+        verify(savingsGoalDao).completeSync(captor.firstValue)
     }
 
     // Requirements tests for atomic one-active-goal enforcement:

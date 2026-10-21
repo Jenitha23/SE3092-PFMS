@@ -17,6 +17,12 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class SyncModule {
+    @Binds @Singleton
+    abstract fun bindConnectivityObserver(observer: com.pfms.app.data.sync.AndroidConnectivityObserver): com.pfms.app.domain.repository.ConnectivityObserver
+
+    @Binds @Singleton
+    abstract fun bindSyncStatusRepository(repository: com.pfms.app.data.repository.OfflineSyncStatusRepository): com.pfms.app.domain.repository.SyncStatusRepository
+
     @Binds
     abstract fun bindExpenseSyncScheduler(scheduler: com.pfms.app.data.sync.WorkManagerExpenseSyncScheduler): com.pfms.app.data.sync.ExpenseSyncScheduler
 

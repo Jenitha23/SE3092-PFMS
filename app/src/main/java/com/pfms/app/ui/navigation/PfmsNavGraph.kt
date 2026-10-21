@@ -26,6 +26,7 @@ import com.pfms.app.ui.screen.LockScreen
 import com.pfms.app.ui.screen.LoginScreen
 import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
+import com.pfms.app.ui.screen.PrivacyPolicyScreen
 import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.ui.screen.savings.SavingsGoalScreen
 import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
@@ -54,7 +55,6 @@ import com.pfms.app.viewmodel.SalaryViewModel
 import com.pfms.app.viewmodel.AdvancedExpenseViewModel
 import com.pfms.app.ui.screen.expense.CategoriesScreen
 import com.pfms.app.ui.screen.expense.RecurringExpensesScreen
-import com.pfms.app.ui.screen.expense.ExpenseReminderPermission
 import com.pfms.app.viewmodel.ExpenseViewModel
 import com.pfms.app.viewmodel.SettingsViewModel
 import com.pfms.app.ui.screen.BiometricOnboardingDialog
@@ -83,7 +83,8 @@ fun PfmsNavGraph(
     salaryViewModel: SalaryViewModel = hiltViewModel(),
     expenseViewModel: ExpenseViewModel = hiltViewModel(),
     pendingReminderRoute: String? = null,
-    onReminderConsumed: () -> Unit = {}
+    onReminderConsumed: () -> Unit = {},
+    pendingReminderUser: String? = null
 ) {
 
     val biometricSettingsViewModel: SettingsViewModel = hiltViewModel()
@@ -230,10 +231,12 @@ fun PfmsNavGraph(
     // -----------------------------------------
 
     // Consume reminder destinations only after authentication and app unlock.
-    LaunchedEffect(pendingReminderRoute, targetRoute) {
+    LaunchedEffect(pendingReminderRoute, pendingReminderUser, targetRoute, session) {
         val destination = Routes.reminderDestination(pendingReminderRoute)
         if (destination != null && targetRoute == Routes.Dashboard) {
-            navController.navigate(destination) { launchSingleTop = true }
+            if (Routes.reminderMatchesUser(pendingReminderUser, (session as? SessionState.Authenticated)?.user?.uid)) {
+                navController.navigate(destination) { launchSingleTop = true }
+            }
             onReminderConsumed()
         }
     }
@@ -391,6 +394,8 @@ fun PfmsNavGraph(
         composable(Routes.SpendingAnalytics) {
             SpendingAnalyticsScreen(
                 onBack = { navController.popBackStack() },
+                onAddExpense = { navController.navigate(Routes.AddExpense) { launchSingleTop = true } },
+                onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onTransactionClick = openTransaction,
                 onOpenHistory = {
                     navController.navigate(Routes.TransactionHistory) { launchSingleTop = true }
@@ -408,6 +413,8 @@ fun PfmsNavGraph(
         composable(Routes.TransactionHistory) {
             TransactionHistoryScreen(
                 onBack = { navController.popBackStack() },
+                onAddExpense = { navController.navigate(Routes.AddExpense) { launchSingleTop = true } },
+                onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onTransactionClick = openTransaction
             )
         }
@@ -424,8 +431,15 @@ fun PfmsNavGraph(
 
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onNavigateToPrivacyPolicy = {
+                    navController.navigate(Routes.PrivacyPolicy) { launchSingleTop = true }
                 }
             )
+        }
+
+        composable(Routes.PrivacyPolicy) {
+            PrivacyPolicyScreen(onBack = { navController.popBackStack() })
         }
 
         // -------------------------------------
@@ -461,10 +475,13 @@ fun PfmsNavGraph(
 
             IncomeListScreen(
                 incomes = incomeState.incomes,
+                currencyTotals = incomeState.currencyTotals,
                 isLoading = incomeState.isLoading,
                 errorMessage = incomeState.errorMessage,
+                onRetry = if (incomeState.canRetry) incomeViewModel::retry else null,
 
                 totalRealizedIncomeMinor = incomeState.totalRealizedIncomeMinor,
+                monthlyRealizedIncomeMinor = incomeState.monthlyRealizedIncomeMinor,
                 totalPendingFreelanceMinor = incomeState.totalPendingFreelanceMinor,
                 pendingFreelanceCount = incomeState.pendingFreelanceCount,
                 cryptoGainsMinor = incomeState.cryptoGainsMinor,
@@ -540,6 +557,7 @@ fun PfmsNavGraph(
 
             IncomeFormScreen(
                 onBack = {
+                    incomeViewModel.discardDraft()
                     incomeViewModel.clearExchangeRate()
                     navController.popBackStack()
                 },
@@ -559,6 +577,7 @@ fun PfmsNavGraph(
                 },
                 isSaving = incomeState.isSaving,
                 errorMessage = incomeState.errorMessage,
+                canRetry = incomeState.canRetry,
                 exchangeRate = incomeState.exchangeRate,
                 exchangeRateDate = incomeState.exchangeRateDate,
                 isRateFetching = incomeState.isRateFetching,
@@ -605,6 +624,7 @@ fun PfmsNavGraph(
                 IncomeFormScreen(
                     initialIncome = incomeItem,
                     onBack = {
+                        incomeViewModel.discardDraft()
                         incomeViewModel.clearExchangeRate()
                         navController.popBackStack()
                     },
@@ -624,6 +644,7 @@ fun PfmsNavGraph(
                     },
                     isSaving = incomeState.isSaving,
                     errorMessage = incomeState.errorMessage,
+                    canRetry = incomeState.canRetry,
                     exchangeRate = incomeState.exchangeRate,
                     exchangeRateDate = incomeState.exchangeRateDate,
                     isRateFetching = incomeState.isRateFetching,
@@ -676,6 +697,7 @@ fun PfmsNavGraph(
                 initialTemplate = salaryState.template,
                 isSaving = salaryState.isSaving,
                 errorMessage = salaryState.errorMessage,
+                onRetry = if (salaryState.canRetry) salaryViewModel::retry else null,
                 onBack = {
                     navController.popBackStack()
                 },
@@ -691,6 +713,7 @@ fun PfmsNavGraph(
 
         composable(Routes.IncomeAnalytics) {
             IncomeAnalyticsScreen(
+                onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onBack = {
                     navController.popBackStack()
                 },
@@ -707,12 +730,10 @@ fun PfmsNavGraph(
             CategoriesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() })
         }
         composable(Routes.RecurringExpenses) {
-            ExpenseReminderPermission()
             LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
             RecurringExpensesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() })
         }
         composable(Routes.Subscriptions) {
-            ExpenseReminderPermission()
             LaunchedEffect(Unit) { advancedExpenseViewModel.ensureDefaults() }
             RecurringExpensesScreen(advancedExpenseViewModel, onBack = { navController.popBackStack() }, subscriptionsOnly = true)
         }

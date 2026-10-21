@@ -36,7 +36,7 @@ import com.pfms.app.data.local.migration.HISTORICAL_EXPENSE_MIGRATION_2_3
         ExpenseCategoryEntity::class,
         RecurringExpenseEntity::class
     ],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class PfmsDatabase : RoomDatabase() {
@@ -47,11 +47,15 @@ abstract class PfmsDatabase : RoomDatabase() {
     abstract fun goalTransactionDao(): GoalTransactionDao
     abstract fun expenseCategoryDao(): ExpenseCategoryDao
     abstract fun recurringExpenseDao(): RecurringExpenseDao
+    abstract fun pendingChangesDao(): com.pfms.app.data.local.dao.PendingChangesDao
+    abstract fun financialActivityDao(): com.pfms.app.data.local.dao.FinancialActivityDao
 
     companion object {
         val MIGRATION_1_4: Migration = com.pfms.app.data.local.migration.MIGRATION_1_4
         val MIGRATION_2_4: Migration = com.pfms.app.data.local.migration.MIGRATION_2_4
         val MIGRATION_3_4: Migration = com.pfms.app.data.local.migration.MIGRATION_3_4
+        val MIGRATION_4_5: Migration = com.pfms.app.data.local.migration.MIGRATION_4_5
+        val MIGRATION_5_6: Migration = com.pfms.app.data.local.migration.MIGRATION_5_6
 
         // Retained for backward compatibility and tests.
         val MIGRATION_1_2: Migration = HISTORICAL_EXPENSE_MIGRATION_1_2

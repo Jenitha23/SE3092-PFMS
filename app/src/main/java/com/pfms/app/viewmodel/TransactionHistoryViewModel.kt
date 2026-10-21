@@ -37,7 +37,8 @@ data class TransactionHistoryUiState(
     val hasAnyTransactions: Boolean = false,
     val incomeSources: List<String> = INCOME_SOURCES,
     val expenseCategories: List<String> = emptyList(),
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val canRetry: Boolean = true
 ) {
     companion object {
         val INCOME_SOURCES = listOf(
@@ -65,8 +66,7 @@ class TransactionHistoryViewModel @Inject constructor(
     private data class Filtered(val rows: List<Transaction>, val summary: HistorySummary)
 
     // Stage 1: merge + sort once per data change (off the main thread, NFR-07).
-    private val merged = retryKey.flatMapLatest {
-        combine(
+    private val merged = combine(
             incomeRepository.observeIncome(),
             dashboardRepository.observeExpenses()
         ) { incomes, expenses ->
@@ -78,7 +78,6 @@ class TransactionHistoryViewModel @Inject constructor(
                     .sorted()
             )
         }.flowOn(Dispatchers.Default)
-    }
 
     // Stage 2: filter + total whenever the data or the filter changes.
     private val filtered = combine(merged, filter) { data, f ->
@@ -87,7 +86,7 @@ class TransactionHistoryViewModel @Inject constructor(
     }.flowOn(Dispatchers.Default)
 
     // Stage 3: slice the visible page. Scrolling only changes this cheap step.
-    val uiState: StateFlow<TransactionHistoryUiState> = combine(filtered, filter, visibleCount) { pair, f, count ->
+    val uiState: StateFlow<TransactionHistoryUiState> = retryKey.flatMapLatest { combine(filtered, filter, visibleCount) { pair, f, count ->
         val (result, data) = pair
         TransactionHistoryUiState(
             isLoading = false,
@@ -98,15 +97,16 @@ class TransactionHistoryViewModel @Inject constructor(
             hasAnyTransactions = data.rows.isNotEmpty(),
             expenseCategories = data.categories
         )
-    }.catch {
+    }.catch { error ->
+        val problem = com.pfms.app.data.error.OperationErrors.present(error, com.pfms.app.data.error.ErrorAction.LOAD)
         emit(
             TransactionHistoryUiState(
                 isLoading = false,
                 filter = filter.value,
-                errorMessage = "We couldn't load your transactions. Please try again."
+                errorMessage = problem.message, canRetry = problem.canRetry
             )
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionHistoryUiState())
+    } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionHistoryUiState())
 
     fun loadMore() {
         visibleCount.value = visibleCount.value + `TransactionHistoryCalculator`.PAGE_SIZE

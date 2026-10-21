@@ -2,9 +2,15 @@
 package com.pfms.app.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.pfms.app.data.error.ErrorAction
+import com.pfms.app.data.error.OperationErrors
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import com.pfms.app.domain.usecase.IncomeSummaryCalculator
+import com.pfms.app.domain.usecase.IncomeCurrencyTotals
 import kotlinx.coroutines.Job
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.data.exchange.ExchangeRateResult
@@ -33,9 +39,11 @@ import java.util.UUID
 
 data class IncomeUiState(
     val incomes: List<Income> = emptyList(),
+    val currencyTotals: IncomeCurrencyTotals = IncomeCurrencyTotals(),
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
+    val canRetry: Boolean = false,
     val saveSuccessful: Boolean = false,
 
     // Member 2: Exchange-rate state for the currency conversion UI.
@@ -75,6 +83,30 @@ class IncomeViewModel @Inject constructor(
 
     private var rateJob: Job? = null
     private var rateForEntryDate: String? = null
+    private var observation: Job? = null
+    private var failedAction: (() -> Unit)? = null
+    private var createId: String? = null
+    private var createOwner: String? = null
+    private var loadFailed = false
+
+    fun retry() {
+        if (_uiState.value.isSaving || !_uiState.value.canRetry) return
+        failedAction?.invoke()
+    }
+
+    fun discardDraft() {
+        createId = null
+        createOwner = null
+        clearFormError()
+    }
+
+    private fun failure(error: Throwable, action: ErrorAction, retry: () -> Unit) {
+        val problem = OperationErrors.present(error, action)
+        if (action != ErrorAction.LOAD) loadFailed = false
+        failedAction = retry.takeIf { problem.canRetry }
+        _uiState.value = _uiState.value.copy(isSaving = if (action == ErrorAction.LOAD) _uiState.value.isSaving else false,
+            errorMessage = problem.message, canRetry = problem.canRetry)
+    }
 
     init {
         observeIncome()
@@ -85,13 +117,14 @@ class IncomeViewModel @Inject constructor(
     // ─────────────────────────────────────────────────────
 
     private fun observeIncome() {
-        viewModelScope.launch {
+        observation?.cancel()
+        observation = viewModelScope.launch {
             incomeRepository.observeIncome()
-                .catch {
+                .catch { error ->
+                    loadFailed = true
+                    failure(error, ErrorAction.LOAD, ::observeIncome)
                     _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage =
-                            "Unable to load income records."
+                        isLoading = false
                     )
                 }
                 .collect { records ->
@@ -104,9 +137,12 @@ class IncomeViewModel @Inject constructor(
                     )
                     _uiState.value = _uiState.value.copy(
                         incomes = sorted,
+                        currencyTotals = IncomeSummaryCalculator.currencyTotals(sorted),
                         isLoading = false,
-                        errorMessage = null
+                        errorMessage = if (loadFailed) null else _uiState.value.errorMessage,
+                        canRetry = if (loadFailed) false else _uiState.value.canRetry
                     )
+                    loadFailed = false
                     // Recalculate Member 2 summaries whenever data changes.
                     val summary = IncomeSummaryCalculator.calculate(
                         sorted, LocalDate.now(ZoneId.of("Asia/Colombo"))
@@ -152,7 +188,8 @@ class IncomeViewModel @Inject constructor(
                         entry.isBefore(today) -> exchangeRateService.fetchHistoricalRate(receivedDate)
                         else -> exchangeRateService.fetchLatestRate()
                     }
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    if (error is CancellationException && error !is TimeoutCancellationException) throw error
                     ExchangeRateResult.Failure("Unable to retrieve this date's rate. Enter it manually.")
                 }
             }
@@ -181,7 +218,7 @@ class IncomeViewModel @Inject constructor(
                 is ExchangeRateResult.Failure -> {
                     _uiState.value = _uiState.value.copy(
                         exchangeRate = null, exchangeRateDate = null,
-                        isRateFetching = false, rateFetchError = result.message,
+                        isRateFetching = false, rateFetchError = "Unable to get an exchange rate. Try again or enter the rate manually.",
                         isManualRateMode = true
                     )
                 }
@@ -253,7 +290,7 @@ class IncomeViewModel @Inject constructor(
         cryptoAsset: String? = null
     ) {
         if (_uiState.value.isSaving) return
-
+        _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, canRetry = false, saveSuccessful = false)
         viewModelScope.launch {
             val amountMinor = parseAmount(amount)
 
@@ -279,9 +316,7 @@ class IncomeViewModel @Inject constructor(
                 return@launch
             }
 
-            try {
-                LocalDate.parse(receivedDate)
-            } catch (e: Exception) {
+            if (com.pfms.app.domain.usecase.FinancialEntryDate.parse(receivedDate) == null) {
                 showError("Invalid received date.")
                 return@launch
             }
@@ -334,7 +369,11 @@ class IncomeViewModel @Inject constructor(
 
             try {
                 val user = authRepository.currentUser.first()
-                    ?: error("Authentication required")
+                    ?: throw SecurityException()
+                if (createOwner != user.uid || createId == null) {
+                    createId = UUID.randomUUID().toString()
+                    createOwner = user.uid
+                }
 
                 val now = System.currentTimeMillis()
 
@@ -364,7 +403,7 @@ class IncomeViewModel @Inject constructor(
                 }
 
                 val income = Income(
-                    id = UUID.randomUUID().toString(),
+                    id = requireNotNull(createId),
                     userId = user.uid,
                     amountMinor = amountMinor,
                     currency = currency,
@@ -401,7 +440,8 @@ class IncomeViewModel @Inject constructor(
                     updatedAt = now
                 )
 
-                incomeRepository.addIncome(income)
+                withTimeout(20_000) { incomeRepository.addIncome(income) }
+                createId = null
 
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
@@ -411,11 +451,7 @@ class IncomeViewModel @Inject constructor(
                 clearExchangeRate()
 
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage =
-                        "Unable to save income. Please retry."
-                )
+                failure(e, ErrorAction.SAVE) { addIncome(amount, currency, source, receivedDate, note, projectName, paymentStatus, cryptoType, cryptoAsset) }
             }
         }
     }
@@ -439,7 +475,7 @@ class IncomeViewModel @Inject constructor(
         cryptoAsset: String? = null
     ) {
         if (_uiState.value.isSaving) return
-
+        _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, canRetry = false, saveSuccessful = false)
         viewModelScope.launch {
             if (source == "Freelance" && paymentStatus !in listOf("Expected", "Received")) {
                 showError("Invalid freelance payment status.")
@@ -469,9 +505,7 @@ class IncomeViewModel @Inject constructor(
                 return@launch
             }
 
-            try {
-                LocalDate.parse(receivedDate)
-            } catch (e: Exception) {
+            if (com.pfms.app.domain.usecase.FinancialEntryDate.parse(receivedDate) == null) {
                 showError("Invalid received date.")
                 return@launch
             }
@@ -506,14 +540,14 @@ class IncomeViewModel @Inject constructor(
 
             try {
                 val user = authRepository.currentUser.first()
-                    ?: error("Authentication required")
+                    ?: throw SecurityException()
 
                 val existingIncome =
                     incomeRepository.getIncomeById(incomeId)
-                        ?: error("Income record not found")
+                        ?: throw NoSuchElementException()
 
                 if (existingIncome.userId != user.uid) {
-                    error("Access denied")
+                    throw SecurityException()
                 }
 
                 // Reuse the original rate for amount-only edits; require a valid
@@ -597,7 +631,7 @@ class IncomeViewModel @Inject constructor(
                     updatedAt = System.currentTimeMillis()
                 )
 
-                incomeRepository.updateIncome(updatedIncome)
+                withTimeout(20_000) { incomeRepository.updateIncome(updatedIncome) }
 
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
@@ -606,11 +640,7 @@ class IncomeViewModel @Inject constructor(
                 clearExchangeRate()
 
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage =
-                        "Unable to update income. Please retry."
-                )
+                failure(e, ErrorAction.SAVE) { updateIncome(incomeId, amount, currency, source, receivedDate, note, projectName, paymentStatus, cryptoType, cryptoAsset) }
             }
         }
     }
@@ -624,6 +654,8 @@ class IncomeViewModel @Inject constructor(
      * toward actual income totals.
      */
     fun markFreelanceAsReceived(incomeId: String) {
+        if (_uiState.value.isSaving) return
+        _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, canRetry = false)
         viewModelScope.launch {
             try {
                 val income =
@@ -641,9 +673,9 @@ class IncomeViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                showError(
-                    "Unable to update payment status."
-                )
+                failure(e, ErrorAction.SAVE) { markFreelanceAsReceived(incomeId) }
+            } finally {
+                _uiState.value = _uiState.value.copy(isSaving = false)
             }
         }
     }
@@ -653,19 +685,22 @@ class IncomeViewModel @Inject constructor(
     // ═════════════════════════════════════════════════════
 
     fun deleteIncome(incomeId: String) {
+        if (_uiState.value.isSaving) return
+        _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, canRetry = false)
         viewModelScope.launch {
             try {
                 incomeRepository.deleteIncome(incomeId)
             } catch (e: Exception) {
-                showError(
-                    "Unable to delete income. Please retry."
-                )
+                failure(e, ErrorAction.DELETE) { deleteIncome(incomeId) }
+            } finally {
+                _uiState.value = _uiState.value.copy(isSaving = false)
             }
         }
     }
 
     fun clearFormError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null)
+        failedAction = null
+        _uiState.value = _uiState.value.copy(errorMessage = null, canRetry = false)
     }
 
     fun clearSaveSuccess() {
@@ -676,7 +711,7 @@ class IncomeViewModel @Inject constructor(
 
     private fun showError(message: String) {
         _uiState.value = _uiState.value.copy(
-            errorMessage = message
+            isSaving = false, errorMessage = message, canRetry = false
         )
     }
 

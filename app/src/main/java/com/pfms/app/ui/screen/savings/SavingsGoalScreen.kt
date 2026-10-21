@@ -96,7 +96,9 @@ fun SavingsGoalScreen(
         onClearError = {
             viewModel.clearError()
         },
-        modifier = modifier
+        modifier = modifier,
+        onRetry = viewModel::retry,
+        onBeginForm = viewModel::beginForm
     )
 }
 
@@ -117,7 +119,9 @@ fun SavingsGoalContent(
     onUpdateTransaction: (GoalTransaction) -> Unit,
     onDeleteTransaction: (String) -> Unit,
     onClearError: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit = {},
+    onBeginForm: () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -129,13 +133,27 @@ fun SavingsGoalContent(
     var showArchiveGoalConfirm by remember { mutableStateOf(false) }
     var showDeleteGoalConfirm by remember { mutableStateOf(false) }
 
+    val initialSuccess = remember { uiState.successVersion }
+    LaunchedEffect(uiState.successVersion) {
+        if (uiState.successVersion != initialSuccess) {
+            showCreateGoalDialog = false
+            showEditGoalDialog = false
+            activeTransactionTypeForAdd = null
+            transactionToEdit = null
+        }
+    }
+    LaunchedEffect(showCreateGoalDialog, showEditGoalDialog, activeTransactionTypeForAdd, transactionToEdit?.id) {
+        if (showCreateGoalDialog || showEditGoalDialog || activeTransactionTypeForAdd != null || transactionToEdit != null) onBeginForm()
+    }
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { error ->
-            snackbarHostState.showSnackbar(
+            val result = snackbarHostState.showSnackbar(
                 message = error,
-                duration = SnackbarDuration.Short
+                actionLabel = if (uiState.canRetry) "Retry" else null,
+                withDismissAction = true,
+                duration = SnackbarDuration.Long
             )
-            onClearError()
+            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) onRetry()
         }
     }
 
@@ -245,6 +263,7 @@ fun SavingsGoalContent(
                     item {
                         TransactionLedgerSection(
                             transactions = uiState.transactions,
+                            onAddContribution = { activeTransactionTypeForAdd = GoalTransactionType.CONTRIBUTION },
                             onEditTransaction = { tx -> transactionToEdit = tx },
                             onDeleteTransaction = { txId -> transactionIdToDelete = txId }
                         )
@@ -265,9 +284,10 @@ fun SavingsGoalContent(
             onDismiss = { showCreateGoalDialog = false },
             onConfirm = { name, targetMinor, targetDate, openingSavedMinor ->
                 onCreateGoal(name, targetMinor, targetDate, openingSavedMinor)
-                showCreateGoalDialog = false
             },
-            operationInProgress = uiState.operationInProgress
+            operationInProgress = uiState.operationInProgress,
+            errorMessage = uiState.errorMessage,
+            canRetry = uiState.canRetry
         )
     }
 
@@ -277,9 +297,10 @@ fun SavingsGoalContent(
             onDismiss = { showEditGoalDialog = false },
             onConfirm = { updatedGoal ->
                 onUpdateGoal(updatedGoal)
-                showEditGoalDialog = false
             },
-            operationInProgress = uiState.operationInProgress
+            operationInProgress = uiState.operationInProgress,
+            errorMessage = uiState.errorMessage,
+            canRetry = uiState.canRetry
         )
     }
 
@@ -293,9 +314,10 @@ fun SavingsGoalContent(
                 } else {
                     onAddWithdrawal(amountMinor, note, date)
                 }
-                activeTransactionTypeForAdd = null
             },
-            operationInProgress = uiState.operationInProgress
+            operationInProgress = uiState.operationInProgress,
+            errorMessage = uiState.errorMessage,
+            canRetry = uiState.canRetry
         )
     }
 
@@ -305,9 +327,10 @@ fun SavingsGoalContent(
             onDismiss = { transactionToEdit = null },
             onConfirm = { updatedTx ->
                 onUpdateTransaction(updatedTx)
-                transactionToEdit = null
             },
-            operationInProgress = uiState.operationInProgress
+            operationInProgress = uiState.operationInProgress,
+            errorMessage = uiState.errorMessage,
+            canRetry = uiState.canRetry
         )
     }
 

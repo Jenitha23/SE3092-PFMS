@@ -1,6 +1,7 @@
 package com.pfms.app
 
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.runtime.*
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
@@ -10,6 +11,13 @@ import androidx.compose.ui.test.performTextReplacement
 import org.junit.Rule
 import org.junit.Test
 import com.pfms.app.ui.screen.LoginScreen
+import com.pfms.app.ui.screen.RegisterScreen
+import com.pfms.app.ui.screen.ForgotPasswordScreen
+import com.pfms.app.ui.theme.PFMSTheme
+import com.pfms.app.viewmodel.AuthViewModel
+import com.pfms.app.data.auth.GoogleSignInManager
+import org.junit.Before
+import javax.inject.Inject
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 
@@ -25,7 +33,28 @@ class AuthIntegrationTest {
     val hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
-    val composeTestRule = createAndroidComposeRule<MainActivity>()
+    val composeTestRule = createComposeRule()
+
+    @Inject lateinit var googleSignInManager: GoogleSignInManager
+
+    @Before fun showIsolatedLogin() {
+        hiltRule.inject()
+        // Validate real forms/ViewModel without depending on, or signing out, the developer's
+        // Firebase session. Invalid input must never reach a network repository.
+        val auth = ExpenseTestAuth().apply { users.value = null }
+        val viewModel = AuthViewModel(auth, googleSignInManager)
+        composeTestRule.setContent {
+            var page by remember { mutableStateOf("login") }
+            PFMSTheme {
+                when (page) {
+                    "register" -> RegisterScreen(onNavigateToLogin = { page = "login" }, authViewModel = viewModel)
+                    "forgot" -> ForgotPasswordScreen(onNavigateToLogin = { page = "login" }, authViewModel = viewModel)
+                    else -> LoginScreen(onNavigateToRegister = { page = "register" },
+                        onNavigateToForgotPassword = { page = "forgot" }, authViewModel = viewModel)
+                }
+            }
+        }
+    }
 
     @Test
     fun loginWithInvalidEmail_showsBackendValidationMessage() {

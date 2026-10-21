@@ -162,7 +162,7 @@ fun SettingsScreen(
             val logoutErrorMessage = (logoutResult as? LogoutResult.Failure)?.message
             val activeErrorMessage = uiState.errorMessage ?: logoutErrorMessage
 
-            ErrorBanner(message = activeErrorMessage)
+            ErrorBanner(message = activeErrorMessage, onRetry = if (uiState.canRetry) settingsViewModel::retry else null)
             if (activeErrorMessage != null) {
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -177,7 +177,8 @@ fun SettingsScreen(
 
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
                     modifier = Modifier
@@ -241,7 +242,8 @@ fun SettingsScreen(
 
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
                     modifier = Modifier
@@ -339,6 +341,8 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // ── Section 3: Appearance ──────────────────────────────────
+            com.pfms.app.ui.component.ReminderSettingsSection()
+            Spacer(modifier = Modifier.height(24.dp))
             SectionHeader(title = "Appearance")
 
             ElevatedCard(
@@ -411,7 +415,8 @@ fun SettingsScreen(
 
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
                     modifier = Modifier
@@ -458,7 +463,8 @@ fun SettingsScreen(
 
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(
                     modifier = Modifier

@@ -36,7 +36,7 @@ fun ExpenseFormScreen(
     onSave: (ExpenseFormData) -> Unit, onBack: () -> Unit, errorMessage: String? = null,
     defaultPaymentMethod: ExpensePaymentMethod = ExpensePaymentMethod.CASH,
     isRepeating: Boolean = false, pastExpenses: List<Expense> = emptyList(),
-    onManageRecurring: (() -> Unit)? = null
+    onManageRecurring: (() -> Unit)? = null, canRetry: Boolean = false
 ) = ExpenseUiTheme {
     val editing = initialExpense != null && !isRepeating
     val initialId = initialExpense?.id
@@ -135,18 +135,14 @@ fun ExpenseFormScreen(
                     }
                 }
             }
-            errorMessage?.let { message ->
-                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
-                    Text(message, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onErrorContainer)
-                }
-            }
+            com.pfms.app.ui.component.ErrorBanner(errorMessage)
             Button(enabled = !isSaving && selectedCategory != null && amount.isNotBlank(), onClick = {
                 val category = selectedCategory ?: return@Button
                 onSave(ExpenseFormData(amount, category.id, category.name, category.defaultClassification,
                     classificationOverride, paymentMethod, date, merchant, note))
             }, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(12.dp)) {
                 if (isSaving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                else Text(if (editing) "Update Expense" else "Save Expense", fontWeight = FontWeight.SemiBold)
+                else Text(if (canRetry && errorMessage != null) "Retry" else if (editing) "Update Expense" else "Save Expense", fontWeight = FontWeight.SemiBold)
             }
             OutlinedButton(enabled = !isSaving, onClick = onBack, modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)) { Text("Cancel", fontWeight = FontWeight.SemiBold) }

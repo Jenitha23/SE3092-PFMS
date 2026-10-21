@@ -29,6 +29,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.pfms.app.domain.usecase.SafeCalculations
+import com.pfms.app.ui.component.EmptyState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,7 +78,7 @@ fun SavingsGoalProgressRing(
     primaryColor: Color = EmeraldPrimary,
     trackColor: Color = Color(0xFFE2E8F0)
 ) {
-    val targetSweep = (progressPercent / 100.0).toFloat().coerceIn(0f, 1f)
+    val targetSweep = SafeCalculations.progressFraction(progressPercent)
     val animatedProgress by animateFloatAsState(
         targetValue = targetSweep,
         animationSpec = tween(durationMillis = 800),
@@ -87,7 +89,7 @@ fun SavingsGoalProgressRing(
         modifier = modifier
             .size(size)
             .semantics {
-                contentDescription = "Progress: ${progressPercent.toInt()}%"
+                contentDescription = "Progress: ${(targetSweep * 100).toInt()}%"
             },
         contentAlignment = Alignment.Center
     ) {
@@ -123,7 +125,7 @@ fun SavingsGoalProgressRing(
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "${progressPercent.toInt()}%",
+                text = "${(targetSweep * 100).toInt()}%",
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp
@@ -192,6 +194,9 @@ fun SavingsGoalEmptyState(
                 textAlign = TextAlign.Center
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Saved ${SavingsGoalUiFormatter.formatLkr(0L)} • Progress 0%",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(24.dp))
 
             Button(
@@ -745,7 +750,8 @@ fun TransactionLedgerSection(
     transactions: List<GoalTransaction>,
     onEditTransaction: (GoalTransaction) -> Unit,
     onDeleteTransaction: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAddContribution: (() -> Unit)? = null
 ) {
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
@@ -767,19 +773,12 @@ fun TransactionLedgerSection(
             Spacer(modifier = Modifier.height(14.dp))
 
             if (transactions.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No transactions recorded yet.\nAdd a contribution to get started.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SecondaryText,
-                        textAlign = TextAlign.Center
-                    )
-                }
+                EmptyState(
+                    title = "No contributions yet",
+                    message = "Ledger total LKR 0.00. Add a contribution to start funding your goal.",
+                    actionLabel = "Add Contribution",
+                    onAction = onAddContribution
+                )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     transactions.forEach { tx ->

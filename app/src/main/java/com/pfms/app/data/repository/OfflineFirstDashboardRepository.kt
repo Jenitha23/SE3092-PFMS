@@ -27,10 +27,11 @@ class OfflineFirstDashboardRepository @Inject constructor(
     override fun observeExpenses(): Flow<List<Expense>> = expenseRepository.observeExpenses()
 
     override fun observeExpensesBetween(start: LocalDate, end: LocalDate): Flow<List<Expense>> {
-        val from = start.toString()
-        val to = end.toString()
         return expenseRepository.observeExpenses().map { list ->
-            list.filter { it.date >= from && it.date <= to }
+            list.filter {
+                val date = runCatching { LocalDate.parse(it.date.trim().take(10)) }.getOrNull()
+                date != null && !date.isBefore(start) && !date.isAfter(end)
+            }
         }
     }
 }

@@ -88,7 +88,7 @@ class LogoutUseCaseTest {
         val result = logoutUseCase(force = false)
 
         assertTrue(result is LogoutResult.Failure)
-        assertEquals("Network error", (result as LogoutResult.Failure).message)
+        assertEquals("Could not log out. Please try again.", (result as LogoutResult.Failure).message)
     }
 
     @Test

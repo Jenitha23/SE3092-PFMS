@@ -58,7 +58,9 @@ import java.time.ZoneOffset
 fun CreateGoalDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, targetAmountMinor: Long, targetDate: String, openingSavedMinor: Long) -> Unit,
-    operationInProgress: Boolean
+    operationInProgress: Boolean,
+    errorMessage: String? = null,
+    canRetry: Boolean = false
 ) {
     val defaultGoal = remember { SavingsGoalDefaults.createPrefilledExample() }
 
@@ -92,6 +94,7 @@ fun CreateGoalDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                com.pfms.app.ui.component.ErrorBanner(errorMessage)
                 OutlinedTextField(
                     value = name,
                     onValueChange = {
@@ -178,7 +181,7 @@ fun CreateGoalDialog(
                 enabled = !operationInProgress,
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
             ) {
-                Text("Create Goal", color = Color.White)
+                Text(if (operationInProgress) "Saving…" else if (canRetry && errorMessage != null) "Retry" else "Create Goal", color = Color.White)
             }
         },
         dismissButton = {
@@ -240,7 +243,9 @@ fun EditGoalDialog(
     goal: SavingsGoal,
     onDismiss: () -> Unit,
     onConfirm: (SavingsGoal) -> Unit,
-    operationInProgress: Boolean
+    operationInProgress: Boolean,
+    errorMessage: String? = null,
+    canRetry: Boolean = false
 ) {
     var name by rememberSaveable(goal.id) { mutableStateOf(goal.name) }
     var targetAmountStr by rememberSaveable(goal.id) {
@@ -272,6 +277,7 @@ fun EditGoalDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                com.pfms.app.ui.component.ErrorBanner(errorMessage)
                 OutlinedTextField(
                     value = name,
                     onValueChange = {
@@ -361,7 +367,7 @@ fun EditGoalDialog(
                 enabled = !operationInProgress,
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
             ) {
-                Text("Save Changes", color = Color.White)
+                Text(if (operationInProgress) "Saving…" else if (canRetry && errorMessage != null) "Retry" else "Save Changes", color = Color.White)
             }
         },
         dismissButton = {
@@ -423,7 +429,9 @@ fun AddTransactionDialog(
     transactionType: GoalTransactionType,
     onDismiss: () -> Unit,
     onConfirm: (amountMinor: Long, note: String?, date: String) -> Unit,
-    operationInProgress: Boolean
+    operationInProgress: Boolean,
+    errorMessage: String? = null,
+    canRetry: Boolean = false
 ) {
     val isContribution = transactionType == GoalTransactionType.CONTRIBUTION
     val title = if (isContribution) "Add Contribution" else "Record Withdrawal"
@@ -451,6 +459,7 @@ fun AddTransactionDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                com.pfms.app.ui.component.ErrorBanner(errorMessage)
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = {
@@ -516,7 +525,7 @@ fun AddTransactionDialog(
                 )
             ) {
                 Text(
-                    text = if (isContribution) "Confirm Deposit" else "Confirm Withdrawal",
+                    text = if (operationInProgress) "Saving…" else if (canRetry && errorMessage != null) "Retry" else if (isContribution) "Confirm Deposit" else "Confirm Withdrawal",
                     color = Color.White
                 )
             }
@@ -580,7 +589,9 @@ fun EditTransactionDialog(
     transaction: GoalTransaction,
     onDismiss: () -> Unit,
     onConfirm: (GoalTransaction) -> Unit,
-    operationInProgress: Boolean
+    operationInProgress: Boolean,
+    errorMessage: String? = null,
+    canRetry: Boolean = false
 ) {
     var amountStr by rememberSaveable(transaction.id) {
         mutableStateOf(SavingsGoalUiFormatter.formatMinorToDecimalString(transaction.amountMinor))
@@ -607,6 +618,7 @@ fun EditTransactionDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                com.pfms.app.ui.component.ErrorBanner(errorMessage)
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = {
@@ -672,7 +684,7 @@ fun EditTransactionDialog(
                 enabled = !operationInProgress,
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
             ) {
-                Text("Save Changes", color = Color.White)
+                Text(if (operationInProgress) "Saving…" else if (canRetry && errorMessage != null) "Retry" else "Save Changes", color = Color.White)
             }
         },
         dismissButton = {

@@ -122,7 +122,36 @@ class IncomeAnalyticsViewModelTest {
             getIncomeTrendsUseCase = getTrends,
             getIncomeEstimationComparisonUseCase = getEstimationComparison,
             getIncomeAnalyticsUseCase = getAnalytics
-        )
+        ).also { mainDispatcherRule.track(it) }
+    }
+
+    @Test
+    fun emptyUserWithMissingProfileGetsZeroAnalyticsAndAnAddIncomeState() = runTest {
+        profileFlow.value = null
+        incomeFlow.tryEmit(emptyList())
+        val state = createViewModel().uiState.value
+        assertFalse(state.isLoading)
+        assertFalse(state.hasMonthlyIncome)
+        assertEquals(0L, state.monthlySummary!!.totalRealizedMinor)
+        assertEquals(0.0, state.regularVariable!!.regularPercentage, 0.0)
+        assertEquals(0.0, state.regularVariable.variablePercentage, 0.0)
+        assertTrue(state.trendPoints.all { it.amountMinor == 0L })
+        assertNull(state.estimationComparison)
+        assertNull(state.errorMessage)
+    }
+
+    @Test
+    fun zeroNetIncomeWithRecordsIsNotAnEmptyMonth() = runTest {
+        incomeFlow.tryEmit(listOf(
+            Income(amountMinor = 100, receivedDate = "2026-10-01"),
+            Income(amountMinor = 100, source = "Crypto", cryptoType = "Loss", receivedDate = "2026-10-01")
+        ))
+        val vm = createViewModel()
+        vm.selectMonth(YearMonth.of(2026, 10))
+        assertTrue(vm.uiState.value.hasMonthlyIncome)
+        assertEquals(0L, vm.uiState.value.monthlySummary!!.totalRealizedMinor)
+        vm.selectMonth(YearMonth.of(2026, 9))
+        assertFalse(vm.uiState.value.hasMonthlyIncome)
     }
 
     @Test
@@ -325,7 +354,7 @@ class IncomeAnalyticsViewModelTest {
         val viewModel = createViewModel()
         viewModel.setEstimatedMonthlyIncome(50000000L)
 
-        assertTrue(viewModel.uiState.value.errorMessage?.contains("Failed to save estimated income") == true)
+        assertEquals("Something went wrong while saving. Please try again.", viewModel.uiState.value.errorMessage)
     }
 
     @Test
@@ -416,7 +445,7 @@ class IncomeAnalyticsViewModelTest {
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
-        assertEquals("Unable to load income records.", state.errorMessage)
+        assertEquals("Unable to load your data. Please try again.", state.errorMessage)
     }
 
     @Test

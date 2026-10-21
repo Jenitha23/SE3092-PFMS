@@ -297,6 +297,42 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
 }
 
 /**
+ * Version 4 was used by both the expense-only and merged savings schemas. Bump the version so
+ * Room runs schema reconciliation instead of rejecting the older version 4 identity hash.
+ * The idempotent upgrade also preserves data on devices that already have the savings tables.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        upgradeToVersion4(db)
+    }
+}
+
+/** Preserve cached and pending income while making keys user-scoped and adding durable revisions. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""CREATE TABLE `incomes_v6` (
+            `id` TEXT NOT NULL, `userId` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL,
+            `currency` TEXT NOT NULL, `source` TEXT NOT NULL, `receivedDate` TEXT NOT NULL,
+            `note` TEXT NOT NULL, `amountLkrMinor` INTEGER, `exchangeRate` TEXT, `exchangeRateDate` TEXT,
+            `paymentStatus` TEXT NOT NULL, `projectName` TEXT, `cryptoType` TEXT, `cryptoAsset` TEXT,
+            `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `syncStatus` TEXT NOT NULL,
+            `isDeleted` INTEGER NOT NULL, `revision` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`userId`, `id`))""")
+        db.execSQL("""INSERT INTO `incomes_v6` (`id`, `userId`, `amountMinor`, `currency`, `source`,
+            `receivedDate`, `note`, `amountLkrMinor`, `exchangeRate`, `exchangeRateDate`, `paymentStatus`,
+            `projectName`, `cryptoType`, `cryptoAsset`, `createdAt`, `updatedAt`, `syncStatus`, `isDeleted`)
+            SELECT `id`, `userId`, `amountMinor`, `currency`, `source`, `receivedDate`, `note`,
+            `amountLkrMinor`, `exchangeRate`, `exchangeRateDate`, `paymentStatus`, `projectName`,
+            `cryptoType`, `cryptoAsset`, `createdAt`, `updatedAt`, `syncStatus`, `isDeleted` FROM `incomes`""")
+        db.execSQL("DROP TABLE `incomes`")
+        db.execSQL("ALTER TABLE `incomes_v6` RENAME TO `incomes`")
+        db.execSQL("CREATE INDEX `index_incomes_userId` ON `incomes` (`userId`)")
+        db.execSQL("CREATE INDEX `index_incomes_userId_receivedDate` ON `incomes` (`userId`, `receivedDate`)")
+        db.execSQL("CREATE INDEX `index_incomes_userId_syncStatus` ON `incomes` (`userId`, `syncStatus`)")
+        db.execSQL("CREATE INDEX `index_incomes_userId_isDeleted` ON `incomes` (`userId`, `isDeleted`)")
+    }
+}
+
+/**
  * Historical expense migration 1 -> 2 (retained for backward compatibility and tests).
  */
 val HISTORICAL_EXPENSE_MIGRATION_1_2 = object : Migration(1, 2) {

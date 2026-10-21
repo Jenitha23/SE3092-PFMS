@@ -13,6 +13,9 @@ import com.pfms.app.domain.model.GoalTransaction
 import com.pfms.app.domain.model.SavingsGoal
 import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.domain.repository.SavingsGoalRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
+import com.pfms.app.data.error.repositoryResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +26,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.pfms.app.data.sync.IncomeSyncWorker
+import androidx.work.ExistingWorkPolicy
 
 /**
  * Offline-first implementation of [SavingsGoalRepository].
@@ -42,6 +49,10 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     private val savingsGoalRemoteDataSource: SavingsGoalRemoteDataSource,
     private val authRepository: AuthRepository
 ) : SavingsGoalRepository, SavingsGoalPendingSyncable {
+    @Inject @ApplicationContext lateinit var syncContext: Context
+    private fun scheduleSync() {
+        if (::syncContext.isInitialized) runCatching { IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE) }
+    }
 
     private suspend fun requireUser(): AuthUser {
         val user = authRepository.currentUser.first()
@@ -78,7 +89,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     }
 
     override suspend fun getGoalById(goalId: String): Result<SavingsGoal?> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(goalId.isNotBlank()) { "Goal ID must not be blank" }
 
@@ -92,7 +103,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     }
 
     override suspend fun createGoal(goal: SavingsGoal): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(goal.userId == user.uid) {
                 "Cross-user write prevented: authenticated user '${user.uid}' does not match goal.userId '${goal.userId}'"
@@ -111,21 +122,23 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             savingsGoalDao.insertActiveGoalGuarded(localEntity)
+            scheduleSync()
 
             // 2. Immediately attempt remote Firestore upsert
             try {
-                val remoteResult = savingsGoalRemoteDataSource.upsertGoal(user.uid, goalToSave)
-                if (remoteResult.isSuccess) {
-                    savingsGoalDao.markGoalSynced(user.uid, goalToSave.id, SyncStatus.SYNCED)
+                val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertGoal(user.uid, goalToSave) }
+                if (remoteResult?.isSuccess == true) {
+                    savingsGoalDao.completeSync(localEntity)
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 // Offline-first: failure keeps PENDING_INSERT locally, returns cleanly
             }
         }
     }
 
     override suspend fun updateGoal(goal: SavingsGoal): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(goal.userId == user.uid) {
                 "Cross-user write prevented: authenticated user '${user.uid}' does not match goal.userId '${goal.userId}'"
@@ -151,21 +164,23 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             savingsGoalDao.updateActiveGoalGuarded(updatedEntity)
+            scheduleSync()
 
             // 2. Immediately attempt remote upsert
             try {
-                val remoteResult = savingsGoalRemoteDataSource.upsertGoal(user.uid, goalToUpdate)
-                if (remoteResult.isSuccess) {
-                    savingsGoalDao.markGoalSynced(user.uid, goalToUpdate.id, SyncStatus.SYNCED)
+                val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertGoal(user.uid, goalToUpdate) }
+                if (remoteResult?.isSuccess == true) {
+                    savingsGoalDao.completeSync(updatedEntity)
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 // Offline-first: remains PENDING_UPDATE on failure
             }
         }
     }
 
     override suspend fun archiveGoal(goalId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(goalId.isNotBlank()) { "Goal ID must not be blank" }
 
@@ -184,20 +199,22 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             savingsGoalDao.upsertGoal(updatedEntity)
+            scheduleSync()
 
             try {
-                val remoteResult = savingsGoalRemoteDataSource.upsertGoal(user.uid, archived)
-                if (remoteResult.isSuccess) {
-                    savingsGoalDao.markGoalSynced(user.uid, archived.id, SyncStatus.SYNCED)
+                val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertGoal(user.uid, archived) }
+                if (remoteResult?.isSuccess == true) {
+                    savingsGoalDao.completeSync(updatedEntity)
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 // Offline-first: remains PENDING_UPDATE on failure
             }
         }
     }
 
     override suspend fun deleteGoal(goalId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(goalId.isNotBlank()) { "Goal ID must not be blank" }
 
@@ -207,27 +224,30 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             }
 
             // 1. Soft delete locally with PENDING_DELETE so it immediately disappears from active views
+            val deletedAt = com.pfms.app.data.sync.SyncVersion.nextTimestamp(existing.updatedAt)
             savingsGoalDao.markGoalDeleted(
                 userId = user.uid,
                 goalId = goalId,
                 syncStatus = SyncStatus.PENDING_DELETE,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = deletedAt
             )
 
+            scheduleSync()
             // 2. Attempt remote deletion
             try {
-                val remoteResult = savingsGoalRemoteDataSource.deleteGoal(user.uid, goalId)
-                if (remoteResult.isSuccess) {
-                    savingsGoalDao.hardDeleteGoal(user.uid, goalId)
+                val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.deleteGoal(user.uid, goalId) }
+                if (remoteResult?.isSuccess == true) {
+                    savingsGoalDao.completeSync(existing.copy(isDeleted = true, syncStatus = SyncStatus.PENDING_DELETE, updatedAt = deletedAt))
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 // Remains soft-deleted with PENDING_DELETE for retry
             }
         }
     }
 
     override suspend fun addTransaction(transaction: GoalTransaction): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(transaction.userId == user.uid) {
                 "Cross-user write prevented: authenticated user '${user.uid}' does not match transaction.userId '${transaction.userId}'"
@@ -252,21 +272,23 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             goalTransactionDao.upsertTransaction(localEntity)
+            scheduleSync()
 
             // 2. Immediately attempt remote upsert
             try {
-                val remoteResult = savingsGoalRemoteDataSource.upsertTransaction(user.uid, txToSave)
-                if (remoteResult.isSuccess) {
-                    goalTransactionDao.markTransactionSynced(user.uid, txToSave.id, SyncStatus.SYNCED)
+                val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertTransaction(user.uid, txToSave) }
+                if (remoteResult?.isSuccess == true) {
+                    goalTransactionDao.completeSync(localEntity)
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 // Offline-first: remains PENDING_INSERT locally
             }
         }
     }
 
     override suspend fun updateTransaction(transaction: GoalTransaction): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(transaction.userId == user.uid) {
                 "Cross-user write prevented: authenticated user '${user.uid}' does not match transaction.userId '${transaction.userId}'"
@@ -296,20 +318,22 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 isDeleted = false
             )
             goalTransactionDao.upsertTransaction(updatedEntity)
+            scheduleSync()
 
             try {
-                val remoteResult = savingsGoalRemoteDataSource.upsertTransaction(user.uid, txToUpdate)
-                if (remoteResult.isSuccess) {
-                    goalTransactionDao.markTransactionSynced(user.uid, txToUpdate.id, SyncStatus.SYNCED)
+                val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.upsertTransaction(user.uid, txToUpdate) }
+                if (remoteResult?.isSuccess == true) {
+                    goalTransactionDao.completeSync(updatedEntity)
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 // Offline-first: remains PENDING_UPDATE on failure
             }
         }
     }
 
     override suspend fun deleteTransaction(transactionId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             require(transactionId.isNotBlank()) { "Transaction ID must not be blank" }
 
@@ -319,40 +343,45 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
             }
 
             // 1. Soft-delete locally with PENDING_DELETE
+            val deletedAt = com.pfms.app.data.sync.SyncVersion.nextTimestamp(existing.updatedAt)
             goalTransactionDao.markTransactionDeleted(
                 userId = user.uid,
                 transactionId = transactionId,
                 syncStatus = SyncStatus.PENDING_DELETE,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = deletedAt
             )
 
+            scheduleSync()
             // 2. Attempt remote delete
             try {
-                val remoteResult = savingsGoalRemoteDataSource.deleteTransaction(user.uid, transactionId)
-                if (remoteResult.isSuccess) {
-                    goalTransactionDao.hardDeleteTransaction(user.uid, transactionId)
+                val remoteResult = withTimeoutOrNull(1_000) { savingsGoalRemoteDataSource.deleteTransaction(user.uid, transactionId) }
+                if (remoteResult?.isSuccess == true) {
+                    goalTransactionDao.completeSync(existing.copy(isDeleted = true, syncStatus = SyncStatus.PENDING_DELETE, updatedAt = deletedAt))
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 // Remains PENDING_DELETE for retry
             }
         }
     }
 
     override suspend fun syncPendingGoals(): Result<Int> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             val pendingList = savingsGoalDao.getPendingGoals(user.uid)
             var syncedCount = 0
             var failureException: Throwable? = null
 
             for (record in pendingList) {
+                if (authRepository.currentUser.first()?.uid != user.uid) break
+                if (savingsGoalDao.getPendingGoals(user.uid).none { it == record }) continue
                 try {
                     when (record.syncStatus) {
                         SyncStatus.PENDING_INSERT,
                         SyncStatus.PENDING_UPDATE -> {
                             val res = savingsGoalRemoteDataSource.upsertGoal(user.uid, record.toDomain())
                             if (res.isSuccess) {
-                                savingsGoalDao.markGoalSynced(user.uid, record.id, SyncStatus.SYNCED)
+                                savingsGoalDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()
@@ -361,7 +390,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                         SyncStatus.PENDING_DELETE -> {
                             val res = savingsGoalRemoteDataSource.deleteGoal(user.uid, record.id)
                             if (res.isSuccess) {
-                                savingsGoalDao.hardDeleteGoal(user.uid, record.id)
+                                savingsGoalDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()
@@ -370,6 +399,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                         SyncStatus.SYNCED -> Unit
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     failureException = e
                 }
             }
@@ -383,20 +413,22 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     }
 
     override suspend fun syncPendingTransactions(): Result<Int> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
             val pendingList = goalTransactionDao.getPendingTransactions(user.uid)
             var syncedCount = 0
             var failureException: Throwable? = null
 
             for (record in pendingList) {
+                if (authRepository.currentUser.first()?.uid != user.uid) break
+                if (goalTransactionDao.getPendingTransactions(user.uid).none { it == record }) continue
                 try {
                     when (record.syncStatus) {
                         SyncStatus.PENDING_INSERT,
                         SyncStatus.PENDING_UPDATE -> {
                             val res = savingsGoalRemoteDataSource.upsertTransaction(user.uid, record.toDomain())
                             if (res.isSuccess) {
-                                goalTransactionDao.markTransactionSynced(user.uid, record.id, SyncStatus.SYNCED)
+                                goalTransactionDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()
@@ -405,7 +437,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                         SyncStatus.PENDING_DELETE -> {
                             val res = savingsGoalRemoteDataSource.deleteTransaction(user.uid, record.id)
                             if (res.isSuccess) {
-                                goalTransactionDao.hardDeleteTransaction(user.uid, record.id)
+                                goalTransactionDao.completeSync(record)
                                 syncedCount++
                             } else {
                                 failureException = res.exceptionOrNull()
@@ -414,6 +446,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                         SyncStatus.SYNCED -> Unit
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     failureException = e
                 }
             }
@@ -427,7 +460,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     }
 
     override suspend fun refreshRemoteSavingsData(): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        repositoryResult {
             val user = requireUser()
 
             val remoteGoalsResult = savingsGoalRemoteDataSource.fetchGoals(user.uid)

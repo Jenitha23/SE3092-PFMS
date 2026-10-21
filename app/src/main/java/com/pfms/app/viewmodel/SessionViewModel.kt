@@ -151,7 +151,7 @@ class SessionViewModel @Inject constructor(
                 onSuccess = { unlock() },
                 onFailure = { error ->
                     _lockUiState.update {
-                        it.copy(isLoading = false, message = error.message ?: "Could not unlock. Please try again.")
+                        it.copy(isLoading = false, message = if (error is com.pfms.app.domain.model.AuthException) error.message else "Could not unlock. Please try again.")
                     }
                 }
             )

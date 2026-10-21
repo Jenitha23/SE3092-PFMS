@@ -1,6 +1,7 @@
 package com.pfms.app.domain.usecase.analytics
 
 import com.pfms.app.domain.model.Income
+import com.pfms.app.domain.usecase.SafeCalculations
 import com.pfms.app.domain.model.analytics.EstimationStatus
 import com.pfms.app.domain.model.analytics.IncomeEstimationComparison
 import java.time.YearMonth
@@ -35,7 +36,7 @@ class GetIncomeEstimationComparisonUseCase @Inject constructor(
         val difference = actualAverage - estimatedMonthlyIncomeMinor
 
         val variancePercentage = if (estimatedMonthlyIncomeMinor > 0L) {
-            (difference.toDouble() / estimatedMonthlyIncomeMinor.toDouble()) * 100.0
+            SafeCalculations.percentage(difference, estimatedMonthlyIncomeMinor)
         } else {
             0.0
         }

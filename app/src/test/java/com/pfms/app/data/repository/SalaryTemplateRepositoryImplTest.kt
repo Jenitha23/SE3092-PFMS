@@ -112,7 +112,7 @@ class SalaryTemplateRepositoryImplTest {
         repository.saveSalaryTemplate(template)
 
         verify(salaryTemplateDao).upsertSalaryTemplate(any())
-        verify(salaryTemplateDao, never()).updateSyncStatus("user-123", SyncStatus.SYNCED)
+        verify(salaryTemplateDao, never()).completeSync(any())
     }
 
     @Test
@@ -288,7 +288,7 @@ class SalaryTemplateRepositoryImplTest {
 
         assertTrue(result.isSuccess)
         verify(salaryTemplateRemoteDataSource).upsertSalaryTemplate(eq("user-123"), any())
-        verify(salaryTemplateDao).updateSyncStatus("user-123", SyncStatus.SYNCED)
+        verify(salaryTemplateDao).completeSync(pendingTemplate)
     }
 
     @Test
@@ -309,7 +309,7 @@ class SalaryTemplateRepositoryImplTest {
         val result = repository.syncPendingTemplate()
 
         assertTrue(result.isFailure)
-        verify(salaryTemplateDao, never()).updateSyncStatus("user-123", SyncStatus.SYNCED)
+        verify(salaryTemplateDao, never()).completeSync(any())
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.pfms.app.data.sync
 
 import com.pfms.app.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -12,6 +13,8 @@ class PendingSyncCoordinatorImpl @Inject constructor(
     private val templateSyncable: SalaryTemplatePendingSyncable,
     private val savingsGoalSyncable: SavingsGoalPendingSyncable
 ) : PendingSyncCoordinator {
+
+    @javax.inject.Inject lateinit var issues: SyncIssueStore
 
     override suspend fun syncAllPending(): Result<Unit> {
         val user = authRepository.currentUser.first()
@@ -27,6 +30,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
             }
             res
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             if (isAuthSessionLost(e)) {
                 return Result.success(Unit)
             }
@@ -40,6 +44,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
             }
             res
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             if (isAuthSessionLost(e)) {
                 return Result.success(Unit)
             }
@@ -53,6 +58,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
             }
             res
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             if (isAuthSessionLost(e)) {
                 return Result.success(Unit)
             }
@@ -66,6 +72,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
             }
             res
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             if (isAuthSessionLost(e)) {
                 return Result.success(Unit)
             }
@@ -73,6 +80,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
         }
 
         return if (incomeResult.isSuccess && templateResult.isSuccess && savingsGoalResult.isSuccess && savingsTxResult.isSuccess) {
+            if (::issues.isInitialized) issues.recovered(user.uid, "financial-sync")
             Result.success(Unit)
         } else {
             val failure = incomeResult.exceptionOrNull()
@@ -80,6 +88,7 @@ class PendingSyncCoordinatorImpl @Inject constructor(
                 ?: savingsGoalResult.exceptionOrNull()
                 ?: savingsTxResult.exceptionOrNull()
                 ?: RuntimeException("Failed to synchronize pending changes")
+            if (::issues.isInitialized) issues.failed(user.uid, "financial-sync", failure)
             Result.failure(failure)
         }
     }

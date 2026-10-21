@@ -175,18 +175,21 @@ class FirestoreAdvancedExpenseRepository @Inject constructor(
         batch.commit().await()
     }
 
-    override suspend fun createCategory(name: String, classification: ExpenseClassification) {
+    override suspend fun createCategory(name: String, classification: ExpenseClassification) =
+        createCategoryWithId(UUID.randomUUID().toString(), name, classification)
+
+    override suspend fun createCategoryWithId(id: String, name: String, classification: ExpenseClassification) {
         val currentUid = uid()
         val cleaned = name.trim()
         require(cleaned.isNotEmpty()) { "Category name cannot be empty." }
         require(cleaned.length <= 50) { "Category name must be 1 to 50 characters." }
 
         val existing = categoriesRef(currentUid).get().await().documents
-        require(existing.none { it.getString("name")?.trim().equals(cleaned, ignoreCase = true) }) {
+        require(existing.none { it.id != id && it.getString("name")?.trim().equals(cleaned, ignoreCase = true) }) {
             "A category with name '$cleaned' already exists."
         }
 
-        val id = UUID.randomUUID().toString()
+        require(id.isNotBlank())
         val now = System.currentTimeMillis()
 
         val data = mapOf(
@@ -360,7 +363,9 @@ class FirestoreAdvancedExpenseRepository @Inject constructor(
         recurringDao.upsertTemplate(advancedTemplate.toEntity(currentUid))
     }
 
-    override suspend fun repeatExpense(expenseId: String) {
+    override suspend fun repeatExpense(expenseId: String) = repeatExpenseWithId(expenseId, UUID.randomUUID().toString())
+
+    override suspend fun repeatExpenseWithId(expenseId: String, newId: String) {
         val currentUid = uid()
         val original = expensesRef(currentUid).document(expenseId).get().await()
         require(original.exists()) { "Expense not found." }
@@ -369,7 +374,7 @@ class FirestoreAdvancedExpenseRepository @Inject constructor(
         require(owner == null || owner == currentUid) { "Access denied: expense belongs to another user." }
 
         val copy = original.data.orEmpty().toMutableMap()
-        val newId = UUID.randomUUID().toString()
+        require(newId.isNotBlank())
         val now = System.currentTimeMillis()
         val today = LocalDate.now(RecurringExpenseCalculator.COLOMBO_ZONE).toString()
 

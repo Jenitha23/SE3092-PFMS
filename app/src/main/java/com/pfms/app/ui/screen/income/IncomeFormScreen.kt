@@ -89,7 +89,8 @@ fun IncomeFormScreen(
     onFetchExchangeRate: (String) -> Unit = {},
     onSetManualRate: (String, String) -> Boolean = { _, _ -> false },
     onEnableManualRate: () -> Unit = {},
-    onClearExchangeRate: () -> Unit = {}
+    onClearExchangeRate: () -> Unit = {},
+    canRetry: Boolean = false
 ) {
     val isEditMode = initialIncome != null
 
@@ -660,7 +661,7 @@ fun IncomeFormScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Date Received",
+                        text = if (source == "Freelance" && paymentStatus == "Expected") "Invoice Date" else "Date Received",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = textPrimary,
@@ -1052,13 +1053,7 @@ fun IncomeFormScreen(
             }
 
             // Global error message if any
-            errorMessage?.let { msg ->
-                Text(
-                    text = msg,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            com.pfms.app.ui.component.ErrorBanner(errorMessage)
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -1125,7 +1120,7 @@ fun IncomeFormScreen(
                     )
                 } else {
                     Text(
-                        text = if (isEditMode) "Save Changes" else "Save Income",
+                        text = if (canRetry && errorMessage != null) "Retry" else if (isEditMode) "Save Changes" else "Save Income",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -1173,15 +1168,15 @@ fun IncomeFormScreen(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(
+                    enabled = datePickerState.selectedDateMillis != null,
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
                             val selectedLocalDate = Instant.ofEpochMilli(millis)
                                 .atZone(ZoneOffset.UTC)
                                 .toLocalDate()
-                            receivedDate = selectedLocalDate.toString()
-                            if (currency == "USD") {
-                                onClearExchangeRate()
-                                onFetchExchangeRate(receivedDate)
+                            if (receivedDate != selectedLocalDate.toString()) {
+                                receivedDate = selectedLocalDate.toString()
+                                if (currency == "USD") onClearExchangeRate()
                             }
                         }
                         showDatePicker = false

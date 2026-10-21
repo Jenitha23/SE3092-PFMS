@@ -6,6 +6,7 @@ import androidx.room.Upsert
 import androidx.room.Transaction
 import com.pfms.app.data.local.entity.IncomeEntity
 import com.pfms.app.data.local.entity.SyncStatus
+import com.pfms.app.data.sync.SyncVersion
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -14,6 +15,9 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface IncomeDao {
+    @Query("SELECT * FROM incomes WHERE userId=:userId AND isDeleted=0 ORDER BY receivedDate DESC, id")
+    suspend fun getActiveForReminders(userId: String): List<IncomeEntity>
+
     @Query("DELETE FROM incomes WHERE userId=:userId AND syncStatus='SYNCED' AND id NOT IN (:ids)")
     suspend fun removeMissingSynced(userId: String, ids: List<String>)
 
@@ -21,10 +25,21 @@ interface IncomeDao {
     suspend fun reconcile(userId: String, rows: List<IncomeEntity>, authoritative: Boolean) {
         rows.forEach { row ->
             val local = getIncomeById(userId, row.id)
-            if (local == null || local.syncStatus == SyncStatus.SYNCED) upsertIncome(row)
+            if (local == null || (local.syncStatus == SyncStatus.SYNCED &&
+                    SyncVersion(row.updatedAt, row.revision, row.isDeleted) >= SyncVersion(local.updatedAt, local.revision, local.isDeleted))) upsertIncome(row)
         }
         if (authoritative) removeMissingSynced(userId, rows.map { it.id })
     }
+
+    @Transaction
+    suspend fun completeSync(submitted: IncomeEntity, winner: IncomeEntity) {
+        val current = getIncomeById(submitted.userId, submitted.id) ?: return
+        if (current.revision == submitted.revision && current.updatedAt == submitted.updatedAt &&
+            current.syncStatus == submitted.syncStatus) upsertIncome(winner)
+    }
+
+    @Query("UPDATE incomes SET revision=:revision WHERE userId=:userId AND id=:id AND revision='' AND updatedAt=:updatedAt")
+    suspend fun assignLegacyRevision(userId: String, id: String, updatedAt: Long, revision: String)
 
     /**
      * Observes all active (non-deleted) income records for a user, sorted newest first.

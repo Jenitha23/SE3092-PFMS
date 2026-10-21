@@ -28,8 +28,7 @@ fun ExpenseFormContent(
 
     // Prevent a success/error from a previous destination affecting this form.
     LaunchedEffect(expenseId) {
-        viewModel.clearSuccess()
-        viewModel.clearError()
+        viewModel.beginForm()
     }
 
     val expected = if (editing) ExpenseOperation.UPDATE else ExpenseOperation.ADD
@@ -48,6 +47,7 @@ fun ExpenseFormContent(
             categories = formCategories,
             isSaving = uiState.isSaving,
             errorMessage = uiState.errorMessage,
+            canRetry = uiState.canRetry,
             defaultPaymentMethod = uiState.lastUsedPaymentMethod,
             isRepeating = isRepeating,
             pastExpenses = uiState.expenses,

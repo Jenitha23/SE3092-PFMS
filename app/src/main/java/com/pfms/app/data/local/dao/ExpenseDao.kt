@@ -2,10 +2,14 @@ package com.pfms.app.data.local.dao
 
 import androidx.room.*
 import com.pfms.app.data.local.entity.ExpenseEntity
+import com.pfms.app.data.sync.SyncVersion
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ExpenseDao {
+    @Query("SELECT * FROM expenses WHERE userId=:userId AND isDeleted=0 AND needsConfirmation=0 ORDER BY date DESC, id")
+    suspend fun getActiveForReminders(userId: String): List<ExpenseEntity>
+
     @Query("SELECT * FROM expenses WHERE userId=:userId AND isDeleted=0 AND needsConfirmation=0 ORDER BY date DESC, createdAt DESC")
     fun observe(userId: String): Flow<List<ExpenseEntity>>
 
@@ -43,8 +47,16 @@ interface ExpenseDao {
     suspend fun reconcile(userId: String, rows: List<ExpenseEntity>, authoritative: Boolean) {
         rows.forEach { remote ->
             val local = get(userId, remote.id)
-            if (local == null || local.syncStatus == "SYNCED") upsert(remote)
+            if (local == null || (local.syncStatus == "SYNCED" &&
+                    SyncVersion(remote.updatedAt, remote.revision, remote.isDeleted) >= SyncVersion(local.updatedAt, local.revision, local.isDeleted))) upsert(remote)
         }
         if (authoritative) removeMissing(userId, rows.map { it.id })
+    }
+
+    @Transaction
+    suspend fun completeSync(submitted: ExpenseEntity, winner: ExpenseEntity) {
+        val current = get(submitted.userId, submitted.id) ?: return
+        if (current.revision == submitted.revision && current.updatedAt == submitted.updatedAt &&
+            current.syncStatus == submitted.syncStatus) upsert(winner)
     }
 }

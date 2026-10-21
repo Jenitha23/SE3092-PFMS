@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -28,10 +29,11 @@ fun QuickAddExpenseSheet(
         categoryDefault: ExpenseClassification
     ) -> Unit,
     onDismiss: () -> Unit,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    canRetry: Boolean = false
 ) {
     ExpenseUiTheme {
-        QuickAddExpenseSheetContent(categories, defaultPaymentMethod, isSaving, onSave, onDismiss, errorMessage)
+        QuickAddExpenseSheetContent(categories, defaultPaymentMethod, isSaving, onSave, onDismiss, errorMessage, canRetry)
     }
 }
 
@@ -40,15 +42,17 @@ fun QuickAddExpenseSheet(
 private fun QuickAddExpenseSheetContent(
     categories: List<ExpenseCategoryOption>, defaultPaymentMethod: ExpensePaymentMethod,
     isSaving: Boolean, onSave: (String, String, String, ExpenseClassification) -> Unit,
-    onDismiss: () -> Unit, errorMessage: String?
+    onDismiss: () -> Unit, errorMessage: String?, canRetry: Boolean
 ) {
-    var amount by remember {
+    var amount by rememberSaveable {
         mutableStateOf("")
     }
 
-    var selectedCategoryId by remember(categories) {
+    var selectedCategoryId by rememberSaveable {
         mutableStateOf(categories.firstOrNull()?.id ?: "")
     }
+
+    LaunchedEffect(categories) { if (selectedCategoryId.isBlank()) selectedCategoryId = categories.firstOrNull()?.id.orEmpty() }
 
     val amountFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -152,7 +156,7 @@ private fun QuickAddExpenseSheetContent(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Save Expense")
+                    Text(if (canRetry && errorMessage != null) "Retry" else "Save Expense")
                 }
             }
 

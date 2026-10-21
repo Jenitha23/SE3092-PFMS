@@ -13,6 +13,8 @@ class PFMSApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var syncStartup: com.pfms.app.data.sync.SyncStartup
+    @Inject lateinit var reminderStartup: com.pfms.app.data.reminder.ReminderStartup
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -27,8 +29,8 @@ class PFMSApplication : Application(), Configuration.Provider {
         // Enqueue constrained one-time sync on application start
         IncomeSyncWorker.enqueue(this)
         com.pfms.app.data.sync.ExpenseSyncWorker.enqueue(this)
+        syncStartup.start()
 
-        // Enqueue periodic daily checks for recurring expense and subscription reminders
-        com.pfms.app.data.sync.ExpenseReminderWorker.enqueuePeriodic(this)
+        reminderStartup.start()
     }
 }
