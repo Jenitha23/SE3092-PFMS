@@ -3,7 +3,6 @@ package com.pfms.app
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
@@ -12,6 +11,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.pfms.app.domain.model.*
 import com.pfms.app.ui.component.ReminderSettingsContent
+import com.pfms.app.ui.theme.PFMSTheme
 import com.pfms.app.viewmodel.ReminderSettingsUiState
 import org.junit.Assert.*
 import org.junit.Rule
@@ -23,7 +23,7 @@ class ReminderSettingsUiTest {
     private fun content(block: @Composable () -> Unit) = compose.setContent {
         val keyboard = LocalSoftwareKeyboardController.current; val focus = LocalFocusManager.current
         SideEffect { hideKeyboard = { focus.clearFocus(); keyboard?.hide() } }
-        MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { block() } }
+        PFMSTheme { Column(Modifier.verticalScroll(rememberScrollState())) { block() } }
     }
 
     @Test fun allSevenSwitchesCanChangeIndependentlyEvenWithoutPermission() {
@@ -54,13 +54,52 @@ class ReminderSettingsUiTest {
                 onWeekday = {}, onRetry = {}, onRequestPermission = {}, onOpenSystemSettings = {})
         }
         compose.onNodeWithText("Daily reminder time: 20:00").performScrollTo().performClick()
-        compose.onNode(hasSetTextAction() and hasText("20")).performTextReplacement("21")
-        compose.onNode(hasSetTextAction() and hasText("00")).performTextReplacement("15")
-        compose.runOnIdle { hideKeyboard.invoke() }
+        compose.onNodeWithText("PM", useUnmergedTree = true).assertExists()
+        compose.onNodeWithContentDescription("9 o'clock", useUnmergedTree = true).performTouchInput { click() }
+        compose.onNodeWithContentDescription("Select minutes").performClick()
+        compose.onNodeWithContentDescription("15 minutes", useUnmergedTree = true).performTouchInput { click() }
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
         compose.onNodeWithText("Save time").performClick()
         compose.onNodeWithText("Daily reminder time: 21:15").assertExists().performClick()
         compose.onNodeWithText("Cancel").performClick()
         compose.runOnIdle { assertEquals(1, saved); assertEquals(1275, settings[ReminderType.DAILY_LOG].minuteOfDay) }
+    }
+
+    @Test fun clockSelectorMakesAmPmExplicitAndEveryReminderCanBeOpenedAndCancelled() {
+        val settings = UserReminderSettings.defaults("a")
+        var saves = 0
+        content {
+            ReminderSettingsContent(ReminderSettingsUiState(settings, NotificationAccess(true), false),
+                { _, _ -> }, { _, _, _ -> saves++ }, {}, {}, {}, {})
+        }
+        ReminderType.entries.forEach { type ->
+            val schedule = settings[type]
+            val time = "%02d:%02d".format(schedule.minuteOfDay / 60, schedule.minuteOfDay % 60)
+            val label = if (type == ReminderType.DAILY_LOG) "Daily reminder time: $time" else "${type.title}: $time"
+            compose.onNodeWithText(label).performScrollTo().performClick()
+            compose.onNodeWithText("AM", useUnmergedTree = true).assertExists()
+            compose.onNodeWithText("PM", useUnmergedTree = true).assertExists()
+            compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+            compose.onNodeWithText("Cancel").performScrollTo().performClick()
+            compose.onNodeWithText(label).assertExists()
+        }
+        compose.runOnIdle { assertEquals(0, saves) }
+    }
+
+    @Test fun morningAndAfternoonSelectionsSaveDifferentHours() {
+        var settings by mutableStateOf(UserReminderSettings.defaults("a"))
+        content {
+            ReminderSettingsContent(ReminderSettingsUiState(settings, NotificationAccess(true), false), { _, _ -> },
+                { type, hour, minute -> settings = settings.copy(schedules = settings.schedules +
+                    (type to settings[type].copy(minuteOfDay = hour * 60 + minute))) }, {}, {}, {}, {})
+        }
+        compose.onNodeWithText("Daily reminder time: 20:00").performScrollTo().performClick()
+        compose.onNodeWithText("AM", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("Save time").performScrollTo().performClick()
+        compose.onNodeWithText("Daily reminder time: 08:00").assertExists().performClick()
+        compose.onNodeWithText("PM", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("Save time").performScrollTo().performClick()
+        compose.onNodeWithText("Daily reminder time: 20:00").assertExists()
     }
 
     @Test fun permissionControlsAreExplicitAndDeniedPermissionIsNonBlocking() {

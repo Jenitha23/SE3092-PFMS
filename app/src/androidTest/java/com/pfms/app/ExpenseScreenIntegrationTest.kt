@@ -123,7 +123,9 @@ class ExpenseScreenIntegrationTest {
         closeKeyboard()
         compose.onNodeWithText("Add Category").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Edit Books").performScrollTo().performClick()
-        compose.onNodeWithText("Category Name (1–50 characters)").performScrollTo().performTextReplacement("Learning")
+        // Editing scrolls the form into view. Do not issue a second competing scroll while its
+        // animateScrollToItem is settling; assert the user-visible result before editing instead.
+        compose.onNodeWithText("Category Name (1–50 characters)").assertIsDisplayed().performTextReplacement("Learning")
         closeKeyboard()
         compose.onNodeWithText("Save Changes").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Archive Learning").performScrollTo().performClick()

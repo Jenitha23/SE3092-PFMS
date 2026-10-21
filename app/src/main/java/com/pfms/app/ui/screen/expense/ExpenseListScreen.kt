@@ -83,26 +83,6 @@ fun ExpenseListScreen(
                         Text("Expenses", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Quick Add Button: Highlighted primary action
-                        Button(
-                            onClick = onQuickAdd,
-                            modifier = Modifier.height(38.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF0F766E),
-                                contentColor = Color.White
-                            ),
-                            contentPadding = PaddingValues(horizontal = 10.dp)
-                        ) {
-                            ExpenseIcon(ExpenseSymbol.FLASH, Modifier.size(15.dp), tint = Color.White)
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "Quick Add",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
                         // Full Form Add Button
                         OutlinedButton(
                             onClick = onAddExpense,
