@@ -58,8 +58,8 @@ class FirestoreCollectionsTest {
     }
 
     @Test
-    fun `subcollections list has exactly eight entries`() {
-        assertEquals(8, FirestoreCollections.USER_SUBCOLLECTIONS.size)
+    fun `subcollections list has exactly nine entries`() {
+        assertEquals(9, FirestoreCollections.USER_SUBCOLLECTIONS.size)
     }
 
     @Test

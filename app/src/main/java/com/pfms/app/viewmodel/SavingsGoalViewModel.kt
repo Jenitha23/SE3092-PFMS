@@ -210,6 +210,7 @@ class SavingsGoalViewModel @Inject constructor(
 
     fun createGoal(goal: SavingsGoal) {
         if (_operationInProgress.value) return
+        // Generate missing IDs here, retaining the same ID when a failed save is retried.
         val id = goal.id.ifBlank { createGoalId ?: UUID.randomUUID().toString().also { createGoalId = it } }
         perform { uid -> savingsGoalRepository.createGoal(goal.copy(id = id, userId = goal.userId.ifBlank { uid })) }
     }
