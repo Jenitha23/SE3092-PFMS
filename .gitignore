@@ -19,3 +19,8 @@ local.properties
 /.idea/misc.xml
 /.idea/.name
 /gradle/gradle-daemon-jvm.properties
+
+# Firebase Emulator logs
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

@@ -1,0 +1,234 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function fields(d, required, allowed) {
+      return d.keys().hasAll(required) && d.keys().hasOnly(allowed);
+    }
+    function textValue(x, maxLen) { return x is string && x.size() <= maxLen; }
+    function nonempty(x, maxLen) { return textValue(x, maxLen) && x.size() > 0; }
+    function money(x) { return x is int && x > 0; }
+    function nonnegative(x) { return x is int && x >= 0; }
+    function millis(x) { return x is int && x >= 0; }
+    function dateText(x) { return x is string && x.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    function optionalText(d, key, maxLen) {
+      return d.get(key, null) == null || textValue(d.get(key, null), maxLen);
+    }
+    function unchangedIdentity(uid, docId) {
+      return request.resource.data.userId == uid && request.resource.data.id == docId;
+    }
+    function immutableIdentity() {
+      return request.resource.data.id == resource.data.id &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+    // PFMS(10) uses versioned sync documents. Revisions are strings (sometimes UUIDs).
+    function syncMetadata(d) {
+      return d.keys().hasAll(['syncRevision', 'isDeleted'])
+        && textValue(d.syncRevision, 128)
+        && d.isDeleted is bool;
+    }
+    function tombstone(d, uid, id) {
+      return fields(d,
+          ['id', 'userId', 'updatedAt', 'syncRevision', 'isDeleted'],
+          ['id', 'userId', 'updatedAt', 'syncRevision', 'isDeleted'])
+        && d.id == id && d.userId == uid
+        && millis(d.updatedAt) && syncMetadata(d) && d.isDeleted == true;
+    }
+    function activeIdentityOnUpdate(d) {
+      // Keep creation time stable for ordinary updates; deletion tombstones omit it.
+      return !('createdAt' in resource.data)
+        || d.createdAt == resource.data.createdAt;
+    }
+    function payment(x) {
+      return x in ['CASH', 'CARD', 'BANK_TRANSFER_AUTO_DEBIT', 'DIGITAL_WALLET_PLATFORM'];
+    }
+    function classification(x) { return x in ['COMMITTED', 'DISCRETIONARY']; }
+    function validProfile(d, uid) {
+      return fields(d,
+          ['uid','displayName','email','baseCurrency','createdAt','updatedAt'],
+          ['uid','displayName','email','baseCurrency','defaultPaymentMethod',
+           'createdAt','updatedAt','estimatedMonthlyIncomeMinor','incomeOnboardingComplete'])
+        && d.uid == uid && textValue(d.displayName, 100)
+        && nonempty(d.email, 254) && d.baseCurrency == 'LKR'
+        && d.createdAt is timestamp && d.updatedAt is timestamp
+        && (d.get('defaultPaymentMethod',null) == null || payment(d.defaultPaymentMethod))
+        && (d.get('estimatedMonthlyIncomeMinor',null) == null || nonnegative(d.estimatedMonthlyIncomeMinor))
+        && (d.get('incomeOnboardingComplete',null) == null || d.incomeOnboardingComplete is bool);
+    }
+    function validIncome(d, uid, id) {
+      return fields(d,
+          ['id','userId','amountMinor','currency','source','receivedDate','paymentStatus','createdAt','updatedAt', 'syncRevision','isDeleted'],
+          ['id','userId','amountMinor','currency','source','receivedDate','note',
+           'amountLkrMinor','exchangeRate','exchangeRateDate','paymentStatus',
+           'projectName','cryptoType','cryptoAsset','createdAt','updatedAt',
+            'syncRevision','isDeleted'])
+        && d.id == id && d.userId == uid && money(d.amountMinor)
+        && d.currency in ['LKR','USD']
+        && d.source in ['Salary','Freelance','Google AdSense','Crypto','Other']
+        && dateText(d.receivedDate) && optionalText(d,'note',2000)
+        && d.paymentStatus in ['Expected','Received']
+        && optionalText(d,'projectName',200) && optionalText(d,'cryptoAsset',100)
+        && (d.get('cryptoType',null) == null || d.cryptoType in ['Gain','Loss'])
+        && (d.source != 'Crypto' || d.cryptoType in ['Gain','Loss'])
+        && optionalText(d,'exchangeRate',100) && optionalText(d,'exchangeRateDate',30)
+        && (d.get('amountLkrMinor',null) == null || nonnegative(d.amountLkrMinor))
+        && (d.currency != 'USD' ||
+            (money(d.amountLkrMinor) && nonempty(d.exchangeRate,100)
+             && nonempty(d.exchangeRateDate,30)))
+        && millis(d.createdAt) && millis(d.updatedAt) && d.updatedAt >= d.createdAt
+        && syncMetadata(d) && d.isDeleted == false;
+    }
+    function validExpense(d, uid, id) {
+      return fields(d,
+          ['id','userId','amountMinor','currency','categoryId','categoryName','classification',
+           'paymentMethod','date','createdAt','updatedAt','syncRevision','isDeleted'],
+          ['id','userId','amountMinor','currency','categoryId','categoryName','classification',
+           'paymentMethod','date','merchant','note','createdAt','updatedAt',
+             'syncRevision','isDeleted'])
+        && d.id == id && d.userId == uid && money(d.amountMinor)
+        && d.currency == 'LKR' && nonempty(d.categoryId,128)
+        && textValue(d.categoryName,150) && classification(d.classification)
+        && payment(d.paymentMethod) && dateText(d.date)
+        && optionalText(d,'merchant',300) && optionalText(d,'note',2000)
+        && millis(d.createdAt) && millis(d.updatedAt) && d.updatedAt >= d.createdAt
+        && syncMetadata(d) && d.isDeleted == false;
+    }
+    function validGoal(d, uid, id) {
+      return fields(d,
+          ['id','userId','name','targetAmountMinor','targetDate','openingSavedAmountMinor','status','createdAt','updatedAt'],
+          ['id','userId','name','targetAmountMinor','targetDate','openingSavedAmountMinor','status','createdAt','updatedAt'])
+        && d.id == id && d.userId == uid && nonempty(d.name,150)
+        && money(d.targetAmountMinor) && nonnegative(d.openingSavedAmountMinor)
+        && dateText(d.targetDate) && d.status in ['ACTIVE','COMPLETED','ARCHIVED']
+        && millis(d.createdAt) && millis(d.updatedAt) && d.updatedAt >= d.createdAt;
+    }
+    function validGoalTransaction(d, uid, id) {
+      return fields(d,
+          ['id','goalId','userId','amountMinor','transactionType','date','createdAt','updatedAt'],
+          ['id','goalId','userId','amountMinor','transactionType','date','note','createdAt','updatedAt'])
+        && d.id == id && d.userId == uid && nonempty(d.goalId,128)
+        && exists(/databases/$(database)/documents/users/$(uid)/savingsGoals/$(d.goalId))
+        && money(d.amountMinor) && d.transactionType in ['CONTRIBUTION','WITHDRAWAL']
+        && dateText(d.date) && optionalText(d,'note',2000)
+        && millis(d.createdAt) && millis(d.updatedAt) && d.updatedAt >= d.createdAt;
+    }
+    function validSalary(d, uid, id) {
+      return fields(d,
+          ['id','userId','amountMinor','currency','paymentDay','isEnabled','createdAt','updatedAt'],
+          ['id','userId','amountMinor','currency','paymentDay','isEnabled',
+           'lastConfirmedMonth','createdAt','updatedAt'])
+        && d.id == id && d.userId == uid && money(d.amountMinor)
+        && d.currency == 'LKR' && d.paymentDay is int
+        && d.paymentDay >= 1 && d.paymentDay <= 31 && d.isEnabled is bool
+        && (d.get('lastConfirmedMonth',null) == null ||
+            (d.lastConfirmedMonth is string &&
+             d.lastConfirmedMonth.matches('^[0-9]{4}-[0-9]{2}$')))
+        && millis(d.createdAt) && millis(d.updatedAt);
+    }
+    function validRecurringExpense(d, id) {
+      return fields(d,
+          ['id','title','categoryId','categoryName','classification','amountMinor',
+           'paymentMethod','recurrence','nextDueDate','active','isActive','subscription',
+           'isSubscription','flag','reminderDate','updatedAt'],
+          ['id','title','categoryId','categoryName','classification','amountMinor',
+           'paymentMethod','recurrence','nextDueDate','active','isActive','subscription',
+           'isSubscription','flag','reminderDate','updatedAt'])
+        && d.id == id && nonempty(d.title,150) && nonempty(d.categoryId,128)
+        && textValue(d.categoryName,150) && classification(d.classification)
+        && money(d.amountMinor) && payment(d.paymentMethod)
+        && d.recurrence in ['DAILY','WEEKLY','MONTHLY'] && dateText(d.nextDueDate)
+        && d.active is bool && d.isActive == d.active
+        && d.subscription is bool && d.isSubscription == d.subscription
+        && d.flag in ['NONE','REVIEW','CANCEL']
+        && (d.reminderDate == '' || dateText(d.reminderDate)) && millis(d.updatedAt);
+    }
+    function validCategory(d, id) {
+      return fields(d, ['name','defaultClassification','isDefault','isArchived','createdAt','updatedAt'],
+          ['id','name','classification','defaultClassification','custom','isDefault',
+           'archived','isArchived','createdAt','updatedAt'])
+        && nonempty(d.name,100)
+        && d.defaultClassification in ['Committed','Discretionary','COMMITTED','DISCRETIONARY']
+        && d.isDefault is bool && d.isArchived is bool
+        && (d.get('id',null) == null || d.id == id)
+        && (d.get('classification',null) == null || classification(d.classification))
+        && (d.get('custom',null) == null || d.custom is bool)
+        && (d.get('archived',null) == null || d.archived is bool)
+        && (d.get('createdAt',null) is int || d.get('createdAt',null) is timestamp)
+        && (d.get('updatedAt',null) is int || d.get('updatedAt',null) is timestamp);
+    }
+    function validIncomeSource(d) {
+      return fields(d, ['name','isRegular','isDefault','createdAt','updatedAt'],
+          ['name','isRegular','isDefault','createdAt','updatedAt'])
+        && nonempty(d.name,100) && d.isRegular is bool && d.isDefault is bool
+        && d.createdAt is timestamp && d.updatedAt is timestamp;
+    }
+    function validDuplicateGuard(d, uid) {
+      return fields(d, ['internalDuplicateGuard','createdAt','expenseId','userId'],
+                       ['internalDuplicateGuard','createdAt','expenseId','userId'])
+        && d.internalDuplicateGuard == true && d.userId == uid
+        && nonempty(d.expenseId,128) && millis(d.createdAt);
+    }
+    match /users/{uid} {
+      allow get: if owner(uid);
+      allow list: if false;
+      allow create: if owner(uid) && validProfile(request.resource.data,uid);
+      allow update: if owner(uid) && validProfile(request.resource.data,uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if owner(uid);
+
+      match /income/{id} {
+        allow read, delete: if owner(uid);
+        allow create: if owner(uid) && (validIncome(request.resource.data,uid,id)
+           || tombstone(request.resource.data,uid,id));
+        allow update: if owner(uid) && (
+          (validIncome(request.resource.data,uid,id) && activeIdentityOnUpdate(request.resource.data))
+          || tombstone(request.resource.data,uid,id));
+      }
+      match /expenses/{id} {
+        allow read, delete: if owner(uid);
+        allow create: if owner(uid) && (validExpense(request.resource.data,uid,id)
+           || tombstone(request.resource.data,uid,id));
+        allow update: if owner(uid) && (
+          (validExpense(request.resource.data,uid,id) && activeIdentityOnUpdate(request.resource.data))
+          || tombstone(request.resource.data,uid,id));
+      }
+      match /savingsGoals/{id} {
+        allow read, delete: if owner(uid);
+        allow create: if owner(uid) && validGoal(request.resource.data,uid,id);
+        allow update: if owner(uid) && validGoal(request.resource.data,uid,id) && immutableIdentity();
+      }
+      match /goalContributions/{id} {
+        allow read, delete: if owner(uid);
+        allow create: if owner(uid) && validGoalTransaction(request.resource.data,uid,id);
+        allow update: if owner(uid) && validGoalTransaction(request.resource.data,uid,id) && immutableIdentity();
+      }
+      match /recurringTemplates/{id} {
+        allow read, delete: if owner(uid);
+        allow create: if owner(uid) && (
+          validSalary(request.resource.data,uid,id) || validRecurringExpense(request.resource.data,id));
+        allow update: if owner(uid) && (
+          (('paymentDay' in resource.data) && validSalary(request.resource.data,uid,id)
+            && request.resource.data.createdAt == resource.data.createdAt) ||
+          (!('paymentDay' in resource.data) && validRecurringExpense(request.resource.data,id)));
+      }
+      match /categories/{id} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && validCategory(request.resource.data,id);
+      }
+      match /incomeSources/{id} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && validIncomeSource(request.resource.data);
+      }
+      match /expenseDuplicateGuards/{id} {
+        allow read, delete: if owner(uid);
+        allow create: if owner(uid) && validDuplicateGuard(request.resource.data,uid);
+        allow update: if false;
+      }
+      // Reserved by the app, but no production data schema currently exists.
+      match /reminders/{id} { allow read, delete: if owner(uid); allow create, update: if false; }
+    }
+    // All other paths are denied by default.
+  }
+}
