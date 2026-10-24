@@ -311,6 +311,7 @@ fun SavingsGoalContent(
     activeTransactionTypeForAdd?.let { txType ->
         AddTransactionDialog(
             transactionType = txType,
+            availableGoalBalanceMinor = uiState.currentSavedMinor,
             onDismiss = { activeTransactionTypeForAdd = null },
             onConfirm = { amountMinor, note, date ->
                 if (txType == GoalTransactionType.CONTRIBUTION) {
