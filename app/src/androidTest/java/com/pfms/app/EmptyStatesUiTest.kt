@@ -64,11 +64,12 @@ class EmptyStatesUiTest {
     @Test fun emptyIncomeListOffersAddIncome() {
         var added = 0
         compose.setContent { PFMSTheme {
-            IncomeListScreen(emptyList(), { added++ }, {}, {}, {})
+            IncomeListScreen(IncomeStreamPresentation.create(IncomeUiState(isLoading = false), IncomeStreamControls()),
+                com.pfms.app.ui.screen.income.IncomeStreamActions(onAdd = { added++ }))
         } }
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("No Income Records Yet"))
         compose.onNodeWithText("No Income Records Yet").assertIsDisplayed()
-        compose.onAllNodesWithText("Add Income").onLast().performScrollTo().performClick()
+        compose.onNode(hasText("Add Income") and hasAnyAncestor(hasTestTag("income_sections"))).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, added) }
     }
 

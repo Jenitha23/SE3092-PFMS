@@ -1,872 +1,158 @@
 package com.pfms.app.ui.screen.income
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pfms.app.domain.model.Income
-import com.pfms.app.domain.usecase.IncomeCurrencyTotals
-import com.pfms.app.domain.usecase.IncomeSummaryCalculator
-import com.pfms.app.ui.component.InsightsNavIcon
-import java.math.BigDecimal
-import java.text.NumberFormat
-import java.time.LocalDate
-import java.util.Locale
+import com.pfms.app.ui.component.*
+import com.pfms.app.ui.theme.FinanceTheme
+import com.pfms.app.viewmodel.*
+import java.time.YearMonth
 
-@OptIn(ExperimentalMaterial3Api::class)
+data class IncomeStreamActions(
+    val onBack: () -> Unit = {}, val onAdd: () -> Unit = {}, val onSalary: () -> Unit = {},
+    val onAnalytics: () -> Unit = {}, val onHome: () -> Unit = {}, val onExpenses: () -> Unit = {}, val onGoals: () -> Unit = {},
+    val onPreviousMonth: () -> Unit = {}, val onNextMonth: () -> Unit = {},
+    val onShowMonths: (Boolean) -> Unit = {}, val onMonth: (YearMonth) -> Unit = {},
+    val onFilter: (IncomeStreamFilter) -> Unit = {}, val onSort: () -> Unit = {},
+    val onMenu: (String?) -> Unit = {}, val onEdit: (String) -> Unit = {},
+    val onDelete: (String?) -> Unit = {}, val onConfirmDelete: () -> Unit = {},
+    val onMarkReceived: (String) -> Unit = {}, val onRetry: () -> Unit = {}
+)
+
+/** Stateless screen: month selection, filtering, record actions and totals are owned by the ViewModel. */
 @Composable
-fun IncomeListScreen(
-    incomes: List<Income>,
-    onAddIncome: () -> Unit,
-    onEditIncome: (String) -> Unit,
-    onDeleteIncome: (String) -> Unit,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-    isLoading: Boolean = false,
-    errorMessage: String? = null,
-    onRecurringSalary: () -> Unit = {},
-    // Realized Net Income summary
-    totalRealizedIncomeMinor: Long = 0L,
-    monthlyRealizedIncomeMinor: Long = 0L,
-    // Freelance summary
-    totalPendingFreelanceMinor: Long = 0L,
-    pendingFreelanceCount: Int = 0,
-    // Crypto summary
-    cryptoGainsMinor: Long = 0L,
-    cryptoLossesMinor: Long = 0L,
-    netCryptoMinor: Long = 0L,
-    ytdNetCryptoMinor: Long = 0L,
-    // Actions
-    onMarkFreelanceReceived: (String) -> Unit = {},
-    onNavigateToAnalytics: () -> Unit = {},
-    onNavigateToHome: (() -> Unit)? = null,
-    onNavigateToExpenses: (() -> Unit)? = null,
-    onNavigateToGoals: (() -> Unit)? = null,
-    currencyTotals: IncomeCurrencyTotals = IncomeSummaryCalculator.currencyTotals(incomes),
-    onRetry: (() -> Unit)? = null
-) {
-    var incomeToDelete by remember { mutableStateOf<Income?>(null) }
-    var selectedFilter by remember { mutableStateOf("All") }
-
-    // Palette Tokens matching the Reference Design
-    val brandEmerald = Color(0xFF007A5E)
-    val brandEmeraldLight = Color(0xFFF0FDF4)
-    val brandEmeraldBorder = Color(0xFFDCFCE7)
-    val textPrimary = Color(0xFF0F172A)
-    val textSecondary = Color(0xFF64748B)
-    val borderLight = Color(0xFFE2E8F0)
-    val bgScreen = Color(0xFFF8FAFC)
-
-    val lkrOnlyTotalMinor = currencyTotals.lkrMinor
-    val usdOnlyInLkrMinor = currencyTotals.usdInLkrMinor
-    val usdOnlyUsdMinor = currencyTotals.usdMinor
-
-    val filterChips = listOf("All", "Salary", "Freelance", "AdSense", "Crypto")
-
-    // Filter incomes list based on selected tab
-    val filteredIncomes = remember(incomes, selectedFilter) {
-        when (selectedFilter) {
-            "Salary" -> incomes.filter { it.source.equals("Salary", ignoreCase = true) }
-            "Freelance" -> incomes.filter { it.source.equals("Freelance", ignoreCase = true) }
-            "AdSense" -> incomes.filter { it.source.contains("AdSense", ignoreCase = true) }
-            "Crypto" -> incomes.filter { it.source.equals("Crypto", ignoreCase = true) }
-            else -> incomes
-        }
-    }
-
-    Scaffold(
-        modifier = modifier,
-        containerColor = bgScreen,
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        IncomeArrowBackIcon(tint = textPrimary)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onRecurringSalary) {
-                        IncomeCalendarIcon(modifier = Modifier.size(20.dp), tint = textSecondary)
-                    }
-                    IconButton(onClick = onNavigateToAnalytics) {
-                        InsightsNavIcon(modifier = Modifier.size(20.dp), tint = brandEmerald)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = bgScreen
-                )
-            )
-        },
+fun IncomeListScreen(state: IncomeStreamState, actions: IncomeStreamActions = IncomeStreamActions(), modifier: Modifier = Modifier) = FinanceTheme {
+    val colors = MaterialTheme.colorScheme
+    Scaffold(modifier, containerColor = colors.background, contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = { IncomeMonthBar(state, actions) },
         bottomBar = {
-            com.pfms.app.ui.component.PfmsBottomNavBar(
-                selectedTab = com.pfms.app.ui.component.PfmsNavTab.INCOME,
-                onHomeClick = { onNavigateToHome?.invoke() ?: onBack() },
-                onIncomeClick = { /* Already on Income */ },
-                onExpensesClick = { onNavigateToExpenses?.invoke() },
-                onGoalsClick = onNavigateToGoals,
-                onInsightsClick = onNavigateToAnalytics
-            )
-        }
-    ) { paddingValues ->
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp)
-        ) {
-
-            // ═════════════════════════════════════════════════════════
-            // 1. SCREEN HEADER (Income + Add Income button)
-            // ═════════════════════════════════════════════════════════
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Income",
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                color = textPrimary,
-                                fontSize = 30.sp
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Track all your income sources and stay on top of your earnings.",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = textSecondary,
-                                fontSize = 13.5.sp,
-                                lineHeight = 19.sp
-                            )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Button(
-                        onClick = onAddIncome,
-                        colors = ButtonDefaults.buttonColors(containerColor = brandEmerald),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            IncomePlusIcon(modifier = Modifier.size(13.dp), tint = Color.White)
-                            Text(
-                                text = "Add Income",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 14.sp
-                                )
-                            )
+            PfmsBottomNavBar(PfmsNavTab.INCOME, actions.onHome, {}, actions.onExpenses, actions.onGoals, actions.onAnalytics)
+        }) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+            LazyColumn(Modifier.widthIn(max = 600.dp).fillMaxSize().testTag("income_sections"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (state.error != null) item(key = "error") { ErrorBanner(state.error, onRetry = if (state.canRetry) actions.onRetry else null) }
+                if (state.isLoading) item(key = "loading") {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("Loading your income…", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    item(key = "summary") { IncomeStreamSummaryCard(state) }
+                    item(key = "sources") { IncomeSourcesCard(state, actions.onAnalytics) }
+                }
+                item(key = "filters") {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        IncomeStreamFilter.entries.forEach { filter ->
+                            FilterChip(selected = state.controls.filter == filter, onClick = { actions.onFilter(filter) },
+                                label = { Text(filter.label, style = MaterialTheme.typography.labelMedium) }, shape = RoundedCornerShape(12.dp),
+                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.primary, selectedLabelColor = colors.onPrimary))
                         }
                     }
                 }
-            }
-
-            // ═════════════════════════════════════════════════════════
-            // 2. TOTAL INCOME (THIS MONTH) OVERVIEW CARD
-            // ═════════════════════════════════════════════════════════
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = brandEmeraldLight),
-                    border = BorderStroke(1.dp, brandEmeraldBorder),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        // Card Top Row: Label and Trend badge
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Text(
-                                text = "Total Income (This Month)",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF334155),
-                                    fontSize = 14.sp
-                                )
-                            )
-
-                            Column(horizontalAlignment = Alignment.End) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    IncomeTrendUpIcon(modifier = Modifier.size(12.dp), tint = brandEmerald)
-                                    Text(
-                                        text = "+12%",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = brandEmerald,
-                                            fontSize = 13.sp
-                                        )
-                                    )
-                                }
-                                Text(
-                                    text = "vs. last month",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = textSecondary,
-                                        fontSize = 11.sp
-                                    )
-                                )
+                item(key = "records") {
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        itemVerticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Records", style = MaterialTheme.typography.titleMedium)
+                            Surface(shape = RoundedCornerShape(30.dp), color = colors.surfaceVariant) {
+                                Text(state.recordCount, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
                             }
                         }
-
-                        // Big Bold Amount
-                        val displayTotalMinor = if (monthlyRealizedIncomeMinor > 0) {
-                            monthlyRealizedIncomeMinor
-                        } else if (totalRealizedIncomeMinor > 0) {
-                            totalRealizedIncomeMinor
-                        } else {
-                            lkrOnlyTotalMinor + usdOnlyInLkrMinor + netCryptoMinor
-                        }
-
-                        Text(
-                            text = formatLkrAmount(displayTotalMinor),
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                color = brandEmerald,
-                                fontSize = 30.sp
-                            )
-                        )
-
-                        HorizontalDivider(color = brandEmeraldBorder, thickness = 1.dp)
-
-                        // 3 Currency / Asset Breakdown Columns
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Column 1: LKR
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF10B981))
-                                    )
-                                    Text(
-                                        text = "LKR",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = textPrimary
-                                        )
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = formatLkrAmount(lkrOnlyTotalMinor),
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = textSecondary,
-                                        fontSize = 12.sp
-                                    )
-                                )
-                            }
-
-                            // Column 2: USD
-                            Column(modifier = Modifier.weight(1.2f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF3B82F6))
-                                    )
-                                    Text(
-                                        text = "USD",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = textPrimary
-                                        )
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = formatLkrAmount(usdOnlyInLkrMinor),
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = textSecondary,
-                                        fontSize = 12.sp
-                                    )
-                                )
-                                if (usdOnlyUsdMinor > 0) {
-                                    Text(
-                                        text = "($${formatDecimalAmount(usdOnlyUsdMinor)})",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            color = Color(0xFF0284C7),
-                                            fontSize = 11.sp
-                                        )
-                                    )
-                                }
-                            }
-
-                            // Column 3: USDT / ETH Crypto
-                            Column(modifier = Modifier.weight(1.1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF8B5CF6))
-                                    )
-                                    Text(
-                                        text = "USDT/ETH",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = textPrimary
-                                        )
-                                    )
-                                    IncomeInfoCircleIcon(
-                                        modifier = Modifier.size(12.dp),
-                                        tint = Color(0xFF8B5CF6)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = formatLkrAmount(if (netCryptoMinor >= 0) netCryptoMinor else 0L),
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = textSecondary,
-                                        fontSize = 12.sp
-                                    )
-                                )
-                            }
-                        }
-
-                        // Outstanding or loss indicator if any
-                        if (pendingFreelanceCount > 0 || cryptoLossesMinor > 0) {
-                            HorizontalDivider(color = brandEmeraldBorder, thickness = 1.dp)
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (pendingFreelanceCount > 0) {
-                                    Text(
-                                        text = "$pendingFreelanceCount invoice pending (${formatLkrAmount(totalPendingFreelanceMinor)})",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            color = Color(0xFFB45309),
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    )
-                                }
-                                if (cryptoLossesMinor > 0) {
-                                    Text(
-                                        text = "Crypto loss: -${formatLkrAmount(cryptoLossesMinor)}",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            color = Color(0xFFDC2626),
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    )
-                                }
-                            }
+                        TextButton(onClick = actions.onSort, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                            Text(if (state.controls.oldestFirst) "Oldest first ↕" else "Newest first ↕", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
-            }
-
-            // ═════════════════════════════════════════════════════════
-            // 3. SOURCE FILTER CHIPS ROW
-            // ═════════════════════════════════════════════════════════
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    filterChips.forEach { chip ->
-                        val isSelected = selectedFilter == chip
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) brandEmerald else Color.White,
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) brandEmerald else borderLight
-                            ),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .clickable { selectedFilter = chip }
-                        ) {
-                            Text(
-                                text = chip,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else Color(0xFF475569),
-                                    fontSize = 13.5.sp
-                                ),
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp)
-                            )
+                if (!state.isLoading && state.rows.isEmpty()) item(key = "empty") {
+                    Surface(shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, colors.outlineVariant), color = colors.surface) {
+                        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FinanceIcon(FinanceSymbol.INCOME)
+                            Text(state.emptyTitle, style = MaterialTheme.typography.titleMedium)
+                            Text(state.emptyDescription, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                            Button(onClick = actions.onAdd) { Text("Add Income") }
                         }
                     }
                 }
-            }
-
-            // Error display
-            if (errorMessage != null) {
-                item {
-                    com.pfms.app.ui.component.ErrorBanner(errorMessage, onRetry = onRetry)
-                }
-            }
-
-            // ═════════════════════════════════════════════════════════
-            // 4. INCOME LIST / ITEMS
-            // ═════════════════════════════════════════════════════════
-            when {
-                isLoading -> {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = brandEmerald)
-                        }
-                    }
-                }
-
-                filteredIncomes.isEmpty() -> {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, borderLight),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 36.dp, horizontal = 24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Text(
-                                    text = if (selectedFilter == "All") "No Income Records Yet" else "No $selectedFilter Records",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = textPrimary
-                                    )
-                                )
-                                Text(
-                                    text = "Add salary, freelance projects, ad revenue, or crypto to track your earnings.",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = textSecondary
-                                    )
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Button(
-                                    onClick = onAddIncome,
-                                    colors = ButtonDefaults.buttonColors(containerColor = brandEmerald),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("Add Income")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                else -> {
-                    items(
-                        items = filteredIncomes.sortedWith(
-                            compareByDescending<Income> { it.receivedDate }
-                                .thenByDescending { it.createdAt }
-                        ),
-                        key = { it.id }
-                    ) { income ->
-                        IncomeCardItem(
-                            income = income,
-                            onEdit = { onEditIncome(income.id) },
-                            onDelete = { incomeToDelete = income },
-                            onMarkReceived = { onMarkFreelanceReceived(income.id) }
-                        )
-                    }
-                }
-            }
-
-            // ═════════════════════════════════════════════════════════
-            // 5. BOTTOM DISCLAIMER / INFO NOTE
-            // ═════════════════════════════════════════════════════════
-            item {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, borderLight),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        IncomeInfoCircleIcon(
-                            modifier = Modifier.size(16.dp),
-                            tint = textSecondary
-                        )
-                        Text(
-                            text = "Income amounts are converted to LKR using the exchange rate at the time of entry.",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = textSecondary,
-                                fontSize = 12.sp,
-                                lineHeight = 17.sp
-                            )
-                        )
-                    }
+                items(state.rows, key = { "income-${it.id}" }) { row -> IncomeRecordCard(row, state, actions) }
+                item(key = "note") {
+                    Text("Unpaid freelance invoices are excluded from realized income. USD totals use the saved LKR conversion; crypto losses reduce the total.",
+                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                 }
             }
         }
     }
-
-    // Delete Confirmation Dialog
-    incomeToDelete?.let { income ->
-        AlertDialog(
-            onDismissRequest = { incomeToDelete = null },
-            title = {
-                Text(
-                    text = "Delete Income Record?",
-                    fontWeight = FontWeight.Bold,
-                    color = textPrimary
-                )
-            },
-            text = {
-                Text(
-                    text = "Are you sure you want to delete this ${income.source} income record? This action cannot be undone.",
-                    color = textSecondary
-                )
-            },
+    state.deleteRecord?.let { record ->
+        AlertDialog(onDismissRequest = { if (!state.isSaving) actions.onDelete(null) },
+            title = { Text("Delete income record?") },
+            text = { Text("Delete ${record.title} (${record.amount})? This action cannot be undone.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteIncome(income.id)
-                        incomeToDelete = null
-                    }
-                ) {
-                    Text(text = "Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { incomeToDelete = null }) {
-                    Text("Cancel", color = textSecondary)
-                }
-            },
-            containerColor = Color.White,
-            shape = RoundedCornerShape(18.dp)
-        )
+                TextButton(onClick = actions.onConfirmDelete, enabled = !state.isSaving) { Text("Delete", color = colors.error) }
+            }, dismissButton = { TextButton(onClick = { actions.onDelete(null) }, enabled = !state.isSaving) { Text("Cancel") } })
     }
 }
 
-/**
- * Individual Income Card matching the visual reference design.
- */
 @Composable
-private fun IncomeCardItem(
-    income: Income,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onMarkReceived: () -> Unit
-) {
-    val isFreelanceExpected = income.source == "Freelance" && income.paymentStatus == "Expected"
-    val isCryptoLoss = income.source == "Crypto" && income.cryptoType == "Loss"
-
-    val brandEmerald = Color(0xFF007A5E)
-    val textPrimary = Color(0xFF0F172A)
-    val textSecondary = Color(0xFF64748B)
-    val textMuted = Color(0xFF94A3B8)
-    val borderLight = Color(0xFFE2E8F0)
-
-    var showMenu by remember { mutableStateOf(false) }
-
-    // Icon container tint & icon tint based on source
-    val (iconBgColor, iconTint) = when {
-        income.source.equals("Salary", ignoreCase = true) -> Pair(Color(0xFFE6F4EA), Color(0xFF007A5E))
-        income.source.equals("Freelance", ignoreCase = true) -> Pair(Color(0xFFE0F2FE), Color(0xFF0284C7))
-        income.source.contains("AdSense", ignoreCase = true) -> Pair(Color(0xFFFEF3C7), Color(0xFFD97706))
-        income.source.equals("Crypto", ignoreCase = true) -> Pair(Color(0xFFF3E8FF), Color(0xFF7E22CE))
-        else -> Pair(Color(0xFFF1F5F9), Color(0xFF475569))
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onEdit() },
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, borderLight),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            // 1. Left Icon in Circular Container (48x48)
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(iconBgColor),
-                contentAlignment = Alignment.Center
-            ) {
-                IncomeSourceVector(
-                    source = income.source,
-                    modifier = Modifier.size(24.dp),
-                    customTint = iconTint
-                )
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // 2. Middle Details (Title, Date, Note)
-            Column(modifier = Modifier.weight(1f)) {
-                // Source Title
-                val displayTitle = when {
-                    income.source.equals("Freelance", ignoreCase = true) && !income.projectName.isNullOrBlank() ->
-                        income.projectName
-                    income.source.equals("Freelance", ignoreCase = true) ->
-                        "Freelance Project"
-                    income.source.contains("AdSense", ignoreCase = true) ->
-                        "AdSense"
-                    income.source.equals("Crypto", ignoreCase = true) ->
-                        "Crypto Trading"
-                    else ->
-                        income.source
-                }
-
-                Text(
-                    text = displayTitle,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary,
-                        fontSize = 15.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                // Date
-                Text(
-                    text = formatDisplayDate(income.receivedDate),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = textSecondary,
-                        fontSize = 12.sp
-                    )
-                )
-
-                // Note or description
-                val noteText = when {
-                    income.note.isNotBlank() -> income.note
-                    income.source == "Salary" -> "Monthly salary"
-                    income.source == "Crypto" -> "${income.cryptoAsset ?: "USDT / ETH"} (${if (isCryptoLoss) "net loss" else "net profit"})"
-                    income.source.contains("AdSense") -> "Blog revenue"
-                    else -> ""
-                }
-
-                if (noteText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = noteText,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = textMuted,
-                            fontSize = 11.5.sp
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 3. Right Column (Amount, Converted LKR, Status Badge, 3-dots Menu)
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Amount
-                val amountColor = if (isCryptoLoss) Color(0xFFDC2626) else brandEmerald
-                Text(
-                    text = formatIncomeDisplayAmount(income),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = amountColor,
-                        fontSize = 15.sp
-                    )
-                )
-
-                // Subtext for USD converted to LKR
-                if (income.currency == "USD" && income.amountLkrMinor != null) {
-                    Text(
-                        text = "(${formatLkrAmount(income.amountLkrMinor)})",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = textSecondary,
-                            fontSize = 11.sp
-                        )
-                    )
-                }
-
-                // Status Badge Pill
-                val (badgeBg, badgeTextColor, badgeLabel) = when {
-                    isFreelanceExpected -> Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "Pending")
-                    income.source == "Freelance" -> Triple(Color(0xFFDCFCE7), Color(0xFF15803D), "Received")
-                    income.source == "Crypto" && income.cryptoType == "Loss" -> Triple(Color(0xFFFEE2E2), Color(0xFFDC2626), "Loss")
-                    income.source == "Crypto" -> Triple(Color(0xFFF3E8FF), Color(0xFF7E22CE), "Estimated")
-                    else -> Triple(Color(0xFFDCFCE7), Color(0xFF15803D), "Confirmed")
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = badgeBg
-                ) {
-                    Text(
-                        text = badgeLabel,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = badgeTextColor,
-                            fontSize = 11.sp
-                        ),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            // 4. Three-dots Menu
-            Box(contentAlignment = Alignment.Center) {
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    IncomeMoreVertIcon(modifier = Modifier.size(16.dp), tint = textMuted)
-                }
-
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    if (isFreelanceExpected) {
-                        DropdownMenuItem(
-                            text = { Text("Mark Received", fontWeight = FontWeight.SemiBold, color = brandEmerald) },
-                            onClick = {
-                                showMenu = false
-                                onMarkReceived()
-                            }
-                        )
+private fun IncomeMonthBar(state: IncomeStreamState, actions: IncomeStreamActions) {
+    val colors = MaterialTheme.colorScheme
+    Surface(color = colors.background) {
+        Column(Modifier.statusBarsPadding().fillMaxWidth().padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(Modifier.widthIn(max = 632.dp).fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = actions.onBack) { FinanceIcon(FinanceSymbol.BACK, description = "Back") }
+                Text("Income", Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleLarge)
+                IconButton(onClick = actions.onSalary) {
+                    Box(Modifier.semantics { contentDescription = "Recurring salary" }) {
+                        IncomeCalendarIcon(tint = colors.onSurfaceVariant)
                     }
-                    DropdownMenuItem(
-                        text = { Text("Edit") },
-                        onClick = {
-                            showMenu = false
-                            onEdit()
+                }
+                IconButton(onClick = actions.onAnalytics) { FinanceIcon(FinanceSymbol.CHART, description = "Income analytics") }
+            }
+            Row(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    Surface(modifier = Modifier.height(48.dp), shape = RoundedCornerShape(14.dp), color = colors.surface, border = BorderStroke(1.dp, colors.outlineVariant)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = actions.onPreviousMonth, modifier = Modifier.size(36.dp)) {
+                                FinanceIcon(FinanceSymbol.BACK, Modifier.size(16.dp), description = "Previous income month")
+                            }
+                            TextButton(onClick = { actions.onShowMonths(true) }, modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)) {
+                                BasicText(state.compactMonthLabel, Modifier.fillMaxWidth().testTag("income_month_label"), maxLines = 1,
+                                    style = MaterialTheme.typography.labelLarge.copy(color = colors.onSurface, textAlign = TextAlign.Center),
+                                    autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 12.sp, stepSize = .5.sp))
+                            }
+                            IconButton(onClick = actions.onNextMonth, modifier = Modifier.size(36.dp)) {
+                                FinanceIcon(FinanceSymbol.CHEVRON, Modifier.size(16.dp), description = "Next income month")
+                            }
                         }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                        onClick = {
-                            showMenu = false
-                            onDelete()
+                    }
+                    DropdownMenu(state.controls.monthMenu, { actions.onShowMonths(false) }) {
+                        state.monthChoices.forEach { (month, label) ->
+                            DropdownMenuItem(text = { Text(label) }, onClick = { actions.onMonth(month) })
                         }
-                    )
+                    }
+                }
+                Button(onClick = actions.onAdd, shape = RoundedCornerShape(14.dp), modifier = Modifier.height(48.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                    FinanceIcon(FinanceSymbol.PLUS, Modifier.size(16.dp), tint = colors.onPrimary)
+                    Spacer(Modifier.width(5.dp)); Text("Add Income", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
     }
-}
-
-/**
- * Helper to format "2025-09-25" -> "25 Sep 2025"
- */
-private fun formatDisplayDate(dateStr: String): String {
-    return runCatching {
-        val parsed = LocalDate.parse(dateStr)
-        val month = parsed.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
-        "${parsed.dayOfMonth} $month ${parsed.year}"
-    }.getOrDefault(dateStr.ifBlank { "Date unavailable" })
-}
-
-/**
- * Format Income Amount with proper Currency symbol.
- */
-private fun formatIncomeDisplayAmount(income: Income): String {
-    val amount = BigDecimal.valueOf(income.amountMinor, 2)
-    val formatter = NumberFormat.getNumberInstance(Locale.US).apply {
-        minimumFractionDigits = if (income.amountMinor % 100L == 0L) 0 else 2
-        maximumFractionDigits = 2
-    }
-    val prefix = if (income.source == "Crypto" && income.cryptoType == "Loss") "- " else ""
-    return "$prefix${income.currency} ${formatter.format(amount)}"
-}
-
-/**
- * Format LKR Amount (e.g. "LKR 175,000" or "LKR 142,000.50").
- */
-private fun formatLkrAmount(amountMinor: Long): String {
-    val amount = BigDecimal.valueOf(amountMinor, 2)
-    val formatter = NumberFormat.getNumberInstance(Locale.US).apply {
-        minimumFractionDigits = if (amountMinor % 100L == 0L) 0 else 2
-        maximumFractionDigits = 2
-    }
-    return "LKR ${formatter.format(amount)}"
-}
-
-/**
- * Format Decimal Amount (e.g. "73.40").
- */
-private fun formatDecimalAmount(amountMinor: Long): String {
-    val amount = BigDecimal.valueOf(amountMinor, 2)
-    val formatter = NumberFormat.getNumberInstance(Locale.US).apply {
-        minimumFractionDigits = 2
-        maximumFractionDigits = 2
-    }
-    return formatter.format(amount)
 }

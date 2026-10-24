@@ -471,44 +471,34 @@ fun PfmsNavGraph(
         // -------------------------------------
 
         composable(Routes.IncomeList) {
-            val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
-
-            // FR-12: Use the centralized income summary calculated by IncomeViewModel.
-            // Do not recompute totals here; unconverted USD must never be treated as LKR.
+            val incomeStream by incomeViewModel.streamState.collectAsStateWithLifecycle()
 
             IncomeListScreen(
-                incomes = incomeState.incomes,
-                currencyTotals = incomeState.currencyTotals,
-                isLoading = incomeState.isLoading,
-                errorMessage = incomeState.errorMessage,
-                onRetry = if (incomeState.canRetry) incomeViewModel::retry else null,
-
-                totalRealizedIncomeMinor = incomeState.totalRealizedIncomeMinor,
-                monthlyRealizedIncomeMinor = incomeState.monthlyRealizedIncomeMinor,
-                totalPendingFreelanceMinor = incomeState.totalPendingFreelanceMinor,
-                pendingFreelanceCount = incomeState.pendingFreelanceCount,
-                cryptoGainsMinor = incomeState.cryptoGainsMinor,
-                cryptoLossesMinor = incomeState.cryptoLossesMinor,
-                netCryptoMinor = incomeState.netCryptoMinor,
-                ytdNetCryptoMinor = incomeState.ytdNetCryptoMinor,
-
-                onAddIncome = {
+                state = incomeStream,
+                actions = com.pfms.app.ui.screen.income.IncomeStreamActions(
+                onRetry = incomeViewModel::retry,
+                onPreviousMonth = incomeViewModel::previousStreamMonth,
+                onNextMonth = incomeViewModel::nextStreamMonth,
+                onShowMonths = incomeViewModel::showStreamMonths,
+                onMonth = incomeViewModel::selectStreamMonth,
+                onFilter = incomeViewModel::filterStream,
+                onSort = incomeViewModel::toggleStreamSort,
+                onMenu = incomeViewModel::showStreamRecordMenu,
+                onDelete = incomeViewModel::requestStreamDelete,
+                onConfirmDelete = incomeViewModel::confirmStreamDelete,
+                onAdd = {
                     navController.navigate(Routes.AddIncome) {
                         launchSingleTop = true
                     }
                 },
 
-                onEditIncome = { incomeId ->
+                onEdit = { incomeId ->
                     navController.navigate(Routes.editIncome(incomeId)) {
                         launchSingleTop = true
                     }
                 },
 
-                onDeleteIncome = { incomeId ->
-                    incomeViewModel.deleteIncome(incomeId)
-                },
-
-                onMarkFreelanceReceived = { incomeId ->
+                onMarkReceived = { incomeId ->
                     incomeViewModel.markFreelanceAsReceived(incomeId)
                 },
 
@@ -516,31 +506,32 @@ fun PfmsNavGraph(
                     navController.popBackStack()
                 },
 
-                onRecurringSalary = {
+                onSalary = {
                     navController.navigate(Routes.SalaryTemplate) {
                         launchSingleTop = true
                     }
                 },
 
-                onNavigateToAnalytics = {
+                onAnalytics = {
                     navController.navigate(Routes.IncomeAnalytics) {
                         launchSingleTop = true
                     }
                 },
 
-                onNavigateToHome = {
+                onHome = {
                     navController.navigate(Routes.Dashboard) {
                         launchSingleTop = true
                     }
                 },
 
-                onNavigateToExpenses = {
+                onExpenses = {
                     navController.navigate(Routes.ExpenseList) {
                         launchSingleTop = true
                     }
                 },
 
-                onNavigateToGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } }
+                onGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } }
+                )
             )
         }
 
