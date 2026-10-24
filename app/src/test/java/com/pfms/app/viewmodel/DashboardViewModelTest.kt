@@ -49,6 +49,33 @@ class DashboardViewModelTest {
     private fun day(n: Int) = thisMonth.atDay(n).toString()
 
     @Test
+    fun trendIncludesPreviousMonthsButLedgerOnlyShowsSelectedMonth() = runTest {
+        val repo = FakeDashboardRepository(listOf(
+            expense("old", thisMonth.minusMonths(1).atDay(1).toString(), 40_000L),
+            expense("current", day(1), 10_000L)
+        ))
+        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), repo))
+        val state = vm.uiState.first { !it.isLoading }
+        assertEquals(listOf("current"), state.latestTransactions.map { it.id })
+        assertEquals(10_000L, state.summary!!.totalExpenseMinor)
+        assertEquals(5, state.content!!.bars.size)
+        assertTrue(state.content.bars.any { it.month == thisMonth.minusMonths(1) && it.expense > 0f })
+    }
+
+    @Test
+    fun monthPickerRefusesFutureMonthsAndClosesAfterSelection() = runTest {
+        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository()))
+        vm.uiState.first { !it.isLoading }
+        vm.showMonthMenu()
+        assertTrue(vm.chrome.value.monthMenuExpanded)
+        vm.selectMonth(thisMonth.plusMonths(1))
+        assertEquals(thisMonth, vm.uiState.value.selectedMonth)
+        assertFalse(vm.chrome.value.monthMenuExpanded)
+        vm.selectMonth(thisMonth.minusMonths(2))
+        vm.uiState.first { !it.isLoading && it.selectedMonth == thisMonth.minusMonths(2) }
+    }
+
+    @Test
     fun emitsTotalsForTheCurrentMonth() = runTest {
         val vm = DashboardViewModel(
             FakeIncomeRepository(listOf(income("i1", day(1), 10_000_000L))),
