@@ -75,7 +75,8 @@ fun SpendingAnalyticsScreen(
     onOpenIncomeAnalytics: () -> Unit = {},
     viewModel: SpendingAnalyticsViewModel = hiltViewModel(),
     onAddExpense: () -> Unit = {},
-    onAddIncome: () -> Unit = {}
+    onAddIncome: () -> Unit = {},
+    onOpenSpendingPatterns: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     SpendingAnalyticsContent(
@@ -89,6 +90,7 @@ fun SpendingAnalyticsScreen(
         onOpenIncomeAnalytics = onOpenIncomeAnalytics,
         onAddExpense = onAddExpense,
         onAddIncome = onAddIncome,
+        onOpenSpendingPatterns = onOpenSpendingPatterns,
         monthlyData = { com.pfms.app.ui.component.MonthlyDataIndicator(it) }
     )
 }
@@ -106,6 +108,7 @@ fun SpendingAnalyticsContent(
     onOpenIncomeAnalytics: () -> Unit,
     onAddExpense: () -> Unit = {},
     onAddIncome: () -> Unit = {},
+    onOpenSpendingPatterns: () -> Unit = {},
     monthlyData: @Composable (java.time.YearMonth) -> Unit = {}
 ) {
     Scaffold(
@@ -148,6 +151,7 @@ fun SpendingAnalyticsContent(
                 onPrevious = onPreviousMonth,
                 onNext = onNextMonth
             )
+            TextButton(onClick = onOpenSpendingPatterns) { Text("Smart spending patterns →") }
             monthlyData(uiState.selectedMonth)
 
             if (uiState.errorMessage != null) {
