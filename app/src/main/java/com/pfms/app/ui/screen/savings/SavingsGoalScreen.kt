@@ -55,6 +55,7 @@ import com.pfms.app.viewmodel.SavingsGoalViewModel
 fun SavingsGoalScreen(
     viewModel: SavingsGoalViewModel = hiltViewModel(),
     onBack: () -> Unit = {},
+    onOpenSavingsSimulator: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -97,6 +98,7 @@ fun SavingsGoalScreen(
             viewModel.clearError()
         },
         modifier = modifier,
+        onOpenSavingsSimulator = onOpenSavingsSimulator,
         onRetry = viewModel::retry,
         onBeginForm = viewModel::beginForm
     )
@@ -121,7 +123,8 @@ fun SavingsGoalContent(
     onClearError: () -> Unit,
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
-    onBeginForm: () -> Unit = {}
+    onBeginForm: () -> Unit = {},
+    onOpenSavingsSimulator: () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -182,6 +185,7 @@ fun SavingsGoalContent(
                         )
                     }
                 },
+                actions = { TextButton(onClick = onOpenSavingsSimulator) { Text("What-if") } },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFF7F9FC)
                 )

@@ -20,6 +20,8 @@ object Routes {
 
     // Dashboard, analytics and history
     const val SpendingAnalytics = "spending_analytics"
+    const val SpendingPatterns = "spending_patterns"
+    const val SavingsSimulator = "savings_simulator"
     const val TransactionHistory = "transaction_history"
 
     // Income Management

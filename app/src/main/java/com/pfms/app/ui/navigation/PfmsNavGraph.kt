@@ -30,6 +30,8 @@ import com.pfms.app.ui.screen.PrivacyPolicyScreen
 import com.pfms.app.ui.screen.SplashScreen
 import com.pfms.app.ui.screen.savings.SavingsGoalScreen
 import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
+import com.pfms.app.ui.screen.analytics.SpendingPatternsScreen
+import com.pfms.app.ui.screen.savings.SavingsSimulatorScreen
 import com.pfms.app.ui.screen.history.TransactionHistoryScreen
 import com.pfms.app.domain.model.dashboard.Transaction
 import com.pfms.app.domain.model.dashboard.TransactionType
@@ -391,8 +393,18 @@ fun PfmsNavGraph(
         // SPENDING ANALYTICS (FR-30..32)
         // -------------------------------------
 
+        composable(Routes.SpendingPatterns) {
+            SpendingPatternsScreen(onBack = { navController.popBackStack() },
+                onOpenSavingsSimulator = { navController.navigate(Routes.SavingsSimulator) { launchSingleTop = true } })
+        }
+
+        composable(Routes.SavingsSimulator) {
+            SavingsSimulatorScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.SpendingAnalytics) {
             SpendingAnalyticsScreen(
+                onOpenSpendingPatterns = { navController.navigate(Routes.SpendingPatterns) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() },
                 onAddExpense = { navController.navigate(Routes.AddExpense) { launchSingleTop = true } },
                 onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
@@ -449,6 +461,7 @@ fun PfmsNavGraph(
         composable(Routes.SavingsGoal) {
 
             SavingsGoalScreen(
+                onOpenSavingsSimulator = { navController.navigate(Routes.SavingsSimulator) { launchSingleTop = true } },
                 onBack = {
                     if (!navController.popBackStack()) {
                         navController.navigate(Routes.Dashboard) {
