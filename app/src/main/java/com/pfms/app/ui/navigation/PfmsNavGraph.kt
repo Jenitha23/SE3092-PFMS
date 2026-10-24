@@ -313,6 +313,9 @@ fun PfmsNavGraph(
                         Routes.Login,
                         inclusive = false
                     )
+                },
+                onNavigateToPrivacyPolicy = {
+                    navController.navigate(Routes.PrivacyPolicy) { launchSingleTop = true }
                 }
             )
         }

@@ -3,11 +3,25 @@ package com.pfms.app
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.test.platform.app.InstrumentationRegistry
+import android.graphics.Bitmap
+import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import com.pfms.app.ui.screen.LoginScreen
@@ -42,7 +56,11 @@ class AuthIntegrationTest {
         // Validate real forms/ViewModel without depending on, or signing out, the developer's
         // Firebase session. Invalid input must never reach a network repository.
         val auth = ExpenseTestAuth().apply { users.value = null }
-        val viewModel = AuthViewModel(auth, googleSignInManager)
+        val rememberedLoginRepository = object : com.pfms.app.domain.repository.RememberedLoginRepository {
+            override suspend fun getEmail(): String? = null
+            override suspend fun setEmail(email: String?) = Unit
+        }
+        val viewModel = AuthViewModel(auth, googleSignInManager, rememberedLoginRepository)
         composeTestRule.setContent {
             var page by remember { mutableStateOf("login") }
             PFMSTheme {
@@ -57,15 +75,60 @@ class AuthIntegrationTest {
     }
 
     @Test
+    fun loginAndSignup_controlsAreReachable_andCapturePreviews() {
+        composeTestRule.onNodeWithText("Welcome Back").assertIsDisplayed()
+        capturePreview("auth-login.png")
+        composeTestRule.onAllNodesWithText("Sign Up")[0].performClick()
+        composeTestRule.onNodeWithText("FULL NAME").assertIsDisplayed()
+        capturePreview("auth-signup.png")
+        composeTestRule.onNodeWithText("Sign up with Google").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun signupPasswordMeterFillsAtEightAndUpdatesWhenTextIsDeleted() {
+        composeTestRule.onAllNodesWithText("Sign Up")[0].performClick()
+        val password = composeTestRule.onNodeWithContentDescription("CREATE PASSWORD")
+        val meter = composeTestRule.onNodeWithTag("auth_password_strength")
+        listOf("Abcdef1!", "Abcdef12!").forEach { value ->
+            password.performTextReplacement(value)
+            meter.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo,
+                ProgressBarRangeInfo(4f, 0f..4f, 3)))
+        }
+        password.performTextReplacement("Abcde1!")
+        meter.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo,
+            ProgressBarRangeInfo(1f, 0f..4f, 3)))
+        password.performTextReplacement("")
+        meter.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo,
+            ProgressBarRangeInfo(0f, 0f..4f, 3)))
+    }
+
+    @Test
+    fun passwordVisibilityToggle_keepsTheEnteredValue() {
+        composeTestRule.onNodeWithContentDescription("Password").performTextReplacement("secret123")
+        composeTestRule.onNodeWithContentDescription("Show password").performClick()
+        composeTestRule.onNodeWithText("secret123").assertExists()
+        composeTestRule.onNodeWithContentDescription("Hide password").performClick()
+        composeTestRule.onNodeWithContentDescription("Show password").assertExists()
+    }
+
+    private fun capturePreview(name: String) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val output = File(context.getExternalFilesDir(null), name)
+        composeTestRule.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
+            output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
+    @Test
     fun loginWithInvalidEmail_showsBackendValidationMessage() {
         // 1. Find the Email input field by its label and type an invalid email
-        composeTestRule.onNodeWithText("Email address").performTextReplacement("invalid-email")
+        composeTestRule.onNodeWithContentDescription("Email Address").performTextReplacement("invalid-email")
         
         // 2. Find the Password input field and type a password
-        composeTestRule.onNodeWithText("Password").performTextReplacement("password123")
+        composeTestRule.onNodeWithContentDescription("Password").performTextReplacement("password123")
         
         // 3. Trigger the Done action on the keyboard (this calls login and hides the keyboard reliably)
-        composeTestRule.onNodeWithText("Password").performImeAction()
+        composeTestRule.onNodeWithContentDescription("Password").performImeAction()
 
         // 4. Verify that the backend validation logic was triggered and 
         // the error message correctly made it back to the UI!
@@ -74,7 +137,7 @@ class AuthIntegrationTest {
 
     @Test
     fun loginWithEmptyPassword_showsBackendValidationMessage() {
-        composeTestRule.onNodeWithText("Email address").performTextReplacement("kasun@gmail.com")
+        composeTestRule.onNodeWithContentDescription("Email Address").performTextReplacement("kasun@gmail.com")
         
         // Leave password empty
         
@@ -91,11 +154,11 @@ class AuthIntegrationTest {
         composeTestRule.onAllNodesWithText("Sign Up")[0].performClick()
 
         // 2. We are now on RegisterScreen. Fill out email and password but leave Name empty.
-        composeTestRule.onNodeWithText("Email address").performTextReplacement("kasun@example.com")
-        composeTestRule.onNodeWithText("Password").performTextReplacement("password123")
+        composeTestRule.onNodeWithContentDescription("EMAIL ADDRESS").performTextReplacement("kasun@example.com")
+        composeTestRule.onNodeWithContentDescription("CREATE PASSWORD").performTextReplacement("password123")
 
-        // 3. Click the Sign Up button (index 1 is the button)
-        composeTestRule.onAllNodesWithText("Sign Up")[1].performClick()
+        // Submit via the keyboard so the test works on smaller screens too.
+        composeTestRule.onNodeWithContentDescription("CREATE PASSWORD").performImeAction()
 
         // 4. Verify the backend name validation error appears
         composeTestRule.onNodeWithText("Please enter your name.", useUnmergedTree = true).assertExists()

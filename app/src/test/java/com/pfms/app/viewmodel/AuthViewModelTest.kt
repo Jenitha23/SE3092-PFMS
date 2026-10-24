@@ -6,6 +6,7 @@ import com.pfms.app.domain.model.AuthErrorType
 import com.pfms.app.domain.model.AuthException
 import com.pfms.app.domain.model.AuthUser
 import com.pfms.app.domain.repository.AuthRepository
+import com.pfms.app.domain.repository.RememberedLoginRepository
 import com.pfms.app.utils.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
@@ -31,19 +32,109 @@ class AuthViewModelTest {
     private lateinit var authRepository: AuthRepository
     private lateinit var googleSignInManager: GoogleSignInManager
     private lateinit var viewModel: AuthViewModel
+    private lateinit var rememberedLoginRepository: RememberedLoginRepository
     private lateinit var mockContext: Context
 
     private val validUser = AuthUser("uid-1", "Kasun Silva", "kasun@example.com", true)
 
     @Before
-    fun setUp() {
+    fun setUp() = runTest {
         authRepository = mock()
         googleSignInManager = mock()
         mockContext = mock()
-        viewModel = AuthViewModel(authRepository, googleSignInManager)
+        rememberedLoginRepository = mock()
+        whenever(rememberedLoginRepository.getEmail()).thenReturn(null)
+        viewModel = AuthViewModel(authRepository, googleSignInManager, rememberedLoginRepository)
     }
 
     // ------------------------------------------------------------------ Register Flow
+
+    @Test
+    fun `validation retains form values so the user can correct them`() = runTest {
+        viewModel.onEmailChanged("invalid")
+        viewModel.onPasswordChanged("secret123")
+        viewModel.submitLogin()
+
+        assertEquals("invalid", viewModel.uiState.value.email)
+        assertEquals("secret123", viewModel.uiState.value.password)
+        assertTrue(viewModel.uiState.value.fieldErrors.hasErrors)
+        viewModel.onEmailChanged("kasun@example.com")
+        assertFalse(viewModel.uiState.value.fieldErrors.hasErrors)
+    }
+
+    @Test
+    fun `both signup methods require agreement before contacting providers`() = runTest {
+        viewModel.onDisplayNameChanged("Kasun Silva")
+        viewModel.onEmailChanged("kasun@example.com")
+        viewModel.onPasswordChanged("password123")
+        viewModel.submitRegistration()
+        viewModel.submitGoogleRegistration(mockContext)
+
+        assertEquals("Please agree before creating an account.", viewModel.uiState.value.termsError)
+        verify(authRepository, never()).register(any(), any(), any())
+        verify(googleSignInManager, never()).getGoogleIdToken(any())
+    }
+
+    @Test
+    fun `agreed registration submits trimmed values and clears password on success`() = runTest {
+        whenever(authRepository.register(any(), any(), any())).thenReturn(Result.success(validUser))
+        viewModel.onDisplayNameChanged(" Kasun Silva ")
+        viewModel.onEmailChanged(" kasun@example.com ")
+        viewModel.onPasswordChanged("password123")
+        viewModel.onTermsAcceptedChanged(true)
+        viewModel.submitRegistration()
+
+        verify(authRepository).register("Kasun Silva", "kasun@example.com", "password123")
+        assertEquals("", viewModel.uiState.value.password)
+    }
+
+    @Test
+    fun `remember me stores only the email after successful login`() = runTest {
+        whenever(authRepository.login(any(), any())).thenReturn(Result.success(validUser))
+        viewModel.onEmailChanged(" kasun@example.com ")
+        viewModel.onPasswordChanged("password123")
+        viewModel.onRememberMeChanged(true)
+        viewModel.submitLogin()
+
+        verify(rememberedLoginRepository).setEmail("kasun@example.com")
+        assertEquals("", viewModel.uiState.value.password)
+    }
+
+    @Test
+    fun `failed login retains password and does not remember unverified input`() = runTest {
+        whenever(authRepository.login(any(), any())).thenReturn(Result.failure(AuthException("Try again")))
+        viewModel.onEmailChanged("kasun@example.com")
+        viewModel.onPasswordChanged("password123")
+        viewModel.onRememberMeChanged(true)
+        viewModel.submitLogin()
+
+        assertEquals("password123", viewModel.uiState.value.password)
+        verify(rememberedLoginRepository, never()).setEmail(any())
+    }
+
+    @Test
+    fun `remembered email is restored and unchecking removes it`() = runTest {
+        whenever(rememberedLoginRepository.getEmail()).thenReturn("kasun@example.com")
+        val restored = AuthViewModel(authRepository, googleSignInManager, rememberedLoginRepository)
+        assertEquals("kasun@example.com", restored.uiState.value.email)
+        assertTrue(restored.uiState.value.rememberMe)
+        restored.onRememberMeChanged(false)
+        verify(rememberedLoginRepository).setEmail(null)
+    }
+
+    @Test
+    fun `preference write failure does not prevent a successful login`() = runTest {
+        whenever(authRepository.login(any(), any())).thenReturn(Result.success(validUser))
+        whenever(rememberedLoginRepository.setEmail(any())).thenAnswer { throw java.io.IOException("disk unavailable") }
+        viewModel.onEmailChanged("kasun@example.com")
+        viewModel.onPasswordChanged("password123")
+        viewModel.onRememberMeChanged(true)
+        viewModel.submitLogin()
+
+        assertNull(viewModel.uiState.value.errorMessage)
+        assertFalse(viewModel.uiState.value.isLoading)
+        assertEquals("", viewModel.uiState.value.password)
+    }
 
     @Test
     fun `register with invalid data updates field errors and does not call repository`() = runTest {
