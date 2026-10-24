@@ -8,6 +8,9 @@ import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.pfms.app.data.local.entity.SavingsGoalEntity
+import com.pfms.app.data.local.entity.GoalTransactionEntity
+import com.pfms.app.data.local.mapper.toDomain
+import com.pfms.app.domain.usecase.savings.ValidateGoalLedgerUseCase
 import com.pfms.app.data.local.entity.SyncStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -17,6 +20,9 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface SavingsGoalDao {
+    @Query("SELECT * FROM goal_transactions WHERE userId = :userId AND goalId = :goalId AND isDeleted = 0")
+    suspend fun ledgerForValidation(userId: String, goalId: String): List<GoalTransactionEntity>
+
     /** An upload acknowledgement must not consume an edit made while that upload was running. */
     @Transaction
     suspend fun completeSync(submitted: SavingsGoalEntity) {
@@ -95,6 +101,8 @@ interface SavingsGoalDao {
                 throw IllegalStateException("An active savings goal already exists")
             }
         }
+        ValidateGoalLedgerUseCase.validate(entity.openingSavedAmountMinor,
+            ledgerForValidation(entity.userId, entity.id).toDomain())
         upsertGoal(entity)
     }
 

@@ -427,6 +427,7 @@ fun EditGoalDialog(
 @Composable
 fun AddTransactionDialog(
     transactionType: GoalTransactionType,
+    availableGoalBalanceMinor: Long = 0L,
     onDismiss: () -> Unit,
     onConfirm: (amountMinor: Long, note: String?, date: String) -> Unit,
     operationInProgress: Boolean,
@@ -460,6 +461,11 @@ fun AddTransactionDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 com.pfms.app.ui.component.ErrorBanner(errorMessage)
+                if (!isContribution) {
+                    Text("Available goal savings: LKR " +
+                            SavingsGoalUiFormatter.formatMinorToDecimalString(availableGoalBalanceMinor),
+                        style = MaterialTheme.typography.bodyMedium)
+                }
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = {

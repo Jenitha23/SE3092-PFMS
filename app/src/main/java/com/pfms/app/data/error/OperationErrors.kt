@@ -1,5 +1,8 @@
 package com.pfms.app.data.error
 
+import com.pfms.app.domain.usecase.savings.InsufficientGoalSavingsException
+import com.pfms.app.domain.usecase.savings.InsufficientMonthlySurplusException
+import java.math.BigDecimal
 import android.database.sqlite.SQLiteFullException
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -20,6 +23,18 @@ object OperationErrors {
         val firestore = causes.filterIsInstance<FirebaseFirestoreException>().firstOrNull()
         val code = firestore?.code?.name
         return when {
+            causes.any { it is InsufficientMonthlySurplusException } -> {
+                val failure = causes.filterIsInstance<InsufficientMonthlySurplusException>().first()
+                val available = BigDecimal.valueOf(failure.availableMinor, 2).toPlainString()
+                val requested = BigDecimal.valueOf(failure.requestedMinor, 2).toPlainString()
+                OperationError("Insufficient monthly surplus for ${failure.month}. Available contribution allowance: LKR $available; requested: LKR $requested. Based on recorded income and expenses, not verified bank funds.", false)
+            }
+            causes.any { it is InsufficientGoalSavingsException } -> {
+                val failure = causes.filterIsInstance<InsufficientGoalSavingsException>().first()
+                val available = BigDecimal.valueOf(failure.availableMinor, 2).toPlainString()
+                val requested = BigDecimal.valueOf(failure.requestedMinor, 2).toPlainString()
+                OperationError("Insufficient goal savings. Available: LKR $available; requested: LKR $requested.", false)
+            }
             error is AuthException -> OperationError(error.message, false)
             causes.any { it is IllegalStateException && it.message == "An active savings goal already exists" } ->
                 OperationError("You already have an active savings goal. Edit or archive it before creating another.", false)
@@ -34,12 +49,12 @@ object OperationErrors {
             causes.any { it is SQLiteFullException } ->
                 OperationError("Your device storage is full. Free some space before saving again.", false)
             code in setOf("INVALID_ARGUMENT", "FAILED_PRECONDITION") ||
-                causes.any { it is IllegalArgumentException || it is ArithmeticException } ->
+                    causes.any { it is IllegalArgumentException || it is ArithmeticException } ->
                 OperationError("These changes couldn't be saved. Check the entered details before trying again.", false)
             causes.any { it is TimeoutCancellationException } ->
                 OperationError("The request timed out. Please check your internet connection and try again.", true)
             causes.any { it is IOException || it is FirebaseNetworkException } ||
-                code in setOf("UNAVAILABLE", "DEADLINE_EXCEEDED") ->
+                    code in setOf("UNAVAILABLE", "DEADLINE_EXCEEDED") ->
                 OperationError("Please check your internet connection and try again.", true)
             else -> OperationError(when (action) {
                 ErrorAction.LOAD -> "Unable to load your data. Please try again."

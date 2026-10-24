@@ -271,7 +271,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 syncStatus = SyncStatus.PENDING_INSERT,
                 isDeleted = false
             )
-            goalTransactionDao.upsertTransaction(localEntity)
+            goalTransactionDao.insertTransactionGuarded(localEntity)
             scheduleSync()
 
             // 2. Immediately attempt remote upsert
@@ -317,7 +317,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
                 syncStatus = SyncStatus.PENDING_UPDATE,
                 isDeleted = false
             )
-            goalTransactionDao.upsertTransaction(updatedEntity)
+            goalTransactionDao.updateTransactionGuarded(updatedEntity)
             scheduleSync()
 
             try {
@@ -344,12 +344,7 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
 
             // 1. Soft-delete locally with PENDING_DELETE
             val deletedAt = com.pfms.app.data.sync.SyncVersion.nextTimestamp(existing.updatedAt)
-            goalTransactionDao.markTransactionDeleted(
-                userId = user.uid,
-                transactionId = transactionId,
-                syncStatus = SyncStatus.PENDING_DELETE,
-                updatedAt = deletedAt
-            )
+            goalTransactionDao.deleteTransactionGuarded(user.uid, transactionId, deletedAt)
 
             scheduleSync()
             // 2. Attempt remote delete
