@@ -17,7 +17,11 @@ data class ReminderSettingsUiState(
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val errorMessage: String? = null
-)
+) {
+    val dailySummary: String get() = SettingsPresentation.dailyReminder(this)
+    val dailyEnabled: Boolean get() = settings?.schedules?.get(ReminderType.DAILY_LOG)?.enabled == true
+    val canChangeDaily: Boolean get() = settings != null && !isLoading && !isSaving
+}
 
 @HiltViewModel
 class ReminderSettingsViewModel @Inject constructor(private val repository: ReminderSettingsRepository) : ViewModel() {

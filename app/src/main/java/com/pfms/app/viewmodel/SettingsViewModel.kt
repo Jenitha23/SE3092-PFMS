@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -86,11 +87,71 @@ class SettingsViewModel @Inject constructor(
     /** Show the biometric switch as enabled only when this is true. */
     fun isBiometricAvailable(): Boolean = biometricAuthManager.isBiometricAvailable()
 
+    private val _biometricAvailable = MutableStateFlow(isBiometricAvailable())
+    val biometricAvailable = _biometricAvailable.asStateFlow()
+    fun refreshBiometricAvailability() { _biometricAvailable.value = isBiometricAvailable() }
+
     /** Real versionName for the "PFMS Version %1$s" label. */
     val appVersion: String = appInfoProvider.versionName
 
     /** Options for the default payment method picker. */
     val paymentMethods: List<String> = PaymentMethods.all
+
+    val profileState = combine(user, profile, SettingsPresentation::profile)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsProfileState())
+    private val _editor = MutableStateFlow(SettingsEditorState())
+    val editor = _editor.asStateFlow()
+
+    fun openDialog(dialog: SettingsDialog) {
+        if (_uiState.value.isLoading) return
+        clearMessages()
+        val name = profile.value?.displayName ?: user.value?.displayName.orEmpty()
+        _editor.value = SettingsEditorState(dialog = dialog, name = name, originalName = name)
+    }
+
+    fun dismissDialog() {
+        if (_uiState.value.isLoading) return
+        _editor.value = SettingsEditorState()
+        clearMessages()
+    }
+
+    fun edit(field: SettingsField, value: String) {
+        if (_uiState.value.isLoading) return
+        clearMessages()
+        val old = _editor.value.copy(error = null)
+        _editor.value = when (field) {
+            SettingsField.NAME -> old.copy(name = value)
+            SettingsField.CURRENT_PASSWORD -> old.copy(currentPassword = value)
+            SettingsField.NEW_PASSWORD -> old.copy(newPassword = value)
+            SettingsField.CONFIRM_PASSWORD -> old.copy(confirmPassword = value)
+            SettingsField.DELETE_PASSWORD -> old.copy(deletePassword = value)
+        }
+    }
+
+    fun saveName() {
+        val value = _editor.value
+        if (!value.canSaveName) return
+        AuthValidator.validateDisplayName(value.name.trim())?.let {
+            _editor.value = value.copy(error = it); return
+        }
+        updateDisplayName(value.name.trim())
+    }
+
+    fun savePassword() {
+        val value = _editor.value
+        val error = when {
+            value.confirmPassword.isBlank() -> "Please confirm your new password."
+            value.newPassword != value.confirmPassword -> "New password and confirmation do not match."
+            else -> null
+        }
+        if (error != null) { _editor.value = value.copy(error = error); return }
+        changePassword(value.currentPassword, value.newPassword)
+    }
+
+    fun deleteFromEditor(activityContext: Context) {
+        if (profileState.value.googleOnly) deleteAccountWithGoogle(activityContext)
+        else if (_editor.value.deletePassword.isNotBlank()) deleteAccountWithPassword(_editor.value.deletePassword)
+    }
 
     fun updateDisplayName(name: String) =
         performAction(success = "Name updated.") { authRepository.updateDisplayName(name) }
@@ -152,7 +213,10 @@ class SettingsViewModel @Inject constructor(
                 onFailure = { error -> Result.failure<Unit>(error) }
             )
             result.fold(
-                onSuccess = { _uiState.value = SettingsUiState(accountDeleted = true) },
+                onSuccess = {
+                    _editor.value = SettingsEditorState()
+                    _uiState.value = SettingsUiState(accountDeleted = true)
+                },
                 onFailure = { error ->
                     val problem = com.pfms.app.data.error.OperationErrors.present(error)
                     _uiState.value = SettingsUiState(errorMessage = problem.message, canRetry = problem.canRetry)
@@ -172,7 +236,10 @@ class SettingsViewModel @Inject constructor(
                 Result.failure(error)
             }
             result.fold(
-                onSuccess = { _uiState.value = SettingsUiState(message = success) },
+                onSuccess = {
+                    _editor.value = SettingsEditorState()
+                    _uiState.value = SettingsUiState(message = success)
+                },
                 onFailure = { error ->
                     val problem = com.pfms.app.data.error.OperationErrors.present(error)
                     _uiState.value = SettingsUiState(errorMessage = problem.message, canRetry = problem.canRetry)
