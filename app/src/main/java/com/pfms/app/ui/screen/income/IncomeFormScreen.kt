@@ -537,7 +537,7 @@ fun IncomeFormScreen(
 
                                     if (exchangeRateDate != null && !isRateFetching) {
                                         Text(
-                                            text = "Official rate date: $exchangeRateDate",
+                                            text = "Exchange rate date: $exchangeRateDate",
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 color = textSecondary,
                                                 fontSize = 11.sp
