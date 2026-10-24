@@ -30,6 +30,11 @@ import com.pfms.app.domain.repository.DashboardRepository
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
     @Binds @Singleton
+    abstract fun bindRememberedLoginRepository(
+        repository: com.pfms.app.data.repository.LocalRememberedLoginRepository
+    ): com.pfms.app.domain.repository.RememberedLoginRepository
+
+    @Binds @Singleton
     abstract fun bindAdvancedExpenseRepository(repository: FirestoreAdvancedExpenseRepository): AdvancedExpenseRepository
 
     @Binds @Singleton

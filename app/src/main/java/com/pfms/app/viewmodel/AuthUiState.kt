@@ -13,5 +13,15 @@ data class AuthUiState(
     /** Neutral confirmation, e.g. "If an account exists, a reset link has been sent". */
     val infoMessage: String? = null,
     /** Inline per-field validation errors (display name, email, password). */
-    val fieldErrors: AuthFieldErrors = AuthFieldErrors()
+    val fieldErrors: AuthFieldErrors = AuthFieldErrors(),
+    val displayName: String = "",
+    val email: String = "",
+    val password: String = "",
+    val passwordVisible: Boolean = false,
+    val rememberMe: Boolean = false,
+    val termsAccepted: Boolean = false,
+    val termsError: String? = null,
+    val showTermsNotice: Boolean = false,
+    val passwordStrength: com.pfms.app.domain.validation.PasswordStrength =
+        com.pfms.app.domain.validation.PasswordStrength.EMPTY
 )

@@ -24,6 +24,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,6 +84,32 @@ class IncomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(IncomeUiState())
     val uiState: StateFlow<IncomeUiState> =
         _uiState.asStateFlow()
+
+    private val streamControls = MutableStateFlow(IncomeStreamControls())
+    val streamState = combine(uiState, streamControls, IncomeStreamPresentation::create)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), IncomeStreamState())
+
+    fun selectStreamMonth(month: java.time.YearMonth) {
+        streamControls.value = streamControls.value.copy(month = month, monthMenu = false, recordMenuId = null, deleteId = null)
+    }
+    fun previousStreamMonth() = selectStreamMonth(streamControls.value.month.minusMonths(1))
+    fun nextStreamMonth() = selectStreamMonth(streamControls.value.month.plusMonths(1))
+    fun showStreamMonths(show: Boolean) { streamControls.value = streamControls.value.copy(monthMenu = show) }
+    fun filterStream(filter: IncomeStreamFilter) {
+        streamControls.value = streamControls.value.copy(filter = filter, recordMenuId = null)
+    }
+    fun toggleStreamSort() { streamControls.value = streamControls.value.copy(oldestFirst = !streamControls.value.oldestFirst) }
+    fun showStreamRecordMenu(id: String?) { streamControls.value = streamControls.value.copy(recordMenuId = id) }
+    fun requestStreamDelete(id: String?) {
+        if (_uiState.value.isSaving) return
+        streamControls.value = streamControls.value.copy(deleteId = id, recordMenuId = null)
+    }
+    fun confirmStreamDelete() {
+        val id = streamControls.value.deleteId ?: return
+        if (_uiState.value.isSaving) return
+        deleteIncome(id)
+        streamControls.value = streamControls.value.copy(deleteId = null)
+    }
 
     private var rateJob: Job? = null
     private var rateForEntryDate: String? = null
@@ -671,8 +700,8 @@ class IncomeViewModel @Inject constructor(
                     incomeRepository.getIncomeById(incomeId)
                         ?: return@launch
                 val uid = authRepository.currentUser.first()?.uid ?: return@launch
-                if (income.userId == uid && income.source == "Freelance" &&
-                    income.paymentStatus == "Expected"
+                if (income.userId == uid && income.source.equals("Freelance", true) &&
+                    (income.paymentStatus.equals("Expected", true) || income.paymentStatus.equals("Pending", true))
                 ) {
                     incomeRepository.updateIncome(
                         income.copy(
