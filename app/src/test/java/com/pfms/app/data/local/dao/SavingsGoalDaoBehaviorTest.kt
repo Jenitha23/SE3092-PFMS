@@ -1,6 +1,8 @@
 package com.pfms.app.data.local.dao
 
+import com.pfms.app.data.local.entity.ExpenseEntity
 import com.pfms.app.data.local.entity.GoalTransactionEntity
+import com.pfms.app.data.local.entity.IncomeEntity
 import com.pfms.app.data.local.entity.SavingsGoalEntity
 import com.pfms.app.data.local.entity.SyncStatus
 import kotlinx.coroutines.flow.Flow
@@ -28,7 +30,7 @@ class SavingsGoalDaoBehaviorTest {
     @Before
     fun setUp() {
         savingsGoalDao = FakeSavingsGoalDao()
-        goalTransactionDao = FakeGoalTransactionDao()
+        goalTransactionDao = FakeGoalTransactionDao(savingsGoalDao)
     }
 
     // 3. ACTIVE goal retrieval ignores archived/completed goals
@@ -206,6 +208,29 @@ class SavingsGoalDaoBehaviorTest {
         assertEquals("tx-day1-earlier", ordered[0].id)
         assertEquals("tx-day1-later", ordered[1].id)
         assertEquals("tx-day2", ordered[2].id)
+    }
+
+    @Test
+    fun ledgerForValidation_isScopedAndExcludesDeleted() = runTest {
+        goalTransactionDao.upsertAll(listOf(
+            GoalTransactionEntity(id = "visible", userId = "user-1", goalId = "g1", date = "2026-10-01"),
+            GoalTransactionEntity(id = "deleted", userId = "user-1", goalId = "g1", isDeleted = true),
+            GoalTransactionEntity(id = "other-user", userId = "user-2", goalId = "g1"),
+            GoalTransactionEntity(id = "other-goal", userId = "user-1", goalId = "g2")
+        ))
+        assertEquals(listOf("visible"), savingsGoalDao.ledgerForValidation("user-1", "g1").map { it.id })
+        assertEquals(listOf("other-goal", "visible"),
+            goalTransactionDao.allActiveGoalTransactionRows("user-1").map { it.id }.sorted())
+    }
+
+    @Test
+    fun openingBalance_isScopedToExistingNonDeletedGoal() = runTest {
+        savingsGoalDao.upsertGoal(SavingsGoalEntity(
+            id = "g1", userId = "user-1", name = "Savings", openingSavedAmountMinor = 1120000L
+        ))
+        assertEquals(1120000L, goalTransactionDao.openingBalance("user-1", "g1"))
+        assertNull(goalTransactionDao.openingBalance("user-2", "g1"))
+        assertNull(goalTransactionDao.openingBalance("user-1", "missing"))
     }
 
     // 9. pending goal retrieval
@@ -417,6 +442,15 @@ class FakeSavingsGoalDao : SavingsGoalDao {
         return storage.values.firstOrNull { it.userId == userId && it.status == "ACTIVE" && !it.isDeleted }
     }
 
+    // Mirrors the DAO query: only active ledger entries for the requested user and goal.
+    // The fake goal DAO is wired to the transaction fake in setUp().
+    internal var validationLedger: suspend (String, String) -> List<GoalTransactionEntity> = { _, _ -> emptyList() }
+
+    override suspend fun ledgerForValidation(
+        userId: String,
+        goalId: String
+    ): List<GoalTransactionEntity> = validationLedger(userId, goalId)
+
     override suspend fun getGoalById(userId: String, goalId: String): SavingsGoalEntity? {
         return storage[goalId]?.takeIf { it.userId == userId && !it.isDeleted }
     }
@@ -518,9 +552,31 @@ class FakeSavingsGoalDao : SavingsGoalDao {
 /**
  * In-memory test double matching GoalTransactionDao query contracts.
  */
-class FakeGoalTransactionDao : GoalTransactionDao {
+class FakeGoalTransactionDao(
+    private val savingsGoalDao: FakeSavingsGoalDao? = null
+) : GoalTransactionDao {
     private val storage = mutableMapOf<String, GoalTransactionEntity>()
     private val stateFlow = MutableStateFlow<List<GoalTransactionEntity>>(emptyList())
+
+    init {
+        // Keep the two in-memory DAO fakes consistent for goal-ledger validation.
+        savingsGoalDao?.validationLedger = { userId, goalId ->
+            getTransactionsForGoal(userId, goalId)
+        }
+    }
+
+    override suspend fun openingBalance(userId: String, goalId: String): Long? =
+        savingsGoalDao?.getGoalById(userId, goalId)?.openingSavedAmountMinor
+
+    // These tables are not populated by this DAO-behaviour test fixture.
+    // Dedicated contribution-limit tests should use realistic income/expense inputs.
+    override suspend fun contributionIncomeRows(userId: String): List<IncomeEntity> = emptyList()
+
+    override suspend fun contributionExpenseRows(userId: String): List<ExpenseEntity> = emptyList()
+
+    override suspend fun allActiveGoalTransactionRows(userId: String): List<GoalTransactionEntity> =
+        storage.values.filter { it.userId == userId && !it.isDeleted }
+            .sortedWith(comparator)
 
     private val comparator = compareBy<GoalTransactionEntity> { it.date }.thenBy { it.createdAt }
 

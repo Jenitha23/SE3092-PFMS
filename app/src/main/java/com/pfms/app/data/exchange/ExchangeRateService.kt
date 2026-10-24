@@ -8,6 +8,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,7 +25,8 @@ import javax.inject.Singleton
 sealed class ExchangeRateResult {
     data class Success(
         val rate: BigDecimal,
-        val rateDate: String
+        val rateDate: String,
+        val isCached: Boolean = false
     ) : ExchangeRateResult()
 
     data class Failure(
@@ -49,6 +54,32 @@ class ExchangeRateService @Inject constructor() {
 
     private val gson = Gson()
 
+    // Hilt member injection keeps the existing zero-argument constructor/test doubles compatible.
+    @Inject lateinit var cache: ExchangeRateCache
+
+    private fun remember(result: ExchangeRateResult): ExchangeRateResult {
+        if (result is ExchangeRateResult.Success && !result.isCached && ::cache.isInitialized) {
+            cache.put(result.rateDate, result.rate)
+        }
+        return result
+    }
+
+    private fun cachedLatest(): ExchangeRateResult? {
+        if (!::cache.isInitialized) return null
+        val (date, rate) = cache.latest() ?: return null
+        val age = runCatching {
+            ChronoUnit.DAYS.between(LocalDate.parse(date), LocalDate.now(java.time.ZoneId.of("Asia/Colombo")))
+        }.getOrNull() ?: return null
+        // An old quote becomes misleading. Ask for a manual rate instead.
+        if (age < 0 || age > 14) return null
+        return ExchangeRateResult.Success(rate, date, isCached = true)
+    }
+
+    private fun cachedHistorical(date: String): ExchangeRateResult? {
+        if (!::cache.isInitialized) return null
+        return cache.forDate(date)?.let { ExchangeRateResult.Success(it, date, isCached = true) }
+    }
+
     /**
      * Fetch the latest USD → LKR exchange rate.
      */
@@ -56,16 +87,16 @@ class ExchangeRateService @Inject constructor() {
         // Try open.er-api.com first (real-time USD base)
         val primaryResult = fetchFromOpenErApi("https://open.er-api.com/v6/latest/USD")
         if (primaryResult is ExchangeRateResult.Success) {
-            return primaryResult
+            return remember(primaryResult)
         }
 
         // Fallback: jsdelivr latest
         val fallbackResult = fetchFromJsDelivr("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json")
         if (fallbackResult is ExchangeRateResult.Success) {
-            return fallbackResult
+            return remember(fallbackResult)
         }
 
-        return primaryResult
+        return cachedLatest() ?: primaryResult
     }
 
     /**
@@ -75,11 +106,15 @@ class ExchangeRateService @Inject constructor() {
      */
     fun fetchHistoricalRate(date: String): ExchangeRateResult {
         // Try historical CDN
+        if (runCatching { LocalDate.parse(date) }.isFailure) {
+            return ExchangeRateResult.Failure("Invalid historical date.")
+        }
         val cdnUrl = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@$date/v1/currencies/usd.json"
         val cdnResult = fetchFromJsDelivr(cdnUrl)
         if (cdnResult is ExchangeRateResult.Success) {
-            return cdnResult
+            return remember(cdnResult)
         }
+        cachedHistorical(date)?.let { return it }
 
         // Never silently fall back to today's rate for a historical entry.
         return ExchangeRateResult.Failure(
@@ -104,12 +139,18 @@ class ExchangeRateService @Inject constructor() {
                 ?: return ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
 
             val parsed = gson.fromJson(body, OpenErApiResponse::class.java)
+            if (parsed.result != "success" || parsed.base_code != "USD") {
+                return ExchangeRateResult.Failure("Unexpected exchange-rate response.")
+            }
             val lkr = parsed.rates["LKR"]
                 ?: return ExchangeRateResult.Failure("This exchange rate is unavailable. Enter it manually.")
 
             ExchangeRateResult.Success(
                 rate = BigDecimal.valueOf(lkr),
-                rateDate = parsed.time_last_update_utc?.take(16) ?: ""
+                rateDate = runCatching {
+                    ZonedDateTime.parse(parsed.time_last_update_utc, DateTimeFormatter.RFC_1123_DATE_TIME)
+                        .toLocalDate().toString()
+                }.getOrElse { "" }
             )
         } catch (e: IOException) {
             ExchangeRateResult.Failure(

@@ -52,6 +52,7 @@ data class IncomeUiState(
     val isRateFetching: Boolean = false,
     val rateFetchError: String? = null,
     val isManualRateMode: Boolean = false,
+    val isCachedExchangeRate: Boolean = false,
 
     // Member 2: Realized income (excluding unpaid freelance, including crypto P&L).
     val totalRealizedIncomeMinor: Long = 0L,
@@ -205,13 +206,19 @@ class IncomeViewModel @Inject constructor(
                         _uiState.value = _uiState.value.copy(
                             exchangeRate = null, exchangeRateDate = null,
                             isRateFetching = false, isManualRateMode = true,
+                            isCachedExchangeRate = false,
                             rateFetchError = "Exact historical rate unavailable. Enter a manual rate."
                         )
                     } else {
                         _uiState.value = _uiState.value.copy(
                             exchangeRate = result.rate,
                             exchangeRateDate = result.rateDate,
-                            isRateFetching = false, rateFetchError = null, isManualRateMode = false
+                            isRateFetching = false,
+                            rateFetchError = if (result.isCached)
+                                "Cached USD/LKR rate from ${result.rateDate}. Verify before saving; the saved conversion remains fixed."
+                            else null,
+                            isManualRateMode = false,
+                            isCachedExchangeRate = result.isCached
                         )
                     }
                 }
@@ -219,7 +226,7 @@ class IncomeViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         exchangeRate = null, exchangeRateDate = null,
                         isRateFetching = false, rateFetchError = "Unable to get an exchange rate. Try again or enter the rate manually.",
-                        isManualRateMode = true
+                        isManualRateMode = true, isCachedExchangeRate = false
                     )
                 }
             }
@@ -243,6 +250,7 @@ class IncomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             exchangeRate = rate, exchangeRateDate = receivedDate,
             rateFetchError = null, isRateFetching = false, isManualRateMode = true,
+            isCachedExchangeRate = false,
             errorMessage = null
         )
         return true
@@ -268,7 +276,8 @@ class IncomeViewModel @Inject constructor(
         rateForEntryDate = null
         _uiState.value = _uiState.value.copy(
             exchangeRate = null, exchangeRateDate = null,
-            isRateFetching = false, rateFetchError = null, isManualRateMode = false
+            isRateFetching = false, rateFetchError = null, isManualRateMode = false,
+            isCachedExchangeRate = false
         )
     }
 
@@ -351,7 +360,7 @@ class IncomeViewModel @Inject constructor(
             // Member 2: USD conversion – exchange rate required.
             if (currency == "USD" &&
                 (_uiState.value.exchangeRate == null ||
-                    rateForEntryDate != receivedDate || _uiState.value.isRateFetching)
+                        rateForEntryDate != receivedDate || _uiState.value.isRateFetching)
             ) {
                 showError(
                     "Exchange rate is required for " +
@@ -556,7 +565,7 @@ class IncomeViewModel @Inject constructor(
                 val dateChanged = existingIncome.receivedDate != receivedDate
                 val currencyChanged = existingIncome.currency != currency
                 val sameConversion = existingIncome.amountMinor == amountMinor &&
-                    !dateChanged && !currencyChanged
+                        !dateChanged && !currencyChanged
                 val selectedRate = _uiState.value.exchangeRate
                     ?.takeIf { rateForEntryDate == receivedDate && !_uiState.value.isRateFetching }
                 val savedRate = existingIncome.exchangeRate?.toBigDecimalOrNull()
@@ -579,8 +588,8 @@ class IncomeViewModel @Inject constructor(
                             return@launch
                         }
                         val changedRate = selectedRate != null &&
-                            (selectedRate.compareTo(savedRate ?: BigDecimal.ZERO) != 0 ||
-                                _uiState.value.exchangeRateDate != existingIncome.exchangeRateDate)
+                                (selectedRate.compareTo(savedRate ?: BigDecimal.ZERO) != 0 ||
+                                        _uiState.value.exchangeRateDate != existingIncome.exchangeRateDate)
                         if (sameConversion && !changedRate && existingIncome.amountLkrMinor != null) {
                             amountLkrMinor = existingIncome.amountLkrMinor
                             storedRate = existingIncome.exchangeRate
