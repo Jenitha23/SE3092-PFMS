@@ -32,6 +32,9 @@ import kotlinx.coroutines.launch
 import java.time.YearMonth
 import java.time.ZoneId
 import javax.inject.Inject
+import com.pfms.app.domain.usecase.analytics.IncomeInsightRange
+import com.pfms.app.domain.usecase.analytics.IncomeInsightsCalculator
+import com.pfms.app.domain.usecase.analytics.IncomeInsightsSnapshot
 
 data class IncomeAnalyticsUiState(
     val isLoading: Boolean = true,
@@ -45,7 +48,9 @@ data class IncomeAnalyticsUiState(
     val hasMonthlyIncome: Boolean = false,
     val errorMessage: String? = null,
     val isSaving: Boolean = false,
-    val canRetry: Boolean = false
+    val canRetry: Boolean = false,
+    val range: IncomeInsightRange = IncomeInsightRange.MONTH,
+    val insights: IncomeInsightsSnapshot? = null
 )
 
 /**
@@ -123,6 +128,7 @@ class IncomeAnalyticsViewModel @Inject constructor(
                                 estimationComparison = null,
                                 estimatedMonthlyIncomeMinor = null,
                                 hasMonthlyIncome = false,
+                                insights = null,
                                 errorMessage = null
                             )
                         }
@@ -158,6 +164,11 @@ class IncomeAnalyticsViewModel @Inject constructor(
 
     fun nextMonth() {
         selectMonth(_uiState.value.selectedMonth.plusMonths(1))
+    }
+
+    fun selectRange(range: IncomeInsightRange) {
+        _uiState.update { it.copy(range = range) }
+        recalculateAnalytics(currentIncomes, _uiState.value.selectedMonth, _uiState.value.estimatedMonthlyIncomeMinor)
     }
 
     /**
@@ -220,6 +231,7 @@ class IncomeAnalyticsViewModel @Inject constructor(
                     referenceMonth = month
                 )
             }
+            val insights = IncomeInsightsCalculator.calculate(records, month, _uiState.value.range)
 
             _uiState.update {
                 it.copy(
@@ -230,6 +242,7 @@ class IncomeAnalyticsViewModel @Inject constructor(
                     trendPoints = trends,
                     analyticsSummary = analytics,
                     estimationComparison = comparison,
+                    insights = insights,
                     errorMessage = if (estimateDirty) it.errorMessage else null
                 )
             }
