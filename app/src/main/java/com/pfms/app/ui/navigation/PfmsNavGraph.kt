@@ -368,10 +368,8 @@ fun PfmsNavGraph(
                 onNavigateToAddIncome = {
                     navController.navigate(Routes.AddIncome) { launchSingleTop = true }
                 },
-                // "Insights" opens spending analytics (FR-30..32). Income analytics stays reachable
-                // from the income list and from a link inside spending analytics.
                 onNavigateToAnalytics = {
-                    navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true }
+                    navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true }
                 },
                 onNavigateToExpenses = {
                     navController.navigate(Routes.ExpenseList) {
@@ -402,7 +400,8 @@ fun PfmsNavGraph(
         }
 
         composable(Routes.SavingsSimulator) {
-            SavingsSimulatorScreen(onBack = { navController.popBackStack() })
+            SavingsSimulatorScreen(onBack = { navController.popBackStack() },
+                onOpenGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } })
         }
 
         composable(Routes.SpendingAnalytics) {
@@ -464,6 +463,10 @@ fun PfmsNavGraph(
         composable(Routes.SavingsGoal) {
 
             SavingsGoalScreen(
+                onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
+                onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
+                onExpenses = { navController.navigate(Routes.ExpenseList) { launchSingleTop = true } },
+                onInsights = { navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true } },
                 onOpenSavingsSimulator = { navController.navigate(Routes.SavingsSimulator) { launchSingleTop = true } },
                 onBack = {
                     if (!navController.popBackStack()) {
@@ -590,6 +593,7 @@ fun PfmsNavGraph(
                 isRateFetching = incomeState.isRateFetching,
                 rateFetchError = incomeState.rateFetchError,
                 isManualRateMode = incomeState.isManualRateMode,
+                isCachedExchangeRate = incomeState.isCachedExchangeRate,
                 onFetchExchangeRate = { date ->
                     incomeViewModel.fetchExchangeRate(date)
                 },
@@ -616,8 +620,10 @@ fun PfmsNavGraph(
             val incomeId = backStackEntry.arguments?.getString("incomeId")
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
             val incomeItem = incomeState.incomes.find { it.id == incomeId }
+            var formReady by remember(incomeId) { mutableStateOf(false) }
             LaunchedEffect(incomeItem?.id) {
                 incomeItem?.let(incomeViewModel::loadExistingRate)
+                formReady = incomeItem != null
             }
 
             LaunchedEffect(incomeState.saveSuccessful) {
@@ -627,7 +633,7 @@ fun PfmsNavGraph(
                 }
             }
 
-            if (incomeItem != null) {
+            if (incomeItem != null && formReady) {
                 IncomeFormScreen(
                     initialIncome = incomeItem,
                     onBack = {
@@ -657,6 +663,7 @@ fun PfmsNavGraph(
                     isRateFetching = incomeState.isRateFetching,
                     rateFetchError = incomeState.rateFetchError,
                     isManualRateMode = incomeState.isManualRateMode,
+                    isCachedExchangeRate = incomeState.isCachedExchangeRate,
                     onFetchExchangeRate = { date ->
                         incomeViewModel.fetchExchangeRate(date)
                     },
@@ -666,7 +673,7 @@ fun PfmsNavGraph(
                         incomeViewModel.clearExchangeRate()
                     }
                 )
-            } else if (!incomeState.isLoading) {
+            } else if (incomeItem == null && !incomeState.isLoading) {
                 Scaffold(
                     topBar = {
                         TopAppBar(
@@ -700,7 +707,7 @@ fun PfmsNavGraph(
                 }
             }
 
-            SalaryTemplateScreen(
+            if (!salaryState.isLoading) SalaryTemplateScreen(
                 initialTemplate = salaryState.template,
                 isSaving = salaryState.isSaving,
                 errorMessage = salaryState.errorMessage,
@@ -710,7 +717,8 @@ fun PfmsNavGraph(
                 },
                 onSaveTemplate = { amount ->
                     salaryViewModel.saveSalaryTemplate(amount)
-                }
+                },
+                onSaveSchedule = { amount, day, enabled -> salaryViewModel.saveSalaryTemplate(amount, day, enabled) }
             )
         }
 
@@ -720,6 +728,7 @@ fun PfmsNavGraph(
 
         composable(Routes.IncomeAnalytics) {
             IncomeAnalyticsScreen(
+                onOpenSpendingAnalytics = { navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true } },
                 onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onBack = {
                     navController.popBackStack()
@@ -765,6 +774,7 @@ fun PfmsNavGraph(
                     if (vm != null) {
                         ExpenseListContent(
                             viewModel = vm,
+                            onSpendingAnalytics = { navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true } },
                             onCategories = { navController.navigate(Routes.Categories) },
                             onRecurring = { navController.navigate(Routes.RecurringExpenses) },
                             onSubscriptions = { navController.navigate(Routes.Subscriptions) },
@@ -805,6 +815,7 @@ fun PfmsNavGraph(
                         val pending = "Expense storage is not connected yet. Saving is unavailable."
                         ExpenseListScreen(
                             expenses = emptyList(),
+                            onSpendingAnalytics = { navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true } },
                             isLoading = false,
                             isDeleting = false,
                             onAddExpense = { navController.navigate(Routes.AddExpense) },

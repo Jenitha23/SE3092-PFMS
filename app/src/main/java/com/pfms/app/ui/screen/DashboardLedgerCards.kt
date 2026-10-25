@@ -55,11 +55,11 @@ internal fun DashboardLedgerCard(content: DashboardContentState, actions: Dashbo
             FinanceIcon(FinanceSymbol.EXPENSE)
             Column(Modifier.weight(1f)) {
                 Text("Live Ledger Activity", style = MaterialTheme.typography.titleMedium)
-                Text("Latest recorded entries", style = MaterialTheme.typography.bodySmall,
+                Text("${content.transactions.size} recent · ${content.ledgerCount} this month", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = actions.onHistory, contentPadding = PaddingValues(0.dp)) {
-                Text("All (${content.ledgerCount})  ›", style = MaterialTheme.typography.labelMedium)
+                Text("See all  ›", style = MaterialTheme.typography.labelMedium)
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

@@ -134,19 +134,23 @@ class TransactionHistoryViewModel @Inject constructor(
     }
 
     fun setIncomeSource(source: String?) = updateFilter {
-        it.copy(incomeSource = source, type = if (source != null) TransactionTypeFilter.INCOME else it.type)
+        if (source == null) it.copy(incomeSource = null)
+        else it.copy(incomeSource = source, type = TransactionTypeFilter.INCOME, expenseCategory = null, paymentMethod = null, classification = null)
     }
 
     fun setExpenseCategory(category: String?) = updateFilter {
-        it.copy(expenseCategory = category, type = if (category != null) TransactionTypeFilter.EXPENSE else it.type)
+        it.copy(expenseCategory = category, type = if (category != null) TransactionTypeFilter.EXPENSE else it.type,
+            incomeSource = if (category != null) null else it.incomeSource)
     }
 
     fun setPaymentMethod(method: ExpensePaymentMethod?) = updateFilter {
-        it.copy(paymentMethod = method, type = if (method != null) TransactionTypeFilter.EXPENSE else it.type)
+        it.copy(paymentMethod = method, type = if (method != null) TransactionTypeFilter.EXPENSE else it.type,
+            incomeSource = if (method != null) null else it.incomeSource)
     }
 
     fun setClassification(classification: ExpenseClassification?) = updateFilter {
-        it.copy(classification = classification, type = if (classification != null) TransactionTypeFilter.EXPENSE else it.type)
+        it.copy(classification = classification, type = if (classification != null) TransactionTypeFilter.EXPENSE else it.type,
+            incomeSource = if (classification != null) null else it.incomeSource)
     }
 
     fun clearFilters() = updateFilter { HistoryFilter() }

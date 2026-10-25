@@ -1,65 +1,75 @@
 package com.pfms.app.ui.screen.analytics
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pfms.app.domain.model.SpendingPatternStatus
-import com.pfms.app.viewmodel.SpendingPatternsViewModel
+import com.pfms.app.ui.component.*
+import com.pfms.app.viewmodel.*
 import java.time.YearMonth
-import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpendingPatternsScreen(
-    onBack: () -> Unit,
-    onOpenSavingsSimulator: () -> Unit,
-    viewModel: SpendingPatternsViewModel = hiltViewModel()
-) {
+fun SpendingPatternsScreen(onBack: () -> Unit, onOpenSavingsSimulator: () -> Unit, viewModel: SpendingPatternsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val confirmed by viewModel.confirmedMonths.collectAsStateWithLifecycle()
-    val month = YearMonth.from(state.date)
-    Scaffold(topBar = { TopAppBar(title = { Text("Spending patterns") }, navigationIcon = {
-        TextButton(onClick = onBack) { Text("Back") }
-    }) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Compare this month's category spending with comparable days in previous months.", style = MaterialTheme.typography.bodyMedium)
-            Text("Select only months where you recorded your expenses consistently:", style = MaterialTheme.typography.titleSmall)
-            (1..3).forEach { offset ->
-                val past = month.minusMonths(offset.toLong())
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(past.format(DateTimeFormatter.ofPattern("MMMM yyyy")))
-                    Checkbox(checked = past in confirmed, onCheckedChange = { viewModel.setMonthConfirmed(past, it) })
-                }
-            }
-            when {
-                state.isLoading -> CircularProgressIndicator()
-                state.error != null -> Text(state.error!!, color = MaterialTheme.colorScheme.error)
-                state.result?.status == SpendingPatternStatus.INSUFFICIENT_HISTORY ->
-                    Text("Choose at least two sufficiently complete past months to avoid misleading comparisons.")
-                state.result?.insights.isNullOrEmpty() -> Text("No unusual category increases detected for this comparison.")
-                else -> state.result!!.insights.forEach { insight ->
-                    ElevatedCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(insight.categoryName, style = MaterialTheme.typography.titleMedium)
-                            Text("${insight.increasePercent}% above your previous spending baseline")
-                            Text("Current: ${money(insight.currentAmountMinor)}  ·  Baseline: ${money(insight.baselineAmountMinor)}")
-                            Text("Difference: ${money(insight.differenceMinor)}")
-                            Text("Compared against ${insight.comparisonMonths} months; ${if (insight.isMonthToDateComparison) "month-to-date" else "complete month"} comparison.", style = MaterialTheme.typography.bodySmall)
-                            TextButton(onClick = onOpenSavingsSimulator) { Text("Explore savings impact") }
-                        }
+    SpendingPatternsContent(state, confirmed, viewModel::setMonthConfirmed, onBack, onOpenSavingsSimulator)
+}
+
+@Composable
+fun SpendingPatternsContent(state: SpendingPatternsUiState, confirmed: Set<YearMonth>, onConfirmMonth: (YearMonth, Boolean) -> Unit,
+    onBack: () -> Unit, onSimulator: () -> Unit) {
+    FinanceSecondaryPage("Spending Patterns", onBack) {
+        FinancePanel {
+            FinanceIcon(FinanceSymbol.CHART, Modifier.size(28.dp))
+            Text("Understand your spending rhythm", style = MaterialTheme.typography.titleLarge)
+            Text("Compare this month's categories with comparable days in previous months.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Current month · ${YearMonth.from(state.date)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
+        FinancePanel {
+            Text("Choose reliable comparison months", style = MaterialTheme.typography.titleMedium)
+            Text("Select months where you recorded expenses consistently. At least two complete history months are needed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SecondaryFinancePresentation.history(state.date).forEach { choice ->
+                Surface(shape = RoundedCornerShape(12.dp), color = if (choice.month in confirmed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
+                    Row(Modifier.fillMaxWidth().toggleable(choice.month in confirmed, role = Role.Checkbox, onValueChange = { onConfirmMonth(choice.month, it) }).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(choice.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Checkbox(checked = choice.month in confirmed, onCheckedChange = null)
                     }
                 }
             }
-            Text("Patterns describe recorded spending, not whether a purchase was good or bad.", style = MaterialTheme.typography.bodySmall)
         }
+        when {
+            state.isLoading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            state.error != null -> ErrorBanner(state.error)
+            state.result?.status == SpendingPatternStatus.INSUFFICIENT_HISTORY -> FinancePanel {
+                Text("Build a dependable comparison", style = MaterialTheme.typography.titleMedium)
+                Text("Choose at least two sufficiently complete past months to avoid misleading comparisons.", style = MaterialTheme.typography.bodyMedium)
+            }
+            state.result?.insights.isNullOrEmpty() -> FinancePanel {
+                Text("A steady spending pattern", style = MaterialTheme.typography.titleMedium)
+                Text("No unusual category increases detected for this comparison.", style = MaterialTheme.typography.bodyMedium)
+            }
+            else -> state.result?.insights.orEmpty().forEach { insight ->
+                val row = SecondaryFinancePresentation.pattern(insight)
+                FinancePanel {
+                    Text(row.title, style = MaterialTheme.typography.titleMedium)
+                    Text(row.increase, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
+                    listOf("Current spending" to row.current, "Previous baseline" to row.baseline, "Difference" to row.difference).forEach { (label, amount) ->
+                        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        FinanceValue(amount)
+                    }
+                    Text(row.comparison, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        FinanceDestinationLink("Explore savings impact", "Try a What-if plan for your savings goal", FinanceSymbol.GOAL, onSimulator)
+        Text("Patterns describe recorded spending, not whether a purchase was good or bad.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
-private fun money(minor: Long) = "LKR " + java.math.BigDecimal.valueOf(minor, 2).toPlainString()

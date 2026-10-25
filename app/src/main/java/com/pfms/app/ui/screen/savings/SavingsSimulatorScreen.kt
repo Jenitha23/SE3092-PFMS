@@ -1,74 +1,78 @@
 package com.pfms.app.ui.screen.savings
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pfms.app.viewmodel.SavingsSimulatorViewModel
-import java.math.BigDecimal
-import java.math.RoundingMode
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pfms.app.ui.component.*
+import com.pfms.app.ui.theme.*
+import com.pfms.app.viewmodel.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SavingsSimulatorScreen(onBack: () -> Unit, viewModel: SavingsSimulatorViewModel = hiltViewModel()) {
+fun SavingsSimulatorScreen(onBack: () -> Unit, viewModel: SavingsSimulatorViewModel = hiltViewModel(), onOpenGoals: () -> Unit = {}) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var reductionText by remember { mutableStateOf("0") }
-    var plannedText by remember { mutableStateOf("0") }
-    Scaffold(topBar = { TopAppBar(title = { Text("What-if savings") }, navigationIcon = {
-        TextButton(onClick = onBack) { Text("Back") }
-    }) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            when {
-                state.isLoading -> CircularProgressIndicator()
-                state.goal == null -> Text("Create an active savings goal to simulate a plan.")
-                else -> {
-                    Text("Goal: ${state.goal!!.name}", style = MaterialTheme.typography.titleLarge)
-                    Text("Try redirecting part of discretionary spending toward your goal. This is a forecast only.")
-                    OutlinedTextField(value = reductionText, onValueChange = { value ->
-                        if (value.isEmpty() || value.matches(Regex("[0-9]{0,12}(\\.[0-9]{0,2})?"))) {
-                            reductionText = value
-                            parseMinor(value)?.let(viewModel::setMonthlyReductionMinor)
-                        }
-                    }, label = { Text("Monthly spending reduction (LKR)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(value = plannedText, onValueChange = { value ->
-                        if (value.isEmpty() || value.matches(Regex("[0-9]{0,12}(\\.[0-9]{0,2})?"))) {
-                            plannedText = value
-                            parseMinor(value)?.let(viewModel::setPlannedContributionMinor)
-                        }
-                    }, label = { Text("Other planned monthly contribution (LKR)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    state.result?.let { result ->
-                        ElevatedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Current saved: ${money(result.currentSavedMinor)}")
-                                Text("Potential extra by deadline: ${money(result.potentialExtraByDeadlineMinor)}")
-                                Text("Projected goal balance: ${money(result.projectedBalanceAtDeadlineMinor)}")
-                                Text("Projected progress: ${result.projectedProgressPercent}%")
-                                Text("Remaining shortfall: ${money(result.projectedShortfallMinor)}")
-                                Text("Estimated completion: ${result.estimatedCompletionDate ?: "Not estimated"}")
-                                if (result.isGoalAlreadyComplete) Text("Goal already completed")
-                                if (result.isGoalOverdue) Text("Goal deadline has passed")
-                            }
+    SavingsSimulatorContent(state, onBack, viewModel::setMonthlyReductionMinor, viewModel::setPlannedContributionMinor, onOpenGoals)
+}
+
+@Composable
+fun SavingsSimulatorContent(source: SavingsSimulatorUiState, onBack: () -> Unit, onReduction: (Long) -> Unit,
+    onPlanned: (Long) -> Unit, onOpenGoals: () -> Unit = {}) {
+    val controller: SavingsSimulatorScreenViewModel = viewModel()
+    LaunchedEffect(source) { controller.sync(source) }
+    val state by controller.state.collectAsStateWithLifecycle()
+    FinanceSecondaryPage("What-if Savings", onBack) {
+        when {
+            source.isLoading -> CircularProgressIndicator()
+            source.goal == null -> FinancePanel {
+                FinanceIcon(FinanceSymbol.GOAL, Modifier.size(32.dp))
+                Text("Start with a savings goal", style = MaterialTheme.typography.titleLarge)
+                Text(source.error ?: "Create an active savings goal to simulate a plan.", style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = onOpenGoals, shape = RoundedCornerShape(13.dp)) { Text("Open Savings Goals") }
+            }
+            else -> {
+                FinancePanel {
+                    Text(source.goal.name, style = MaterialTheme.typography.titleLarge)
+                    Text("Explore how a monthly spending reduction could help your goal. These figures are a forecast.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                FinancePanel {
+                    Text("Build your scenario", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(state.reduction, { controller.edit(it, true, onReduction) }, label = { Text("Monthly spending reduction (LKR)") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(13.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        isError = state.reductionError != null, supportingText = state.reductionError?.let { { Text(it) } })
+                    OutlinedTextField(state.planned, { controller.edit(it, false, onPlanned) }, label = { Text("Other planned monthly contribution (LKR)") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(13.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        isError = state.plannedError != null, supportingText = state.plannedError?.let { { Text(it) } })
+                }
+                source.error?.let { ErrorBanner(it) }
+                if (state.reductionError == null && state.plannedError == null && source.result != null) {
+                    Surface(shape = RoundedCornerShape(20.dp), color = VaultGreen) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Projected goal progress", style = MaterialTheme.typography.titleSmall, color = VaultMint)
+                            Text(state.progressLabel, style = MaterialTheme.typography.headlineSmall, color = androidx.compose.ui.graphics.Color.White)
+                            LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth().height(7.dp), color = VaultMint, trackColor = VaultMuted.copy(alpha = .2f))
                         }
                     }
-                    Text("No contributions or financial records are created by this simulation.", style = MaterialTheme.typography.bodySmall)
+                    FinancePanel {
+                        Text("Your scenario at a glance", style = MaterialTheme.typography.titleMedium)
+                        state.metrics.forEach { (label, amount) ->
+                            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FinanceValue(amount, Modifier.testTag("simulator_${label}"))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                        if (source.result.isGoalAlreadyComplete) Text("Goal already completed", color = MaterialTheme.colorScheme.primary)
+                        if (source.result.isGoalOverdue) Text("Goal deadline has passed", color = MaterialTheme.colorScheme.error)
+                    }
                 }
+                Text("No contributions or financial records are created by this simulation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
-private fun parseMinor(value: String): Long? = runCatching {
-    if (value.isBlank()) return@runCatching 0L
-    BigDecimal(value).movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).longValueExact()
-}.getOrNull()
-private fun money(value: Long) = "LKR " + BigDecimal.valueOf(value, 2).toPlainString()

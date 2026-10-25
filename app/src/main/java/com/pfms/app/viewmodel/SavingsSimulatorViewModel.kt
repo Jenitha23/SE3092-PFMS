@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.catch
 
 @HiltViewModel
 class SavingsSimulatorViewModel @Inject constructor(
@@ -48,6 +49,9 @@ class SavingsSimulatorViewModel @Inject constructor(
                 error = result.exceptionOrNull()?.message
             )
         }
+    }.catch { error ->
+        val problem = com.pfms.app.data.error.OperationErrors.present(error, com.pfms.app.data.error.ErrorAction.LOAD)
+        emit(SavingsSimulatorUiState(isLoading = false, error = problem.message))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SavingsSimulatorUiState())
 
     /** Called with LKR minor units, never floats. */

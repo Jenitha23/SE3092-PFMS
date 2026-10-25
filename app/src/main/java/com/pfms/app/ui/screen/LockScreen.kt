@@ -53,7 +53,9 @@ import com.pfms.app.ui.component.LockVectorIcon
 import com.pfms.app.ui.component.PfmsButton
 import com.pfms.app.ui.component.PfmsLogo
 import com.pfms.app.ui.component.PfmsPasswordField
-import com.pfms.app.ui.theme.EmeraldPrimary
+import com.pfms.app.ui.theme.AuthTheme
+import com.pfms.app.ui.component.FinanceBrand
+import androidx.compose.foundation.layout.safeDrawingPadding
 import com.pfms.app.viewmodel.SessionViewModel
 
 /**
@@ -83,9 +85,11 @@ fun LockScreen(
         }
     }
 
+    AuthTheme {
     Surface(
         modifier = Modifier
             .fillMaxSize()
+            .safeDrawingPadding()
             .imePadding(),
         color = MaterialTheme.colorScheme.background
     ) {
@@ -99,33 +103,9 @@ fun LockScreen(
             Spacer(modifier = Modifier.height(36.dp))
 
             // ── Top Brand Header ──────────────────────────────────────
-            PfmsLogo()
+            FinanceBrand()
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "PF",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "MS",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
-                    ),
-                    color = EmeraldPrimary
-                )
-            }
-
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // ── Circular Vector Lock Badge ─────────────────────────────
             Surface(
@@ -137,7 +117,7 @@ fun LockScreen(
                 Box(contentAlignment = Alignment.Center) {
                     LockVectorIcon(
                         modifier = Modifier.size(36.dp),
-                        tint = EmeraldPrimary
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -146,7 +126,7 @@ fun LockScreen(
 
             // ── Title & Subtitle ──────────────────────────────────────
             Text(
-                text = "Unlock PFMS",
+                text = "Unlock your finances",
                 style = MaterialTheme.typography.headlineSmall.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.5).sp
@@ -179,7 +159,7 @@ fun LockScreen(
                     Box(
                         modifier = Modifier
                             .size(8.dp)
-                            .background(EmeraldPrimary, CircleShape)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -324,4 +304,5 @@ fun LockScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
 }
