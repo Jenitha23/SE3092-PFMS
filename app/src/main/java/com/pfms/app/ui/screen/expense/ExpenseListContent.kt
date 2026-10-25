@@ -27,7 +27,8 @@ fun ExpenseListContent(
     onHome: (() -> Unit)? = null,
     onIncome: (() -> Unit)? = null,
     onGoals: (() -> Unit)? = null,
-    onInsights: (() -> Unit)? = null
+    onInsights: (() -> Unit)? = null,
+    onSpendingAnalytics: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState
         .collectAsStateWithLifecycle()
@@ -59,6 +60,7 @@ fun ExpenseListContent(
         onHome = onHome,
         onIncome = onIncome,
         onGoals = onGoals,
-        onInsights = onInsights
+        onInsights = onInsights,
+        onSpendingAnalytics = onSpendingAnalytics
     )
 }

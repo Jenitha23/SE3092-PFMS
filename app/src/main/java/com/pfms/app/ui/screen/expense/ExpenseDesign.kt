@@ -31,34 +31,10 @@ internal val ExpenseOrange = Color(0xFFF3A04C)
 
 @Composable
 internal fun ExpenseUiTheme(content: @Composable () -> Unit) {
-    val base = MaterialTheme.colorScheme
-    val dark = base.background.luminance() < 0.5f
-    MaterialTheme(
-        colorScheme = base.copy(
-            primary = if (dark) Color(0xFF62D9BF) else ExpenseTeal,
-            onPrimary = if (dark) Color(0xFF00382D) else Color.White,
-            primaryContainer = if (dark) Color(0xFF163D36) else Color(0xFFE7F5F1),
-            onPrimaryContainer = if (dark) Color(0xFFA4EDDD) else ExpenseTeal,
-            background = if (dark) base.background else Color(0xFFF8FAFC),
-            surface = if (dark) base.surface else Color.White,
-            surfaceContainer = base.surface,
-            surfaceContainerLow = base.surface,
-            surfaceContainerHigh = base.surface,
-            surfaceContainerHighest = base.surface,
-            surfaceVariant = if (dark) base.surfaceVariant else Color(0xFFF2F5F9),
-            outline = if (dark) base.outline else Color(0xFFD5DFE8),
-            outlineVariant = if (dark) base.outlineVariant else Color(0xFFE5EBF1)
-        ),
-        shapes = Shapes(
-            extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp),
-            medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(20.dp),
-            extraLarge = RoundedCornerShape(24.dp)
-        ),
-        content = content
-    )
+    com.pfms.app.ui.theme.FinanceTheme(content)
 }
 
-internal enum class ExpenseSymbol { BACK, ADD, FLASH, SEARCH, FILTER, MORE, CHEVRON, CALENDAR, CARD, BAG, HOME, DINING, CAR, REPEAT, GRID, NOTE, CHECK, EDIT, ARCHIVE, INFO, CLOSE }
+internal enum class ExpenseSymbol { BACK, ADD, FLASH, SEARCH, FILTER, MORE, CHEVRON, CALENDAR, CARD, BAG, HOME, DINING, CAR, REPEAT, GRID, NOTE, CHECK, EDIT, ARCHIVE, INFO, CLOSE, COFFEE, GYM, HEALTH, CART, TICKET }
 
 /** Small native vectors keep the expense screens sharp at every display density. */
 @Composable
@@ -96,6 +72,11 @@ internal fun ExpenseIcon(symbol: ExpenseSymbol, modifier: Modifier = Modifier, t
             ExpenseSymbol.ARCHIVE -> { box(3f,3f,18f,5f,1f); path(5f to 8f,5f to 21f,19f to 21f,19f to 8f); line(9f,12f,15f,12f) }
             ExpenseSymbol.INFO -> { drawCircle(tint,9f*scale,point(12f,12f),style=Stroke(stroke)); line(12f,11f,12f,17f); drawCircle(tint,scale,point(12f,7f)) }
             ExpenseSymbol.CLOSE -> { line(6f,6f,18f,18f); line(18f,6f,6f,18f) }
+            ExpenseSymbol.COFFEE -> { box(3f,7f,13f,12f); path(16f to 8f,21f to 8f,21f to 13f,16f to 13f); line(2f,22f,18f,22f); line(7f,2f,7f,4f); line(12f,2f,12f,4f) }
+            ExpenseSymbol.GYM -> { line(7f,12f,17f,12f); line(3f,9f,3f,15f); line(6f,6f,6f,18f); line(18f,6f,18f,18f); line(21f,9f,21f,15f) }
+            ExpenseSymbol.HEALTH -> path(2f to 13f,6f to 13f,9f to 5f,14f to 20f,18f to 10f,20f to 13f,23f to 13f)
+            ExpenseSymbol.CART -> { path(2f to 3f,5f to 3f,8f to 16f,19f to 16f,22f to 7f,6f to 7f); drawCircle(tint,1.3f*scale,point(9f,21f)); drawCircle(tint,1.3f*scale,point(18f,21f)) }
+            ExpenseSymbol.TICKET -> { path(3f to 5f,21f to 5f,21f to 9f,18f to 12f,21f to 15f,21f to 19f,3f to 19f,3f to 15f,6f to 12f,3f to 9f,3f to 5f); line(14f,8f,14f,10f); line(14f,14f,14f,16f) }
         }
     }
 }
@@ -156,6 +137,13 @@ internal fun categoryColor(name: String): Color = when {
 }
 
 internal fun categorySymbol(name: String): ExpenseSymbol = when {
+    name.contains("coffee", true) -> ExpenseSymbol.COFFEE
+    name.contains("gym", true) || name.contains("fitness", true) || name.contains("wellness", true) -> ExpenseSymbol.GYM
+    name.contains("health", true) || name.contains("medical", true) -> ExpenseSymbol.HEALTH
+    name.contains("grocer", true) -> ExpenseSymbol.CART
+    name.contains("entertain", true) || name.contains("cinema", true) -> ExpenseSymbol.TICKET
+    name.contains("utilit", true) || name.contains("electric", true) -> ExpenseSymbol.FLASH
+    name.equals("Other", true) -> ExpenseSymbol.GRID
     name.contains("rent", true) -> ExpenseSymbol.HOME
     name.contains("food", true) || name.contains("dining", true) || name.contains("coffee", true) -> ExpenseSymbol.DINING
     name.contains("transport", true) -> ExpenseSymbol.CAR

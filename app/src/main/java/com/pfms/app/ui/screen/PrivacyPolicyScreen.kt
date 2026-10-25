@@ -13,6 +13,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.IconButton
+import com.pfms.app.ui.component.FinanceIcon
+import com.pfms.app.ui.component.FinanceSymbol
+import com.pfms.app.ui.component.FinancePanel
+import com.pfms.app.ui.theme.FinanceTheme
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -26,12 +31,12 @@ import androidx.compose.ui.unit.dp
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacyPolicyScreen(onBack: () -> Unit) {
+fun PrivacyPolicyScreen(onBack: () -> Unit) = FinanceTheme {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Privacy Policy") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                title = { Text("Privacy Policy", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = { IconButton(onClick = onBack) { FinanceIcon(FinanceSymbol.BACK, description = "Back") } },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -98,7 +103,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
 
 @Composable
 private fun PolicySection(title: String, body: String) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    FinancePanel {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text(body, style = MaterialTheme.typography.bodyMedium)
     }

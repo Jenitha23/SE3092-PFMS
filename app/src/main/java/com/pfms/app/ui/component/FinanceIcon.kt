@@ -104,6 +104,37 @@ enum class FinanceSymbol(val vector: ImageVector) {
         moveTo(3f, 3f); lineTo(21f, 3f); lineTo(21f, 17f); lineTo(3f, 17f); close()
         moveTo(12f, 17f); lineTo(12f, 21f); moveTo(8f, 21f); lineTo(16f, 21f)
     }),
+    EXPORT(financeVector("Export report") {
+        moveTo(12f, 3f); lineTo(12f, 15f); moveTo(7f, 10f); lineTo(12f, 15f); lineTo(17f, 10f)
+        moveTo(4f, 16f); lineTo(4f, 21f); lineTo(20f, 21f); lineTo(20f, 16f)
+    }),
+    CALENDAR(financeVector("Calendar") {
+        moveTo(3f, 5f); lineTo(21f, 5f); lineTo(21f, 21f); lineTo(3f, 21f); close()
+        moveTo(3f, 10f); lineTo(21f, 10f); moveTo(8f, 3f); lineTo(8f, 7f); moveTo(16f, 3f); lineTo(16f, 7f)
+        moveTo(8f, 14f); lineTo(10f, 14f); moveTo(14f, 14f); lineTo(16f, 14f)
+    }),
+    CLOSE(financeVector("Close") { moveTo(6f, 6f); lineTo(18f, 18f); moveTo(18f, 6f); lineTo(6f, 18f) }),
+    INFO(financeVector("Information") {
+        moveTo(12f, 3f); curveTo(24f, 3f, 24f, 21f, 12f, 21f); curveTo(0f, 21f, 0f, 3f, 12f, 3f); close()
+        moveTo(12f, 11f); lineTo(12f, 17f); moveTo(12f, 7f); lineTo(12f, 7.2f)
+    }),
+    PLANE(financeVector("Travel") {
+        moveTo(3f, 12f); lineTo(10f, 10f); lineTo(10f, 3f); lineTo(13f, 3f); lineTo(16f, 9f); lineTo(21f, 9f)
+        lineTo(21f, 12f); lineTo(16f, 14f); lineTo(13f, 21f); lineTo(10f, 21f); lineTo(10f, 15f); lineTo(3f, 15f); close()
+    }),
+    BOOK(financeVector("Education") {
+        moveTo(12f, 5f); lineTo(12f, 21f); moveTo(12f, 6f); curveTo(9f, 3f, 5f, 3f, 2f, 4f); lineTo(2f, 19f)
+        curveTo(6f, 18f, 9f, 18f, 12f, 21f); curveTo(15f, 18f, 18f, 18f, 22f, 19f); lineTo(22f, 4f); curveTo(18f, 3f, 15f, 3f, 12f, 6f)
+    }),
+    BULB(financeVector("Tip") {
+        moveTo(8f, 17f); lineTo(8f, 15f); curveTo(0f, 7f, 7f, 2f, 12f, 2f); curveTo(17f, 2f, 24f, 7f, 16f, 15f); lineTo(16f, 17f); close()
+        moveTo(9f, 21f); lineTo(15f, 21f); moveTo(12f, 17f); lineTo(12f, 11f)
+    }),
+    CAR(financeVector("Vehicle") {
+        moveTo(3f, 10f); lineTo(7f, 4f); lineTo(17f, 4f); lineTo(21f, 10f); lineTo(21f, 19f); lineTo(3f, 19f); close()
+        moveTo(3f, 10f); lineTo(21f, 10f); moveTo(6f, 14f); lineTo(8f, 14f); moveTo(16f, 14f); lineTo(18f, 14f)
+        moveTo(6f, 19f); lineTo(6f, 22f); moveTo(18f, 19f); lineTo(18f, 22f)
+    }),
     PIE(financeVector("Spending split") {
         moveTo(11f, 3f); curveTo(-1f, 3f, -1f, 22f, 12f, 22f)
         curveTo(18f, 22f, 22f, 18f, 22f, 12f); lineTo(11f, 12f); close()

@@ -44,13 +44,13 @@ sealed class ExchangeRateResult {
  * to manual exchange-rate entry (handled in the ViewModel / UI layer).
  */
 @Singleton
-class ExchangeRateService @Inject constructor() {
+class ExchangeRateService internal constructor(private val client: OkHttpClient) {
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    @Inject constructor() : this(OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
-        .build()
+        .build())
 
     private val gson = Gson()
 
@@ -111,7 +111,7 @@ class ExchangeRateService @Inject constructor() {
         }
         val cdnUrl = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@$date/v1/currencies/usd.json"
         val cdnResult = fetchFromJsDelivr(cdnUrl)
-        if (cdnResult is ExchangeRateResult.Success) {
+        if (cdnResult is ExchangeRateResult.Success && cdnResult.rateDate == date) {
             return remember(cdnResult)
         }
         cachedHistorical(date)?.let { return it }
@@ -130,28 +130,29 @@ class ExchangeRateService @Inject constructor() {
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return ExchangeRateResult.Failure("The exchange rate service is unavailable. Try again or enter a rate manually.")
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return ExchangeRateResult.Failure("The exchange rate service is unavailable. Try again or enter a rate manually.")
+                }
+
+                val body = response.body?.string()
+                    ?: return ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
+
+                val parsed = gson.fromJson(body, OpenErApiResponse::class.java)
+                if (parsed.result != "success" || parsed.base_code != "USD") {
+                    return ExchangeRateResult.Failure("Unexpected exchange-rate response.")
+                }
+                val lkr = parsed.rates["LKR"]
+                    ?: return ExchangeRateResult.Failure("This exchange rate is unavailable. Enter it manually.")
+
+                quote(
+                    BigDecimal.valueOf(lkr),
+                    runCatching {
+                        ZonedDateTime.parse(parsed.time_last_update_utc, DateTimeFormatter.RFC_1123_DATE_TIME)
+                            .toLocalDate().toString()
+                    }.getOrElse { "" }
+                )
             }
-
-            val body = response.body?.string()
-                ?: return ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
-
-            val parsed = gson.fromJson(body, OpenErApiResponse::class.java)
-            if (parsed.result != "success" || parsed.base_code != "USD") {
-                return ExchangeRateResult.Failure("Unexpected exchange-rate response.")
-            }
-            val lkr = parsed.rates["LKR"]
-                ?: return ExchangeRateResult.Failure("This exchange rate is unavailable. Enter it manually.")
-
-            ExchangeRateResult.Success(
-                rate = BigDecimal.valueOf(lkr),
-                rateDate = runCatching {
-                    ZonedDateTime.parse(parsed.time_last_update_utc, DateTimeFormatter.RFC_1123_DATE_TIME)
-                        .toLocalDate().toString()
-                }.getOrElse { "" }
-            )
         } catch (e: IOException) {
             ExchangeRateResult.Failure(
                 "Network error: Unable to reach exchange rate service. Check your internet connection."
@@ -169,26 +170,29 @@ class ExchangeRateService @Inject constructor() {
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return ExchangeRateResult.Failure("The exchange rate service is unavailable. Try again or enter a rate manually.")
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return ExchangeRateResult.Failure("The exchange rate service is unavailable. Try again or enter a rate manually.")
+                }
+
+                val body = response.body?.string()
+                    ?: return ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
+
+                val parsed = gson.fromJson(body, ExchangeRateResponse::class.java)
+                val usdMap = parsed.usd
+                val lkr = usdMap?.get("lkr")
+                    ?: return ExchangeRateResult.Failure("This exchange rate is unavailable. Enter it manually.")
+
+                quote(BigDecimal.valueOf(lkr), parsed.date)
             }
-
-            val body = response.body?.string()
-                ?: return ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
-
-            val parsed = gson.fromJson(body, ExchangeRateResponse::class.java)
-            val usdMap = parsed.usd
-            val lkr = usdMap?.get("lkr")
-                ?: return ExchangeRateResult.Failure("This exchange rate is unavailable. Enter it manually.")
-
-            ExchangeRateResult.Success(
-                rate = BigDecimal.valueOf(lkr),
-                rateDate = parsed.date
-            )
         } catch (e: Exception) {
             ExchangeRateResult.Failure("Unable to get an exchange rate. Try again or enter it manually.")
         }
     }
+
+    private fun quote(rate: BigDecimal, date: String): ExchangeRateResult =
+        if (rate > BigDecimal.ZERO && runCatching { LocalDate.parse(date) }.isSuccess)
+            ExchangeRateResult.Success(rate, date)
+        else ExchangeRateResult.Failure("The exchange-rate response has no valid positive dated quote. Enter a rate manually.")
 }
 

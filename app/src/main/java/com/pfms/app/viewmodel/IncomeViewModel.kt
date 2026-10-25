@@ -28,10 +28,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
-import java.math.RoundingMode
+import com.pfms.app.domain.usecase.IncomeEntryAmount
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -56,6 +59,7 @@ data class IncomeUiState(
     val rateFetchError: String? = null,
     val isManualRateMode: Boolean = false,
     val isCachedExchangeRate: Boolean = false,
+    val isSavedExchangeRate: Boolean = false,
 
     // Member 2: Realized income (excluding unpaid freelance, including crypto P&L).
     val totalRealizedIncomeMinor: Long = 0L,
@@ -140,6 +144,12 @@ class IncomeViewModel @Inject constructor(
 
     init {
         observeIncome()
+        viewModelScope.launch {
+            authRepository.currentUser.map { it?.uid }.distinctUntilChanged().drop(1).collect {
+                discardDraft()
+                clearExchangeRate()
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────
@@ -198,9 +208,8 @@ class IncomeViewModel @Inject constructor(
     // ═════════════════════════════════════════════════════
 
     /**
-     * Fetch the exchange rate for the given date. If the date is today
-     * or in the future, fetch the latest rate. Otherwise fetch the
-     * historical rate for backdated entries (SRS requirement).
+     * Fetch the latest quote for today or an exact-date historical quote.
+     * Future dates and unavailable quotes require manual entry.
      */
     fun fetchExchangeRate(receivedDate: String) {
         clearExchangeRate()
@@ -231,12 +240,12 @@ class IncomeViewModel @Inject constructor(
                     val entry = runCatching { LocalDate.parse(receivedDate) }.getOrNull()
                     val today = LocalDate.now(ZoneId.of("Asia/Colombo"))
                     // Never accept a historical response from a different date.
-                    if (result.rate <= BigDecimal.ZERO || (entry != null && entry < today && validDate != entry)) {
+                    if (result.rate <= BigDecimal.ZERO || validDate == null || (entry != null && entry < today && validDate != entry)) {
                         _uiState.value = _uiState.value.copy(
                             exchangeRate = null, exchangeRateDate = null,
                             isRateFetching = false, isManualRateMode = true,
                             isCachedExchangeRate = false,
-                            rateFetchError = "Exact historical rate unavailable. Enter a manual rate."
+                            rateFetchError = "A valid quote for this income date is unavailable. Enter a manual rate."
                         )
                     } else {
                         _uiState.value = _uiState.value.copy(
@@ -244,10 +253,10 @@ class IncomeViewModel @Inject constructor(
                             exchangeRateDate = result.rateDate,
                             isRateFetching = false,
                             rateFetchError = if (result.isCached)
-                                "Cached USD/LKR rate from ${result.rateDate}. Verify before saving; the saved conversion remains fixed."
+                                "Cached USD/LKR rate from ${result.rateDate}; it may not reflect the current rate. Verify before saving; the saved conversion remains fixed."
                             else null,
                             isManualRateMode = false,
-                            isCachedExchangeRate = result.isCached
+                            isCachedExchangeRate = result.isCached, isSavedExchangeRate = false
                         )
                     }
                 }
@@ -263,7 +272,9 @@ class IncomeViewModel @Inject constructor(
     }
 
     fun enableManualRate() {
-        _uiState.value = _uiState.value.copy(isManualRateMode = true)
+        rateJob?.cancel()
+        _uiState.value = _uiState.value.copy(isManualRateMode = true, isRateFetching = false,
+            isCachedExchangeRate = false, isSavedExchangeRate = false, rateFetchError = null)
     }
 
     /** A manual rate is associated with the income's selected date, never today's date. */
@@ -280,6 +291,7 @@ class IncomeViewModel @Inject constructor(
             exchangeRate = rate, exchangeRateDate = receivedDate,
             rateFetchError = null, isRateFetching = false, isManualRateMode = true,
             isCachedExchangeRate = false,
+            isSavedExchangeRate = false,
             errorMessage = null
         )
         return true
@@ -294,7 +306,7 @@ class IncomeViewModel @Inject constructor(
                 rateForEntryDate = income.receivedDate
                 _uiState.value = _uiState.value.copy(
                     exchangeRate = rate, exchangeRateDate = income.exchangeRateDate,
-                    isManualRateMode = false
+                    isManualRateMode = false, isSavedExchangeRate = true
                 )
             }
         }
@@ -306,7 +318,7 @@ class IncomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             exchangeRate = null, exchangeRateDate = null,
             isRateFetching = false, rateFetchError = null, isManualRateMode = false,
-            isCachedExchangeRate = false
+            isCachedExchangeRate = false, isSavedExchangeRate = false
         )
     }
 
@@ -327,7 +339,7 @@ class IncomeViewModel @Inject constructor(
         cryptoType: String? = null,
         cryptoAsset: String? = null
     ) {
-        if (_uiState.value.isSaving) return
+        if (_uiState.value.isSaving || _uiState.value.saveSuccessful) return
         _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, canRetry = false, saveSuccessful = false)
         viewModelScope.launch {
             val amountMinor = parseAmount(amount)
@@ -512,7 +524,7 @@ class IncomeViewModel @Inject constructor(
         cryptoType: String? = null,
         cryptoAsset: String? = null
     ) {
-        if (_uiState.value.isSaving) return
+        if (_uiState.value.isSaving || _uiState.value.saveSuccessful) return
         _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, canRetry = false, saveSuccessful = false)
         viewModelScope.launch {
             if (source == "Freelance" && paymentStatus !in listOf("Expected", "Received")) {
@@ -741,10 +753,13 @@ class IncomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(errorMessage = null, canRetry = false)
     }
 
-    fun clearSaveSuccess() {
-        _uiState.value = _uiState.value.copy(
-            saveSuccessful = false
-        )
+    /** Claims one pending save completion, even if several collectors saw the same true snapshot. */
+    fun consumeSaveSuccess(): Boolean {
+        while (true) {
+            val current = _uiState.value
+            if (!current.saveSuccessful) return false
+            if (_uiState.compareAndSet(current, current.copy(saveSuccessful = false))) return true
+        }
     }
 
     private fun showError(message: String) {
@@ -754,21 +769,7 @@ class IncomeViewModel @Inject constructor(
     }
 
     private fun parseAmount(value: String): Long? {
-        return try {
-            val amount = BigDecimal(value.trim())
-
-            if (amount <= BigDecimal.ZERO ||
-                amount.scale() > 2
-            ) {
-                return null
-            }
-
-            amount.multiply(BigDecimal(100))
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValueExact()
-        } catch (e: Exception) {
-            null
-        }
+        return IncomeEntryAmount.parseMinor(value)
     }
 
 }

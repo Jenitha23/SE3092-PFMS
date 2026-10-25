@@ -3,6 +3,7 @@ package com.pfms.app.data.error
 import com.pfms.app.domain.usecase.savings.InsufficientGoalSavingsException
 import com.pfms.app.domain.usecase.savings.InsufficientMonthlySurplusException
 import java.math.BigDecimal
+import java.util.Locale
 import android.database.sqlite.SQLiteFullException
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -25,9 +26,9 @@ object OperationErrors {
         return when {
             causes.any { it is InsufficientMonthlySurplusException } -> {
                 val failure = causes.filterIsInstance<InsufficientMonthlySurplusException>().first()
-                val available = BigDecimal.valueOf(failure.availableMinor, 2).toPlainString()
-                val requested = BigDecimal.valueOf(failure.requestedMinor, 2).toPlainString()
-                OperationError("Insufficient monthly surplus for ${failure.month}. Available contribution allowance: LKR $available; requested: LKR $requested. Based on recorded income and expenses, not verified bank funds.", false)
+                val available = String.format(Locale.US, "%,.2f", BigDecimal.valueOf(failure.availableMinor, 2))
+                val requested = String.format(Locale.US, "%,.2f", BigDecimal.valueOf(failure.requestedMinor, 2))
+                OperationError("Contribution exceeds the remaining recorded monthly surplus for ${failure.month}. Available: LKR $available; requested: LKR $requested. This limit uses recorded monthly cash flow, not your bank balance.", false)
             }
             causes.any { it is InsufficientGoalSavingsException } -> {
                 val failure = causes.filterIsInstance<InsufficientGoalSavingsException>().first()

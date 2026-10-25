@@ -73,6 +73,7 @@ class SavingsGoalViewModel @Inject constructor(
 
     private val reload = MutableStateFlow(0)
     private val successVersion = MutableStateFlow(0L)
+    private val failureVersion = MutableStateFlow(0L)
     private val canRetry = MutableStateFlow(false)
     private var failedAction: (() -> Unit)? = null
     private var createGoalId: String? = null
@@ -157,7 +158,22 @@ class SavingsGoalViewModel @Inject constructor(
         val problem = OperationErrors.present(error, ErrorAction.LOAD)
         failedAction = ::retryLoading
         emit(lastState.copy(isLoading = false, errorMessage = problem.message, canRetry = problem.canRetry))
-    } }.combine(successVersion) { state, version -> state.copy(successVersion = version) }
+    } }.combine(authRepository.currentUser) { state, user ->
+        // Do not retain the previous account's lastState while its Room stream is switching.
+        if (user == null || (state.activeGoal != null && state.activeGoal.userId != user.uid)) {
+            SavingsGoalUiState(isLoading = false, errorMessage = state.errorMessage,
+                canRetry = state.canRetry, operationInProgress = state.operationInProgress)
+        } else state
+    }.combine(savingsGoalRepository.observeRestoration()) { state, restoration ->
+        val problem = restoration.error?.let { OperationErrors.present(it, ErrorAction.LOAD) }
+        if (problem != null && state.errorMessage == null) failedAction = ::refreshRemoteData
+        state.copy(
+            isLoading = state.isLoading || (state.activeGoal == null && restoration.isRefreshing),
+            errorMessage = state.errorMessage ?: problem?.message,
+            canRetry = state.canRetry || (problem != null && problem.canRetry)
+        )
+    }.combine(successVersion) { state, version -> state.copy(successVersion = version) }
+        .combine(failureVersion) { state, version -> state.copy(failureVersion = version) }
         .combine(canRetry) { state, retry -> state.copy(canRetry = state.canRetry || retry) }
         .onEach { lastState = it }.stateIn(
         scope = viewModelScope,
@@ -166,6 +182,7 @@ class SavingsGoalViewModel @Inject constructor(
     )
 
     fun clearError() {
+        savingsGoalRepository.clearRestorationError()
         _errorMessage.value = null
         canRetry.value = false
         failedAction = null
@@ -202,6 +219,7 @@ class SavingsGoalViewModel @Inject constructor(
                 _errorMessage.value = problem.message
                 canRetry.value = problem.canRetry
                 failedAction = { perform(action, block) }
+                failureVersion.value++
             } finally {
                 _operationInProgress.value = false
             }
@@ -215,6 +233,10 @@ class SavingsGoalViewModel @Inject constructor(
         perform { uid -> savingsGoalRepository.createGoal(goal.copy(id = id, userId = goal.userId.ifBlank { uid })) }
     }
 
+    fun createGoal(name: String, targetAmountMinor: Long, targetDate: String, openingSavedMinor: Long) =
+        createGoal(SavingsGoal(name = name, targetAmountMinor = targetAmountMinor, targetDate = targetDate,
+            openingSavedAmountMinor = openingSavedMinor))
+
     fun updateGoal(goal: SavingsGoal) = perform { uid ->
         savingsGoalRepository.updateGoal(goal.copy(userId = goal.userId.ifBlank { uid }))
     }
@@ -225,7 +247,7 @@ class SavingsGoalViewModel @Inject constructor(
 
     fun addContribution(amountMinor: Long, note: String? = null, date: String? = null) {
         val goal = uiState.value.activeGoal
-        if (goal == null) { _errorMessage.value = "No active savings goal found"; return }
+        if (goal == null) { validationFailure("No active savings goal found"); return }
         addContribution(goal.id, amountMinor, note, date)
     }
 
@@ -234,7 +256,7 @@ class SavingsGoalViewModel @Inject constructor(
 
     fun addWithdrawal(amountMinor: Long, note: String? = null, date: String? = null) {
         val goal = uiState.value.activeGoal
-        if (goal == null) { _errorMessage.value = "No active savings goal found"; return }
+        if (goal == null) { validationFailure("No active savings goal found"); return }
         addWithdrawal(goal.id, amountMinor, note, date)
     }
 
@@ -244,11 +266,10 @@ class SavingsGoalViewModel @Inject constructor(
     private fun addTransaction(goalId: String, amount: Long, note: String?, date: String?, type: GoalTransactionType) {
         if (_operationInProgress.value) return
         if (amount <= 0L || (date != null && runCatching { LocalDate.parse(date) }.isFailure)) {
-            canRetry.value = false
-            _errorMessage.value = if (amount <= 0L) {
+            validationFailure(if (amount <= 0L) {
                 if (type == GoalTransactionType.CONTRIBUTION) "Contribution amount must be greater than zero"
                 else "Withdrawal amount must be greater than zero"
-            } else "Enter a valid transaction date."
+            } else "Enter a valid transaction date.")
             return
         }
         val id = transactionId ?: UUID.randomUUID().toString().also { transactionId = it }
@@ -261,8 +282,7 @@ class SavingsGoalViewModel @Inject constructor(
 
     fun updateTransaction(transaction: GoalTransaction) {
         if (transaction.amountMinor <= 0L) {
-            _errorMessage.value = "Transaction amount must be greater than zero"
-            canRetry.value = false
+            validationFailure("Transaction amount must be greater than zero")
             return
         }
         perform { uid -> savingsGoalRepository.updateTransaction(transaction.copy(userId = transaction.userId.ifBlank { uid })) }
@@ -270,6 +290,13 @@ class SavingsGoalViewModel @Inject constructor(
 
     fun deleteTransaction(transactionId: String) = perform(ErrorAction.DELETE) {
         savingsGoalRepository.deleteTransaction(transactionId)
+    }
+
+    private fun validationFailure(message: String) {
+        _errorMessage.value = message
+        canRetry.value = false
+        failedAction = null
+        failureVersion.value++
     }
 
     fun refreshRemoteData() = perform(ErrorAction.LOAD) { savingsGoalRepository.refreshRemoteSavingsData().map { Unit } }

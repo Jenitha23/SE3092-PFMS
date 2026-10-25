@@ -81,7 +81,7 @@ class ExpenseScreenIntegrationTest {
         compose.onNodeWithText("Description / Note (optional)").performScrollTo().performTextInput("Coffee with friends")
         closeKeyboard()
         compose.onNodeWithText("Amount (LKR)").performScrollTo()
-        compose.onNodeWithText("Save Expense").performScrollTo().performClick()
+        compose.onNodeWithText("Save Expense").performClick()
         compose.runOnIdle {
             assertEquals("2500", saved?.amount)
             assertEquals("food", saved?.categoryId)
@@ -172,7 +172,7 @@ class ExpenseScreenIntegrationTest {
         val vm = AdvancedExpenseViewModel(repo)
         setScreen { MaterialTheme { RecurringExpensesScreen(vm, {}, subscriptionsOnly = true) } }
         compose.onNodeWithText("Resume").performScrollTo().performClick()
-        compose.onNodeWithText("LKR 2,500.00").assertExists()
+        compose.onNodeWithTag("subscription_monthly_total").assertTextEquals("LKR 2,500.00")
         compose.runOnIdle {
             assertTrue(repo.templateRows.value.single().active)
             assertEquals(SubscriptionFlag.NONE, repo.templateRows.value.single().flag)
@@ -186,7 +186,7 @@ class ExpenseScreenIntegrationTest {
         compose.onNodeWithText("+ New").performClick()
         compose.onNodeWithText("Template Name / Merchant").performTextInput("Home Wifi")
         compose.onNodeWithText("Amount in LKR (e.g. 1500.00)").performTextInput("1500.00")
-        compose.onNodeWithText("Save Template").performScrollTo().performClick()
+        compose.onNodeWithText("Save Template").assertIsDisplayed().performClick()
         compose.onNodeWithText("Home Wifi").assertExists()
         compose.onNodeWithText("Save Template").assertExists()
         compose.runOnIdle { assertTrue(repo.templateRows.value.isEmpty()) }

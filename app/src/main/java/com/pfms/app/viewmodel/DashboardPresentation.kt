@@ -109,7 +109,7 @@ object DashboardPresentationMapper {
             committedAmount = money(summary.split.committedMinor),
             discretionary = "${percent(summary.split.discretionaryPercent)} flexible",
             ledgerCount = (summary.incomeCount + summary.expenseCount).toString(),
-            transactions = transactions.map(::ledgerRow), hasData = summary.hasData
+            transactions = transactions.take(4).map(::ledgerRow), hasData = summary.hasData
         )
     }
 
@@ -123,7 +123,9 @@ object DashboardPresentationMapper {
             row.type == TransactionType.INCOME -> "Received"
             else -> row.classification?.displayLabel() ?: "Expense"
         }
-        return DashboardLedgerRow(row, row.subtitle.ifBlank { row.title }, "${row.title} · $date",
+        val title = if (row.type == TransactionType.EXPENSE && row.subtitle == row.paymentMethod?.displayLabel()) row.title
+            else row.subtitle.substringBefore(" • ").substringBefore(" · ").ifBlank { row.title }
+        return DashboardLedgerRow(row, title, "${row.title} · $date",
             (if (row.isPending) "" else if (positive) "+" else "−") + money(row.amountMinor), badge, positive, row.isPending)
     }
 }

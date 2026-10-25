@@ -1,227 +1,135 @@
 package com.pfms.app.ui.screen.history
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pfms.app.domain.model.ExpenseClassification
-import com.pfms.app.domain.model.ExpensePaymentMethod
-import com.pfms.app.domain.model.dashboard.HistoryFilter
-import com.pfms.app.domain.model.dashboard.Transaction
-import com.pfms.app.domain.model.dashboard.TransactionTypeFilter
-import com.pfms.app.domain.model.dashboard.displayLabel
-import com.pfms.app.ui.component.EmptyState
-import com.pfms.app.ui.component.ErrorBanner
-import com.pfms.app.ui.component.TransactionRow
-import com.pfms.app.ui.screen.income.formatAnalyticsLkrAmount
-import com.pfms.app.ui.theme.EmeraldPrimary
-import com.pfms.app.viewmodel.TransactionHistoryUiState
-import com.pfms.app.viewmodel.TransactionHistoryViewModel
-import java.time.Instant
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pfms.app.domain.model.*
+import com.pfms.app.domain.model.dashboard.*
+import com.pfms.app.ui.component.*
+import com.pfms.app.ui.screen.expense.ExpenseIcon
+import com.pfms.app.ui.screen.expense.ExpenseSymbol
+import com.pfms.app.ui.theme.*
+import com.pfms.app.viewmodel.*
 import java.time.LocalDate
-import java.time.ZoneOffset
 
-/**
- * Transaction history (FR-33): newest first, loaded a page at a time as the user scrolls, with
- * filters for date range, type, income source, expense category, payment method and classification.
- * Shows how many transactions match and their totals.
- */
 @Composable
-fun TransactionHistoryScreen(
-    onBack: () -> Unit,
-    onTransactionClick: (Transaction) -> Unit = {},
-    viewModel: TransactionHistoryViewModel = hiltViewModel(),
-    onAddIncome: () -> Unit = {},
-    onAddExpense: () -> Unit = {}
-) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    TransactionHistoryContent(
-        uiState = uiState,
-        onBack = onBack,
-        onTransactionClick = onTransactionClick,
-        onLoadMore = viewModel::loadMore,
-        onRetry = viewModel::retry,
-        onSetType = viewModel::setType,
-        onSetDateRange = viewModel::setDateRange,
-        onSetIncomeSource = viewModel::setIncomeSource,
-        onSetExpenseCategory = viewModel::setExpenseCategory,
-        onSetPaymentMethod = viewModel::setPaymentMethod,
-        onSetClassification = viewModel::setClassification,
-        onClearFilters = viewModel::clearFilters,
-        onAddIncome = onAddIncome,
-        onAddExpense = onAddExpense
-    )
+fun TransactionHistoryScreen(onBack: () -> Unit, onTransactionClick: (Transaction) -> Unit = {},
+    viewModel: TransactionHistoryViewModel = hiltViewModel(), onAddIncome: () -> Unit = {}, onAddExpense: () -> Unit = {}) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    TransactionHistoryContent(state, onBack, onTransactionClick, viewModel::loadMore, viewModel::retry,
+        viewModel::setType, viewModel::setDateRange, viewModel::setIncomeSource, viewModel::setExpenseCategory,
+        viewModel::setPaymentMethod, viewModel::setClassification, viewModel::clearFilters, onAddIncome, onAddExpense)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TransactionHistoryContent(
-    uiState: TransactionHistoryUiState,
-    onBack: () -> Unit,
-    onTransactionClick: (Transaction) -> Unit,
-    onLoadMore: () -> Unit,
-    onRetry: () -> Unit,
-    onSetType: (TransactionTypeFilter) -> Unit,
-    onSetDateRange: (LocalDate?, LocalDate?) -> Unit,
-    onSetIncomeSource: (String?) -> Unit,
-    onSetExpenseCategory: (String?) -> Unit,
-    onSetPaymentMethod: (ExpensePaymentMethod?) -> Unit,
-    onSetClassification: (ExpenseClassification?) -> Unit,
-    onClearFilters: () -> Unit,
-    onAddIncome: () -> Unit = {},
-    onAddExpense: () -> Unit = {}
-) {
-    var filtersOpen by rememberSaveable { mutableStateOf(false) }
-
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Transaction History",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                navigationIcon = {
-                    TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Back", fontWeight = FontWeight.Bold, color = EmeraldPrimary, fontSize = 15.sp)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-        }
-    ) { padding ->
-        if (uiState.isLoading) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = EmeraldPrimary)
-            }
-            return@Scaffold
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (uiState.errorMessage != null) {
+fun TransactionHistoryContent(uiState: TransactionHistoryUiState, onBack: () -> Unit, onTransactionClick: (Transaction) -> Unit,
+    onLoadMore: () -> Unit, onRetry: () -> Unit, onSetType: (TransactionTypeFilter) -> Unit,
+    onSetDateRange: (LocalDate?, LocalDate?) -> Unit, onSetIncomeSource: (String?) -> Unit, onSetExpenseCategory: (String?) -> Unit,
+    onSetPaymentMethod: (ExpensePaymentMethod?) -> Unit, onSetClassification: (ExpenseClassification?) -> Unit,
+    onClearFilters: () -> Unit, onAddIncome: () -> Unit = {}, onAddExpense: () -> Unit = {}) = FinanceTheme {
+    val controller: HistoryScreenViewModel = viewModel()
+    LaunchedEffect(uiState) { controller.sync(uiState) }
+    val state by controller.state.collectAsStateWithLifecycle()
+    val display = state.display
+    val colors = MaterialTheme.colorScheme
+    Scaffold(containerColor = colors.background, topBar = {
+        TopAppBar(title = { Text("Transaction History", style = if (LocalDensity.current.fontScale > 1.15f) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge) },
+            navigationIcon = { IconButton(onClick = onBack) { FinanceIcon(FinanceSymbol.BACK, description = "Back") } },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background))
+    }) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+            if (uiState.isLoading || display == null) CircularProgressIndicator(Modifier.padding(24.dp))
+            else LazyColumn(Modifier.widthIn(max = 600.dp).fillMaxSize().testTag("history_sections"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                uiState.errorMessage?.let { item { ErrorBanner(it, onRetry = if (uiState.canRetry) onRetry else null) } }
+                item { HistorySummaryPanel(display) }
                 item {
-                    Column {
-                        ErrorBanner(message = uiState.errorMessage)
-                        if (uiState.canRetry) TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text("Try again", color = EmeraldPrimary, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, itemVerticalAlignment = Alignment.CenterVertically) {
+                        Text("Newest first", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                        TextButton(onClick = { controller.filters(true) }) {
+                            ExpenseIcon(ExpenseSymbol.FILTER, Modifier.size(17.dp), colors.primary); Spacer(Modifier.width(6.dp))
+                            Text("Filters" + if (uiState.filter.activeCount > 0) " (${uiState.filter.activeCount})" else "")
                         }
                     }
+                }
+                item { FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TransactionTypeFilter.entries.forEach { type -> FilterChip(uiState.filter.type == type, { onSetType(type) },
+                        label = { Text(when(type) { TransactionTypeFilter.ALL -> "All"; TransactionTypeFilter.INCOME -> "Income"; else -> "Expenses" }) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.primary, selectedLabelColor = colors.onPrimary)) }
+                    if (uiState.filter.isActive) TextButton(onClick = onClearFilters) { Text("Clear all") }
+                } }
+                if (display.rows.isEmpty()) item { FinancePanel {
+                    Text(if (uiState.hasAnyTransactions) "No transactions match these filters" else "No transactions yet", style = MaterialTheme.typography.titleMedium)
+                    Text(if (uiState.hasAnyTransactions) "Try a wider date range or clear a filter." else "Your income and expenses will appear here, newest first.", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                    if (uiState.hasAnyTransactions) TextButton(onClick = onClearFilters) { Text("Clear filters") }
+                    else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onAddIncome) { Text("Add Income") }; OutlinedButton(onClick = onAddExpense) { Text("Add Expense") }
+                    }
+                } }
+                items(display.rows, key = { "${it.transaction.type}-${it.transaction.id}" }) { row -> FinanceTransactionCard(row) { onTransactionClick(row.transaction) } }
+                if (uiState.canLoadMore) item("more") {
+                    LaunchedEffect(uiState.visible.size) { onLoadMore() }
+                    Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp)) }
                 }
             }
-
-            item {
-                FilterPanel(
-                    filter = uiState.filter,
-                    open = filtersOpen,
-                    onToggle = { filtersOpen = !filtersOpen },
-                    incomeSources = uiState.incomeSources,
-                    expenseCategories = uiState.expenseCategories,
-                    onSetType = onSetType,
-                    onSetDateRange = onSetDateRange,
-                    onSetIncomeSource = onSetIncomeSource,
-                    onSetExpenseCategory = onSetExpenseCategory,
-                    onSetPaymentMethod = onSetPaymentMethod,
-                    onSetClassification = onSetClassification,
-                    onClearFilters = onClearFilters
-                )
+        }
+    }
+    if (state.filtersOpen) AlertDialog(onDismissRequest = { controller.filters(false) }, title = { Text("Filter transactions", style = MaterialTheme.typography.titleMedium) },
+        text = { Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Date range", style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedButton(onClick = { controller.picker("start", uiState.filter.startDate) }) { Text("From: ${uiState.filter.startDate ?: "Any"}") }
+                OutlinedButton(onClick = { controller.picker("end", uiState.filter.endDate) }) { Text("To: ${uiState.filter.endDate ?: "Any"}") }
+                if (uiState.filter.startDate != null || uiState.filter.endDate != null) TextButton(onClick = { onSetDateRange(null, null) }) { Text("Clear dates") }
             }
+            if (uiState.filter.type != TransactionTypeFilter.EXPENSE) HistoryFilterChoices("Income source", uiState.incomeSources, uiState.filter.incomeSource, onSetIncomeSource)
+            if (uiState.filter.type != TransactionTypeFilter.INCOME) {
+                HistoryFilterChoices("Expense category", uiState.expenseCategories, uiState.filter.expenseCategory, onSetExpenseCategory)
+                Text("Payment method", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ExpensePaymentMethod.entries.forEach { value ->
+                    FilterChip(uiState.filter.paymentMethod == value, { onSetPaymentMethod(if (uiState.filter.paymentMethod == value) null else value) }, label = { Text(value.displayLabel()) })
+                } }
+                Text("Classification", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ExpenseClassification.entries.forEach { value ->
+                    FilterChip(uiState.filter.classification == value, { onSetClassification(if (uiState.filter.classification == value) null else value) }, label = { Text(value.displayLabel()) })
+                } }
+            }
+        } }, confirmButton = { TextButton(onClick = { controller.filters(false) }) { Text("Done") } },
+        dismissButton = { TextButton(onClick = onClearFilters) { Text("Clear all filters") } })
+    if (state.picker != null) {
+        val picker = rememberDatePickerState(initialSelectedDateMillis = state.dateMillis)
+        DatePickerDialog(onDismissRequest = { controller.picker(null) }, confirmButton = {
+            TextButton(onClick = { controller.select(picker.selectedDateMillis, uiState.filter.startDate, uiState.filter.endDate, onSetDateRange) }, enabled = picker.selectedDateMillis != null) { Text("OK") }
+        }, dismissButton = { TextButton(onClick = { controller.picker(null) }) { Text("Cancel") } }) { DatePicker(picker) }
+    }
+}
 
-            item { SummaryCard(uiState) }
-
-            if (uiState.visible.isEmpty()) {
-                item {
-                    if (!uiState.hasAnyTransactions) {
-                        EmptyState(
-                            title = "No transactions yet",
-                            message = "Income and expenses you record will be listed here, newest first.",
-                            actionLabel = "Add Income",
-                            onAction = onAddIncome
-                        )
-                        TextButton(onClick = onAddExpense, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text("Add Expense")
-                        }
-                    } else {
-                        EmptyState(
-                            title = "No transactions match these filters",
-                            message = "Try a wider date range or clear a filter.",
-                            actionLabel = "Clear filters",
-                            onAction = onClearFilters
-                        )
-                    }
-                }
-            } else {
-                items(uiState.visible, key = { "${it.type}-${it.id}" }) { tx ->
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        TransactionRow(
-                            transaction = tx,
-                            modifier = Modifier.padding(horizontal = 14.dp),
-                            onClick = { onTransactionClick(tx) }
-                        )
-                    }
-                }
-                if (uiState.canLoadMore) {
-                    item(key = "load-more") {
-                        // Composed only when scrolled to the end, which triggers the next page.
-                        LaunchedEffect(uiState.visible.size) { onLoadMore() }
-                        Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = EmeraldPrimary, modifier = Modifier.size(24.dp))
-                        }
-                    }
+@Composable
+private fun HistorySummaryPanel(display: HistoryDisplay) {
+    Surface(shape = RoundedCornerShape(20.dp), color = VaultGreen) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(display.count, style = MaterialTheme.typography.titleSmall, color = VaultMint)
+            Text("Net recorded cashflow", style = MaterialTheme.typography.bodySmall, color = VaultMuted)
+            FinanceValue("Net ${display.net}", Modifier.testTag("history_net"), large = true, color = if (display.negative) CashflowRed else androidx.compose.ui.graphics.Color.White)
+            HorizontalDivider(color = VaultMuted.copy(alpha = .2f))
+            listOf("Income" to display.income, "Expenses" to display.expense).forEach { (label, value) ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = VaultMuted)
+                    FinanceValue(value, Modifier.weight(2f).testTag("history_${label.lowercase()}"), align = TextAlign.End, color = androidx.compose.ui.graphics.Color.White)
                 }
             }
         }
@@ -229,215 +137,9 @@ fun TransactionHistoryContent(
 }
 
 @Composable
-private fun SummaryCard(uiState: TransactionHistoryUiState) {
-    val s = uiState.summary
-    val noun = if (s.count == 1) "transaction" else "transactions"
-    val spoken = "${s.count} matching $noun. Income ${formatAnalyticsLkrAmount(s.incomeMinor)}, " +
-            "expenses ${formatAnalyticsLkrAmount(s.expenseMinor)}, net ${formatAnalyticsLkrAmount(s.netMinor)}"
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) { contentDescription = spoken },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                "${s.count} $noun" + if (uiState.filter.isActive) " match" else "",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Income ${formatAnalyticsLkrAmount(s.incomeMinor)}  \u2022  Expenses ${formatAnalyticsLkrAmount(s.expenseMinor)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "Net ${formatAnalyticsLkrAmount(s.netMinor)}",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun FilterPanel(
-    filter: HistoryFilter,
-    open: Boolean,
-    onToggle: () -> Unit,
-    incomeSources: List<String>,
-    expenseCategories: List<String>,
-    onSetType: (TransactionTypeFilter) -> Unit,
-    onSetDateRange: (LocalDate?, LocalDate?) -> Unit,
-    onSetIncomeSource: (String?) -> Unit,
-    onSetExpenseCategory: (String?) -> Unit,
-    onSetPaymentMethod: (ExpensePaymentMethod?) -> Unit,
-    onSetClassification: (ExpenseClassification?) -> Unit,
-    onClearFilters: () -> Unit
-) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onToggle, modifier = Modifier.heightIn(min = 48.dp)) {
-                    val count = filter.activeCount
-                    Text(
-                        (if (open) "Hide filters" else "Filters") + if (count > 0) " ($count)" else "",
-                        color = EmeraldPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                if (filter.isActive) {
-                    TextButton(onClick = onClearFilters, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Clear all", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = open) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FilterLabel("Type")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TransactionTypeFilter.values().forEach { t ->
-                            FilterChip(
-                                selected = filter.type == t,
-                                onClick = { onSetType(t) },
-                                label = {
-                                    Text(
-                                        when (t) {
-                                            TransactionTypeFilter.ALL -> "All"
-                                            TransactionTypeFilter.INCOME -> "Income"
-                                            TransactionTypeFilter.EXPENSE -> "Expenses"
-                                        }
-                                    )
-                                }
-                            )
-                        }
-                    }
-
-                    FilterLabel("Date range")
-                    DateRangeRow(filter.startDate, filter.endDate, onSetDateRange)
-
-                    if (filter.type != TransactionTypeFilter.EXPENSE) {
-                        FilterLabel("Income source")
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            incomeSources.forEach { source ->
-                                FilterChip(
-                                    selected = filter.incomeSource == source,
-                                    onClick = { onSetIncomeSource(if (filter.incomeSource == source) null else source) },
-                                    label = { Text(source) }
-                                )
-                            }
-                        }
-                    }
-
-                    if (filter.type != TransactionTypeFilter.INCOME) {
-                        if (expenseCategories.isNotEmpty()) {
-                            FilterLabel("Expense category")
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                expenseCategories.forEach { cat ->
-                                    FilterChip(
-                                        selected = filter.expenseCategory == cat,
-                                        onClick = { onSetExpenseCategory(if (filter.expenseCategory == cat) null else cat) },
-                                        label = { Text(cat) }
-                                    )
-                                }
-                            }
-                        }
-
-                        FilterLabel("Payment method")
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ExpensePaymentMethod.values().forEach { method ->
-                                FilterChip(
-                                    selected = filter.paymentMethod == method,
-                                    onClick = { onSetPaymentMethod(if (filter.paymentMethod == method) null else method) },
-                                    label = { Text(method.displayLabel()) }
-                                )
-                            }
-                        }
-
-                        FilterLabel("Classification")
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ExpenseClassification.values().forEach { c ->
-                                FilterChip(
-                                    selected = filter.classification == c,
-                                    onClick = { onSetClassification(if (filter.classification == c) null else c) },
-                                    label = { Text(c.displayLabel()) }
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FilterLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-}
-
-private enum class PickerTarget { START, END }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DateRangeRow(
-    start: LocalDate?,
-    end: LocalDate?,
-    onSetDateRange: (LocalDate?, LocalDate?) -> Unit
-) {
-    var picker by remember { mutableStateOf<PickerTarget?>(null) }
-
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(
-            onClick = { picker = PickerTarget.START },
-            modifier = Modifier.heightIn(min = 48.dp)
-        ) { Text("From: ${start?.toString() ?: "Any"}") }
-        OutlinedButton(
-            onClick = { picker = PickerTarget.END },
-            modifier = Modifier.heightIn(min = 48.dp)
-        ) { Text("To: ${end?.toString() ?: "Any"}") }
-        if (start != null || end != null) {
-            TextButton(onClick = { onSetDateRange(null, null) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Clear")
-            }
-        }
-    }
-
-    val target = picker
-    if (target != null) {
-        val initial = (if (target == PickerTarget.START) start else end)
-            ?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
-        val state = rememberDatePickerState(initialSelectedDateMillis = initial)
-        DatePickerDialog(
-            onDismissRequest = { picker = null },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val picked = state.selectedDateMillis?.let {
-                            Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
-                        }
-                        if (target == PickerTarget.START) onSetDateRange(picked, end)
-                        else onSetDateRange(start, picked)
-                        picker = null
-                    }
-                ) { Text("OK") }
-            },
-            dismissButton = { TextButton(onClick = { picker = null }) { Text("Cancel") } }
-        ) { DatePicker(state = state) }
-    }
+private fun HistoryFilterChoices(title: String, values: List<String>, selected: String?, change: (String?) -> Unit) {
+    Text(title, style = MaterialTheme.typography.titleSmall)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { values.forEach { value ->
+        FilterChip(selected == value, { change(if (selected == value) null else value) }, label = { Text(value) })
+    } }
 }

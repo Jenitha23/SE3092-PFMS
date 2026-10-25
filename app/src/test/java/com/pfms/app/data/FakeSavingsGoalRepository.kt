@@ -10,6 +10,10 @@ import kotlinx.coroutines.flow.map
 
 class FakeSavingsGoalRepository : SavingsGoalRepository {
 
+    val restoration = MutableStateFlow(com.pfms.app.domain.model.SavingsRestorationState())
+    override fun observeRestoration() = restoration
+    override fun clearRestorationError() { restoration.value = com.pfms.app.domain.model.SavingsRestorationState() }
+
     val goals = MutableStateFlow<List<SavingsGoal>>(emptyList())
     val transactions = MutableStateFlow<List<GoalTransaction>>(emptyList())
 

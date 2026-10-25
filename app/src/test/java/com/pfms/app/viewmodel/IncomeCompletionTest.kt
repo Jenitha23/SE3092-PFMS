@@ -56,6 +56,22 @@ class IncomeCompletionTest {
         assertEquals("305.42", saved.firstValue.exchangeRate)
     }
 
+    @Test fun salaryTemplateSavesSelectedPaydayAndReminderWithoutLosingConfirmation() = runTest(dispatcher) {
+        val repo = mock<SalaryTemplateRepository>()
+        val original = SalaryTemplate("salary", "a", 25000000, paymentDay = 25, lastConfirmedMonth = "2026-09")
+        whenever(repo.observeSalaryTemplate()).thenReturn(flowOf(original))
+        val vm = SalaryViewModel(repo, SalaryReminderUseCase())
+        runCurrent()
+        vm.saveSalaryTemplate("300000.50", 31, false)
+        advanceUntilIdle()
+        val captured = argumentCaptor<SalaryTemplate>()
+        verify(repo).saveSalaryTemplate(captured.capture())
+        assertEquals(31, captured.firstValue.paymentDay)
+        assertFalse(captured.firstValue.isEnabled)
+        assertEquals("2026-09", captured.firstValue.lastConfirmedMonth)
+        assertEquals(30000050L, captured.firstValue.amountMinor)
+    }
+
     @Test fun changedDateRequiresMatchingRate() = runTest(dispatcher) {
         val repo = mock<IncomeRepository>()
         whenever(repo.getIncomeById("usd")).thenReturn(original)

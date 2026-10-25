@@ -35,5 +35,7 @@ data class SavingsGoalUiState(
     val errorMessage: String? = null,
     val operationInProgress: Boolean = false,
     val canRetry: Boolean = false,
-    val successVersion: Long = 0L
+    val successVersion: Long = 0L,
+    /** Makes repeated identical rejections observable even when loading emissions are conflated. */
+    val failureVersion: Long = 0L
 )

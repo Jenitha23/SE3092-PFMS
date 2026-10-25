@@ -36,7 +36,9 @@ fun ExpenseQuickAddContent(
         onDismiss = onDismiss,
         onSave = { amount, categoryId, categoryName, default ->
             viewModel.quickAddExpense(amount, categoryId, categoryName, default)
-        }
+        },
+        onSaveDetails = viewModel::addExpense,
+        monthlyExpenses = uiState.expenses
     )
 
 }

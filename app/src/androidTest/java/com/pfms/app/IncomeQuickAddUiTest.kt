@@ -24,7 +24,7 @@ class IncomeQuickAddUiTest {
         } }
         compose.onNodeWithText("Amount (LKR)").assertIsFocused().performTextInput("2500")
         compose.onNodeWithText("Food").performScrollTo().performClick()
-        compose.onNodeWithText("Save Expense").performScrollTo().performClick()
+        compose.onNodeWithText("Save Expense").performClick()
         compose.runOnIdle { assertEquals("2500:food", saved) }
     }
     @Test fun onboardingCollectsEstimatedMonthlyIncome() {

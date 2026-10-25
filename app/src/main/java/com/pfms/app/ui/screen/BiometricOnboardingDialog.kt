@@ -10,7 +10,7 @@ import androidx.compose.runtime.Composable
 fun BiometricOnboardingDialog(
     onEnable: () -> Unit,
     onNotNow: () -> Unit
-) {
+) = com.pfms.app.ui.theme.FinanceTheme {
     AlertDialog(
         onDismissRequest = onNotNow,
         title = { Text("Unlock PFMS faster?") },

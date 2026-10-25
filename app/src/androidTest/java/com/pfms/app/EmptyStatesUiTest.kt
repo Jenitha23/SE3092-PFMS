@@ -38,7 +38,7 @@ class EmptyStatesUiTest {
         } }
         compose.onNodeWithText("Add Expense").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, added) }
-        compose.onNodeWithText("LKR 0.00").assertExists()
+        compose.onAllNodesWithText("LKR 0.00").onFirst().assertExists()
         compose.onNodeWithContentDescription("No spending recorded for this month").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Committed vs Discretionary").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("0%", useUnmergedTree = true).assertCountEquals(2)
@@ -56,9 +56,10 @@ class EmptyStatesUiTest {
         compose.onNodeWithText("No income this month").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Add Income").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, added) }
-        compose.onNodeWithText("Income Predictability Split").performScrollTo().assertIsDisplayed()
-        compose.onAllNodesWithText("0.0% of total").assertCountEquals(2)
-        compose.onNodeWithText("No income trend yet. LKR 0.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("insights_sections").performScrollToNode(hasText("Income Predictability Split"))
+        compose.onAllNodesWithText("0.0% of gross inflow").assertCountEquals(2)
+        compose.onNodeWithTag("insights_sections").performScrollToNode(hasText("No income trend yet. LKR 0.00"))
+        compose.onNodeWithText("No income trend yet. LKR 0.00").assertIsDisplayed()
     }
 
     @Test fun emptyIncomeListOffersAddIncome() {
@@ -123,7 +124,10 @@ class EmptyStatesUiTest {
             )
         } }
         compose.onNodeWithText("No Active Savings Goal").assertExists()
-        compose.onNodeWithText("Saved LKR 0.00 • Progress 0%").assertExists()
+        compose.onNodeWithText("Saved so far").assertExists()
+        compose.onNodeWithText("LKR 0.00").assertExists()
+        compose.onNodeWithText("Progress").assertExists()
+        compose.onNodeWithText("0%").assertExists()
         compose.onNodeWithText("Create Savings Goal").performScrollTo().performClick()
         compose.onNodeWithText("Goal Name").assertIsDisplayed()
     }

@@ -30,6 +30,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -210,13 +211,17 @@ class OfflineFirstSavingsGoalRepositoryTest {
             goalId = "g-1",
             userId = "user-123",
             amountMinor = 10_000L,
-            transactionType = GoalTransactionType.CONTRIBUTION
+            transactionType = GoalTransactionType.CONTRIBUTION,
+            date = "2026-10-25"
         )
         val result = repository.addTransaction(tx)
 
         assertTrue(result.isSuccess)
         val captor = argumentCaptor<GoalTransactionEntity>()
-        verify(goalTransactionDao).upsertTransaction(captor.capture())
+        val order = inOrder(goalTransactionDao, remoteDataSource)
+        order.verify(goalTransactionDao).insertTransactionGuarded(captor.capture())
+        order.verify(remoteDataSource).upsertTransaction(eq(testUser.uid), any())
+        verify(goalTransactionDao, never()).upsertTransaction(any())
         assertEquals(SyncStatus.PENDING_INSERT, captor.firstValue.syncStatus)
         assertEquals("CONTRIBUTION", captor.firstValue.transactionType)
     }
@@ -224,7 +229,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
     // 11. add withdrawal persists locally first
     @Test
     fun addTransaction_withdrawalPersistsLocallyFirst() = runTest {
-        val goalEntity = SavingsGoalEntity(id = "g-1", userId = "user-123", name = "Goal")
+        val goalEntity = SavingsGoalEntity(id = "g-1", userId = "user-123", name = "Goal", openingSavedAmountMinor = 10_000L)
         whenever(savingsGoalDao.getGoalById("user-123", "g-1")).thenReturn(goalEntity)
         whenever(remoteDataSource.upsertTransaction(any(), any())).thenReturn(Result.failure(RuntimeException("Offline")))
 
@@ -233,13 +238,17 @@ class OfflineFirstSavingsGoalRepositoryTest {
             goalId = "g-1",
             userId = "user-123",
             amountMinor = 5_000L,
-            transactionType = GoalTransactionType.WITHDRAWAL
+            transactionType = GoalTransactionType.WITHDRAWAL,
+            date = "2026-10-25"
         )
         val result = repository.addTransaction(tx)
 
         assertTrue(result.isSuccess)
         val captor = argumentCaptor<GoalTransactionEntity>()
-        verify(goalTransactionDao).upsertTransaction(captor.capture())
+        val order = inOrder(goalTransactionDao, remoteDataSource)
+        order.verify(goalTransactionDao).insertTransactionGuarded(captor.capture())
+        order.verify(remoteDataSource).upsertTransaction(eq(testUser.uid), any())
+        verify(goalTransactionDao, never()).upsertTransaction(any())
         assertEquals("WITHDRAWAL", captor.firstValue.transactionType)
     }
 
@@ -283,7 +292,42 @@ class OfflineFirstSavingsGoalRepositoryTest {
         val result = repository.deleteTransaction("tx-1")
 
         assertTrue(result.isSuccess)
-        verify(goalTransactionDao).markTransactionDeleted(eq("user-123"), eq("tx-1"), eq(SyncStatus.PENDING_DELETE), any())
+        val order = inOrder(goalTransactionDao, remoteDataSource)
+        order.verify(goalTransactionDao).deleteTransactionGuarded(eq("user-123"), eq("tx-1"), any())
+        order.verify(remoteDataSource).deleteTransaction("user-123", "tx-1")
+        verify(goalTransactionDao, never()).markTransactionDeleted(any(), any(), any(), any())
+        verify(goalTransactionDao, never()).completeSync(any())
+    }
+
+    @Test
+    fun addTransaction_rejectedSurplusAndWithdrawalGuardsNeverWriteRemotely() = runTest {
+        whenever(savingsGoalDao.getGoalById(testUser.uid, "g-1"))
+            .thenReturn(SavingsGoalEntity(id = "g-1", userId = testUser.uid, name = "Goal"))
+        val surplus = com.pfms.app.domain.usecase.savings.InsufficientMonthlySurplusException(10_000L, 15_000L, "2026-10")
+        val savings = com.pfms.app.domain.usecase.savings.InsufficientGoalSavingsException(10_000L, 15_000L)
+        whenever(goalTransactionDao.insertTransactionGuarded(any())).thenThrow(surplus, savings)
+        for ((type, expected) in listOf(GoalTransactionType.CONTRIBUTION to surplus, GoalTransactionType.WITHDRAWAL to savings)) {
+            val result = repository.addTransaction(GoalTransaction(id = type.name, goalId = "g-1", userId = testUser.uid,
+                amountMinor = 15_000L, transactionType = type, date = "2026-10-25"))
+            assertTrue(result.isFailure)
+            assertEquals(expected, result.exceptionOrNull())
+        }
+        verify(remoteDataSource, never()).upsertTransaction(any(), any())
+        verify(goalTransactionDao, never()).upsertTransaction(any())
+        verify(goalTransactionDao, never()).completeSync(any())
+    }
+
+    @Test
+    fun deletingAFundingContribution_rejectedByLedgerGuardNeverDeletesRemotely() = runTest {
+        val row = GoalTransactionEntity(id = "funding", goalId = "g-1", userId = testUser.uid)
+        whenever(goalTransactionDao.getTransactionById(testUser.uid, row.id)).thenReturn(row)
+        val failure = com.pfms.app.domain.usecase.savings.InsufficientGoalSavingsException(0L, 5_000L)
+        whenever(goalTransactionDao.deleteTransactionGuarded(eq(testUser.uid), eq(row.id), any())).thenThrow(failure)
+        val result = repository.deleteTransaction(row.id)
+        assertTrue(result.isFailure)
+        assertEquals(failure, result.exceptionOrNull())
+        verify(remoteDataSource, never()).deleteTransaction(any(), any())
+        verify(goalTransactionDao, never()).markTransactionDeleted(any(), any(), any(), any())
         verify(goalTransactionDao, never()).completeSync(any())
     }
 
@@ -372,6 +416,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
     // 21. remote refresh does not overwrite PENDING_UPDATE local goal
     @Test
     fun refreshRemoteSavingsData_doesNotOverwritePendingUpdateLocalGoal() = runTest {
+        whenever(remoteDataSource.fetchTransactionsForGoal("user-123", "g-1")).thenReturn(Result.success(emptyList()))
         val pendingLocal = SavingsGoalEntity(id = "g-1", userId = "user-123", name = "Local Pending", syncStatus = SyncStatus.PENDING_UPDATE)
         whenever(savingsGoalDao.getPendingGoals("user-123")).thenReturn(listOf(pendingLocal))
 
@@ -389,6 +434,7 @@ class OfflineFirstSavingsGoalRepositoryTest {
     // 22. remote refresh does not resurrect PENDING_DELETE goal
     @Test
     fun refreshRemoteSavingsData_doesNotResurrectPendingDeleteGoal() = runTest {
+        whenever(remoteDataSource.fetchTransactionsForGoal("user-123", "g-del")).thenReturn(Result.success(emptyList()))
         val pendingDelete = SavingsGoalEntity(id = "g-del", userId = "user-123", name = "Delete Goal", isDeleted = true, syncStatus = SyncStatus.PENDING_DELETE)
         whenever(savingsGoalDao.getPendingGoals("user-123")).thenReturn(listOf(pendingDelete))
 

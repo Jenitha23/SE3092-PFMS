@@ -114,15 +114,9 @@ fun PfmsNavGraph(
 
     val lockState by sessionViewModel.lockState
         .collectAsStateWithLifecycle()
-    val incomeUiState by incomeViewModel.uiState.collectAsStateWithLifecycle()
     val salaryUiState by salaryViewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(incomeUiState.saveSuccessful) {
-        if (incomeUiState.saveSuccessful) {
-            incomeViewModel.clearSaveSuccess()
-            navController.popBackStack()
-        }
-    }
+    IncomeSaveNavigationEffect(navController, incomeViewModel)
 
     // -----------------------------------------
     // LIFECYCLE-AWARE APP LOCK (FR-04)
@@ -368,10 +362,8 @@ fun PfmsNavGraph(
                 onNavigateToAddIncome = {
                     navController.navigate(Routes.AddIncome) { launchSingleTop = true }
                 },
-                // "Insights" opens spending analytics (FR-30..32). Income analytics stays reachable
-                // from the income list and from a link inside spending analytics.
                 onNavigateToAnalytics = {
-                    navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true }
+                    navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true }
                 },
                 onNavigateToExpenses = {
                     navController.navigate(Routes.ExpenseList) {
@@ -396,18 +388,22 @@ fun PfmsNavGraph(
         // SPENDING ANALYTICS (FR-30..32)
         // -------------------------------------
 
-        composable(Routes.SpendingPatterns) {
-            SpendingPatternsScreen(onBack = { navController.popBackStack() },
-                onOpenSavingsSimulator = { navController.navigate(Routes.SavingsSimulator) { launchSingleTop = true } })
+        composable(Routes.SpendingPatterns) { entry ->
+            val back = { navController.closeSpendingPatterns(entry) }
+            FinanceFeatureBackHandler(navController, entry, back)
+            SpendingPatternsScreen(onBack = back,
+                onOpenSavingsSimulator = { navController.openFinanceFeature(entry, Routes.SavingsSimulator) })
         }
 
-        composable(Routes.SavingsSimulator) {
-            SavingsSimulatorScreen(onBack = { navController.popBackStack() })
+        composable(Routes.SavingsSimulator) { entry ->
+            val back = { navController.returnToSavingsGoalFromSimulator(entry) }
+            FinanceFeatureBackHandler(navController, entry, back)
+            SavingsSimulatorScreen(onBack = back, onOpenGoals = back)
         }
 
-        composable(Routes.SpendingAnalytics) {
+        composable(Routes.SpendingAnalytics) { entry ->
             SpendingAnalyticsScreen(
-                onOpenSpendingPatterns = { navController.navigate(Routes.SpendingPatterns) { launchSingleTop = true } },
+                onOpenSpendingPatterns = { navController.openFinanceFeature(entry, Routes.SpendingPatterns) },
                 onBack = { navController.popBackStack() },
                 onAddExpense = { navController.navigate(Routes.AddExpense) { launchSingleTop = true } },
                 onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
@@ -461,10 +457,14 @@ fun PfmsNavGraph(
         // SAVINGS GOAL (FR-23 through FR-28)
         // -------------------------------------
 
-        composable(Routes.SavingsGoal) {
+        composable(Routes.SavingsGoal) { entry ->
 
             SavingsGoalScreen(
-                onOpenSavingsSimulator = { navController.navigate(Routes.SavingsSimulator) { launchSingleTop = true } },
+                onHome = { navController.navigate(Routes.Dashboard) { launchSingleTop = true } },
+                onIncome = { navController.navigate(Routes.IncomeList) { launchSingleTop = true } },
+                onExpenses = { navController.navigate(Routes.ExpenseList) { launchSingleTop = true } },
+                onInsights = { navController.navigate(Routes.IncomeAnalytics) { launchSingleTop = true } },
+                onOpenSavingsSimulator = { navController.openFinanceFeature(entry, Routes.SavingsSimulator) },
                 onBack = {
                     if (!navController.popBackStack()) {
                         navController.navigate(Routes.Dashboard) {
@@ -555,13 +555,6 @@ fun PfmsNavGraph(
         composable(Routes.AddIncome) {
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
 
-            LaunchedEffect(incomeState.saveSuccessful) {
-                if (incomeState.saveSuccessful) {
-                    incomeViewModel.clearSaveSuccess()
-                    navController.popBackStack()
-                }
-            }
-
             IncomeFormScreen(
                 onBack = {
                     incomeViewModel.discardDraft()
@@ -590,6 +583,8 @@ fun PfmsNavGraph(
                 isRateFetching = incomeState.isRateFetching,
                 rateFetchError = incomeState.rateFetchError,
                 isManualRateMode = incomeState.isManualRateMode,
+                isCachedExchangeRate = incomeState.isCachedExchangeRate,
+                isSavedExchangeRate = incomeState.isSavedExchangeRate,
                 onFetchExchangeRate = { date ->
                     incomeViewModel.fetchExchangeRate(date)
                 },
@@ -616,18 +611,13 @@ fun PfmsNavGraph(
             val incomeId = backStackEntry.arguments?.getString("incomeId")
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
             val incomeItem = incomeState.incomes.find { it.id == incomeId }
+            var formReady by remember(incomeId) { mutableStateOf(false) }
             LaunchedEffect(incomeItem?.id) {
                 incomeItem?.let(incomeViewModel::loadExistingRate)
+                formReady = incomeItem != null
             }
 
-            LaunchedEffect(incomeState.saveSuccessful) {
-                if (incomeState.saveSuccessful) {
-                    incomeViewModel.clearSaveSuccess()
-                    navController.popBackStack()
-                }
-            }
-
-            if (incomeItem != null) {
+            if (incomeItem != null && formReady) {
                 IncomeFormScreen(
                     initialIncome = incomeItem,
                     onBack = {
@@ -657,6 +647,8 @@ fun PfmsNavGraph(
                     isRateFetching = incomeState.isRateFetching,
                     rateFetchError = incomeState.rateFetchError,
                     isManualRateMode = incomeState.isManualRateMode,
+                    isCachedExchangeRate = incomeState.isCachedExchangeRate,
+                    isSavedExchangeRate = incomeState.isSavedExchangeRate,
                     onFetchExchangeRate = { date ->
                         incomeViewModel.fetchExchangeRate(date)
                     },
@@ -666,7 +658,7 @@ fun PfmsNavGraph(
                         incomeViewModel.clearExchangeRate()
                     }
                 )
-            } else if (!incomeState.isLoading) {
+            } else if (incomeItem == null && !incomeState.isLoading) {
                 Scaffold(
                     topBar = {
                         TopAppBar(
@@ -700,7 +692,7 @@ fun PfmsNavGraph(
                 }
             }
 
-            SalaryTemplateScreen(
+            if (!salaryState.isLoading) SalaryTemplateScreen(
                 initialTemplate = salaryState.template,
                 isSaving = salaryState.isSaving,
                 errorMessage = salaryState.errorMessage,
@@ -710,7 +702,8 @@ fun PfmsNavGraph(
                 },
                 onSaveTemplate = { amount ->
                     salaryViewModel.saveSalaryTemplate(amount)
-                }
+                },
+                onSaveSchedule = { amount, day, enabled -> salaryViewModel.saveSalaryTemplate(amount, day, enabled) }
             )
         }
 
@@ -720,6 +713,7 @@ fun PfmsNavGraph(
 
         composable(Routes.IncomeAnalytics) {
             IncomeAnalyticsScreen(
+                onOpenSpendingAnalytics = { navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true } },
                 onAddIncome = { navController.navigate(Routes.AddIncome) { launchSingleTop = true } },
                 onBack = {
                     navController.popBackStack()
@@ -765,6 +759,7 @@ fun PfmsNavGraph(
                     if (vm != null) {
                         ExpenseListContent(
                             viewModel = vm,
+                            onSpendingAnalytics = { navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true } },
                             onCategories = { navController.navigate(Routes.Categories) },
                             onRecurring = { navController.navigate(Routes.RecurringExpenses) },
                             onSubscriptions = { navController.navigate(Routes.Subscriptions) },
@@ -805,6 +800,7 @@ fun PfmsNavGraph(
                         val pending = "Expense storage is not connected yet. Saving is unavailable."
                         ExpenseListScreen(
                             expenses = emptyList(),
+                            onSpendingAnalytics = { navController.navigate(Routes.SpendingAnalytics) { launchSingleTop = true } },
                             isLoading = false,
                             isDeleting = false,
                             onAddExpense = { navController.navigate(Routes.AddExpense) },

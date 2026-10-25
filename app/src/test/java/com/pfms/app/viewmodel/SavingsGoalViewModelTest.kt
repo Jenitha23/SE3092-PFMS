@@ -945,4 +945,71 @@ class SavingsGoalViewModelTest {
         assertEquals(GoalTransactionType.CONTRIBUTION, saved.transactionType)
         assertEquals(1L, viewModel.uiState.value.successVersion)
     }
+
+    @Test fun accountSwitchNeverRetainsThePreviousGoalOrBalance() = runTest {
+        savingsGoalRepository.goals.value = listOf(SavingsGoal(id = "private", userId = testUser.uid,
+            openingSavedAmountMinor = 1000000))
+        advanceUntilIdle()
+        assertEquals(1000000L, viewModel.uiState.value.currentSavedMinor)
+        authRepository.userFlow.value = testUser.copy(uid = "other-account")
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.activeGoal)
+        assertTrue(viewModel.uiState.value.transactions.isEmpty())
+        assertEquals(0L, viewModel.uiState.value.currentSavedMinor)
+        authRepository.userFlow.value = null
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.activeGoal)
+    }
+
+    @Test fun restorationLoadingErrorDismissalAndRoomUpdatesReachTheScreenState() = runTest {
+        advanceUntilIdle()
+        savingsGoalRepository.restoration.value = com.pfms.app.domain.model.SavingsRestorationState(isRefreshing = true)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isLoading)
+        savingsGoalRepository.restoration.value = com.pfms.app.domain.model.SavingsRestorationState(error = java.io.IOException("offline"))
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isLoading)
+        assertNotNull(viewModel.uiState.value.errorMessage)
+        assertTrue(viewModel.uiState.value.canRetry)
+        viewModel.clearError()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.errorMessage)
+        val goal = SavingsGoal(id = "restored", userId = testUser.uid, openingSavedAmountMinor = 1000000,
+            targetAmountMinor = 10000000, targetDate = "2027-10-25")
+        savingsGoalRepository.goals.value = listOf(goal)
+        savingsGoalRepository.transactions.value = listOf(GoalTransaction(id = "tx", goalId = goal.id,
+            userId = testUser.uid, amountMinor = 500000, date = "2026-10-01"))
+        advanceUntilIdle()
+        assertEquals(goal, viewModel.uiState.value.activeGoal)
+        assertEquals(1500000L, viewModel.uiState.value.currentSavedMinor)
+        assertEquals(15.0, viewModel.uiState.value.progressPercent, 0.001)
+        savingsGoalRepository.restoration.value = com.pfms.app.domain.model.SavingsRestorationState(isRefreshing = true)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isLoading) // Cached data remains usable while reconnecting.
+    }
+
+    @Test fun repeatedMonthlySurplusRejectionsStayObservableAndCorrectionCanSave() = runTest {
+        savingsGoalRepository.goals.value = listOf(SavingsGoal(id = "goal", userId = testUser.uid,
+            targetAmountMinor = 10000000, targetDate = "2027-10-01", openingSavedAmountMinor = 1000000))
+        advanceUntilIdle()
+        savingsGoalRepository.failureException = com.pfms.app.domain.usecase.savings.InsufficientMonthlySurplusException(1000000, 1500000, "2026-10")
+        repeat(2) { index ->
+            viewModel.addContribution("goal", 1500000, "Draft", "2026-10-01")
+            advanceUntilIdle()
+            assertEquals(index + 1L, viewModel.uiState.value.failureVersion)
+            assertTrue(viewModel.uiState.value.errorMessage.orEmpty().contains("Available: LKR 10,000.00"))
+            assertFalse(viewModel.uiState.value.operationInProgress)
+            assertFalse(viewModel.uiState.value.canRetry)
+            assertEquals(0L, viewModel.uiState.value.successVersion)
+            assertTrue(savingsGoalRepository.transactions.value.isEmpty())
+        }
+        viewModel.clearError()
+        savingsGoalRepository.failureException = null
+        viewModel.addContribution("goal", 1000000, "Corrected", "2026-10-01")
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.errorMessage)
+        assertEquals(1L, viewModel.uiState.value.successVersion)
+        assertEquals(2000000L, viewModel.uiState.value.currentSavedMinor)
+        assertEquals(1, savingsGoalRepository.transactions.value.size)
+    }
 }

@@ -2,13 +2,20 @@ package com.pfms.app.domain.repository
 
 import com.pfms.app.domain.model.GoalTransaction
 import com.pfms.app.domain.model.SavingsGoal
+import com.pfms.app.domain.model.SavingsRestorationState
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Domain repository contract for managing savings goals and goal ledger transactions.
  * Completely free from Room and Firebase data-layer dependencies.
  */
 interface SavingsGoalRepository {
+
+    /** Current account's remote restoration status; cached data is still observed separately. */
+    fun observeRestoration(): Flow<SavingsRestorationState> = flowOf(SavingsRestorationState())
+
+    fun clearRestorationError() {}
 
     /**
      * Observes the single active savings goal for the authenticated user as a reactive stream.

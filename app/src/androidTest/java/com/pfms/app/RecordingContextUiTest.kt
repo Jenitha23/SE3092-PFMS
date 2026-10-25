@@ -84,8 +84,8 @@ class RecordingContextUiTest {
         compose.onNodeWithText("15 Sep 2026").performScrollTo().performClick()
         compose.onNodeWithText("Confirm").performClick()
         compose.runOnIdle { hideKeyboard.invoke() }
-        compose.onNodeWithText("Save Changes").performScrollTo().performClick()
-        compose.onNodeWithText("Retry").performScrollTo().performClick()
+        compose.onNodeWithText("Save Changes").performClick()
+        compose.onNodeWithText("Retry").performClick()
         compose.runOnIdle {
             assertEquals("2026-09-15", result?.receivedDate)
             assertEquals("123.45", result?.amount)
@@ -108,7 +108,7 @@ class RecordingContextUiTest {
         compose.onNodeWithText(selected.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)
             .withLocale(Locale.getDefault()))).performClick()
         compose.onNodeWithText("Confirm").performClick()
-        compose.onNodeWithText("Save Income").performScrollTo().performClick()
+        compose.onNodeWithText("Save Income").performClick()
         compose.runOnIdle { assertEquals(selected.toString(), result?.receivedDate) }
     }
 
@@ -124,8 +124,8 @@ class RecordingContextUiTest {
         compose.onNodeWithContentDescription("Date *").performScrollTo().performClick()
         compose.onNodeWithText("Select").performClick()
         compose.runOnIdle { hideKeyboard.invoke() }
-        compose.onNodeWithText("Update Expense").performScrollTo().performClick()
-        compose.onNodeWithText("Retry").performScrollTo().performClick()
+        compose.onNodeWithText("Update Expense").performClick()
+        compose.onNodeWithText("Retry").performClick()
         compose.runOnIdle { assertEquals("2025-09-20", result?.date); assertEquals("250.00", result?.amount) }
     }
 }

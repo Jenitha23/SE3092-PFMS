@@ -46,9 +46,9 @@ class FinancialErrorUiTest {
         }
         compose.onNode(hasSetTextAction() and hasText("123.45")).performScrollTo().performTextReplacement("987.65")
         hideKeyboard()
-        compose.onNodeWithText("Save Changes").performScrollTo().performClick()
+        compose.onNodeWithText("Save Changes").performClick()
         compose.onNodeWithText("Something went wrong while saving. Please try again.").assertExists()
-        compose.onNodeWithText("Retry").performScrollTo().performClick()
+        compose.onNodeWithText("Retry").performClick()
         compose.runOnIdle {
             assertEquals(2, attempts)
             assertEquals("987.65", result?.amount)
@@ -74,8 +74,8 @@ class FinancialErrorUiTest {
         }
         compose.onNodeWithText("Amount (LKR)").performScrollTo().performTextReplacement("456.78")
         hideKeyboard()
-        compose.onNodeWithText("Update Expense").performScrollTo().performClick()
-        compose.onNodeWithText("Retry").performScrollTo().performClick()
+        compose.onNodeWithText("Update Expense").performClick()
+        compose.onNodeWithText("Retry").performClick()
         compose.runOnIdle {
             assertEquals("456.78", result?.amount)
             assertEquals("rent", result?.categoryId)
