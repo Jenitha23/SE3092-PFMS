@@ -72,10 +72,11 @@ internal fun IncomeFormAmountCard(state: IncomeFormState, actions: IncomeFormAct
                 IncomeAmount(it, colors.primary, Modifier.testTag("income_form_conversion"))
             }
             state.rateDetail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
+            state.rateDateLabel?.let { Text(it, Modifier.testTag("income_rate_date"), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
             state.rateNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
             if (state.manualRateVisible) {
                 IncomeFormTextField(state.manualRate, actions.onManualRate, "e.g. 302.50", "USD to LKR rate",
-                    enabled = !state.isSaving, keyboard = KeyboardType.Decimal)
+                    enabled = !state.isSaving, keyboard = KeyboardType.Decimal, error = state.manualRateError)
                 Text("LKR for 1 USD on the selected income date", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

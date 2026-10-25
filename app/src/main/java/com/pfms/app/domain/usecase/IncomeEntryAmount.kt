@@ -19,11 +19,13 @@ object IncomeEntryAmount {
         next.toPlainString()
     }.getOrNull()
 
-    fun lkrPreview(value: String, rate: BigDecimal?, original: Income? = null, receivedDate: String? = null): Long? {
+    fun lkrPreview(value: String, rate: BigDecimal?, original: Income? = null, receivedDate: String? = null,
+        rateDate: String? = original?.exchangeRateDate): Long? {
         val amount = parseMinor(value) ?: return null
         val positiveRate = rate?.takeIf { it > BigDecimal.ZERO } ?: return null
         if (original?.currency == "USD" && original.receivedDate == receivedDate &&
-            original.amountMinor == amount && original.exchangeRate?.toBigDecimalOrNull()?.compareTo(positiveRate) == 0 &&
+            original.amountMinor == amount && original.exchangeRateDate == rateDate &&
+            original.exchangeRate?.toBigDecimalOrNull()?.compareTo(positiveRate) == 0 &&
             original.amountLkrMinor != null) return original.amountLkrMinor
         return runCatching { CurrencyConverter.convertUsdToLkrMinor(amount, positiveRate) }.getOrNull()
     }

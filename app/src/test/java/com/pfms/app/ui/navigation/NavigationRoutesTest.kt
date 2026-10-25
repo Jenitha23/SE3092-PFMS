@@ -7,6 +7,15 @@ import org.junit.Test
 
 class NavigationRoutesTest {
 
+    @Test fun financeFeatureRoutesAreDistinctAndRequireNoArguments() {
+        val routes = listOf(Routes.SpendingAnalytics, Routes.SpendingPatterns, Routes.SavingsGoal,
+            Routes.SavingsSimulator, Routes.AddIncome, Routes.IncomeList)
+        assertEquals(routes.size, routes.toSet().size)
+        org.junit.Assert.assertTrue(routes.none { it.contains('{') || it.contains('}') })
+        assertEquals("spending_patterns", Routes.SpendingPatterns)
+        assertEquals("savings_simulator", Routes.SavingsSimulator)
+    }
+
     @Test
     fun `IncomeAnalytics route constant is defined and matches expected route pattern`() {
         assertEquals("income_analytics", Routes.IncomeAnalytics)

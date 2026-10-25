@@ -26,7 +26,7 @@ data class IncomeQuickAmount(val label: String, val majorUnits: Long)
 data class IncomeFormBackend(
     val isSaving: Boolean = false, val error: String? = null, val canRetry: Boolean = false,
     val rate: BigDecimal? = null, val rateDate: String? = null, val fetching: Boolean = false,
-    val rateError: String? = null, val manual: Boolean = false, val cached: Boolean = false
+    val rateError: String? = null, val manual: Boolean = false, val cached: Boolean = false, val savedRate: Boolean = false
 )
 
 data class IncomeFormState(
@@ -50,7 +50,8 @@ data class IncomeFormState(
     val rateLabel: String = "", val rateDetail: String? = null, val rateNotice: String? = null,
     val isUsd: Boolean = false, val manualRate: String = "", val manualRateVisible: Boolean = false,
     val isRateFetching: Boolean = false, val isSaving: Boolean = false,
-    val error: String? = null, val amountError: String? = null, val projectError: String? = null
+    val error: String? = null, val amountError: String? = null, val projectError: String? = null,
+    val rateDateLabel: String? = null, val manualRateError: String? = null
 )
 
 /** Owns the draft and actions. Repository saving and rate retrieval remain in IncomeViewModel. */
@@ -63,6 +64,7 @@ class IncomeFormViewModel(
     private var amountError: String? = null
     private var projectError: String? = null
     private var actionError: String? = null
+    private var manualTouched = false
     private val _state = MutableStateFlow(IncomeFormState())
     val state = _state.asStateFlow()
 
@@ -102,7 +104,7 @@ class IncomeFormViewModel(
     fun cryptoTypeChanged(value: String) { if (value in listOf("Gain", "Loss")) change("cryptoType", value) }
     fun assetChanged(value: String) = change("asset", value.uppercase(Locale.ENGLISH).take(20))
     fun noteChanged(value: String) = change("note", value)
-    fun manualRateChanged(value: String) = change("manualRate", value)
+    fun manualRateChanged(value: String) { manualTouched = true; change("manualRate", value) }
     fun showNotes() { saved["notesOpen"] = !flag("notesOpen"); refresh() }
     fun showDatePicker(open: Boolean) { if (!backend.isSaving) { saved["dateOpen"] = open; refresh() } }
     fun showInfo(open: Boolean) { saved["infoOpen"] = open; refresh() }
@@ -138,7 +140,8 @@ class IncomeFormViewModel(
     private fun resetRate(clear: () -> Unit) {
         requestedRateKey = null
         saved["manualRate"] = ""
-        backend = backend.copy(rate = null, rateDate = null, fetching = false, rateError = null, manual = false, cached = false)
+        manualTouched = false
+        backend = backend.copy(rate = null, rateDate = null, fetching = false, rateError = null, manual = false, cached = false, savedRate = false)
         clear()
     }
 
@@ -172,6 +175,7 @@ class IncomeFormViewModel(
         if (text("currency") == "USD") {
             if (backend.fetching) actionError = "Please wait for the exchange rate or enter a manual rate."
             else if (backend.manual) {
+                manualTouched = true
                 if (!setManualRate(text("manualRate"), text("date"))) actionError = "Enter a valid positive USD/LKR exchange rate."
             } else if (backend.rate == null) actionError = "Fetch an exchange rate or enter it manually before saving."
             if (actionError != null) { refresh(); return }
@@ -188,14 +192,15 @@ class IncomeFormViewModel(
         val usd = text("currency") == "USD"
         val rate = if (backend.manual) text("manualRate").toBigDecimalOrNull() else backend.rate
         val amountMinor = IncomeEntryAmount.parseMinor(text("amount"))
-        val preview = if (usd) IncomeEntryAmount.lkrPreview(text("amount"), rate, initial, text("date")) else null
+        val quoteDate = if (backend.manual) text("date") else backend.rateDate
+        val preview = if (usd) IncomeEntryAmount.lkrPreview(text("amount"), rate, initial, text("date"), quoteDate) else null
         val date = LocalDate.parse(text("date"))
         val rateLabel = when {
             backend.fetching -> "Fetching rate"
             backend.manual -> "Manual rate"
             backend.cached -> "Cached rate"
-            initial?.currency == "USD" && initial.receivedDate == text("date") && initial.exchangeRate == backend.rate?.toPlainString() -> "Saved rate"
-            backend.rate != null -> "Dated rate"
+            backend.savedRate -> "Saved rate"
+            backend.rate != null -> "Fetched rate"
             else -> "Rate needed"
         }
         _state.value = IncomeFormState(
@@ -216,8 +221,11 @@ class IncomeFormViewModel(
             convertedAmount = preview?.let { "LKR ${money(it)}" }, isUsd = usd,
             rateLabel = rateLabel,
             rateDetail = rate?.takeIf { it > BigDecimal.ZERO }?.let {
-                "1 USD = ${it.stripTrailingZeros().toPlainString()} LKR • ${if (backend.manual) text("date") else backend.rateDate ?: text("date")}" },
-            rateNotice = backend.rateError, manualRate = text("manualRate"), manualRateVisible = usd && backend.manual,
+                "1 USD = ${it.stripTrailingZeros().toPlainString()} LKR" },
+            rateDateLabel = quoteDate?.let { "Exchange rate date: $it" },
+            rateNotice = backend.rateError ?: if (backend.cached) "This cached rate may not reflect the current rate. Verify it before saving." else null,
+            manualRate = text("manualRate"), manualRateVisible = usd && backend.manual,
+            manualRateError = if (backend.manual && manualTouched && (rate == null || rate <= BigDecimal.ZERO)) "Enter a valid positive USD/LKR exchange rate." else null,
             isRateFetching = backend.fetching, isSaving = backend.isSaving,
             error = actionError ?: backend.error, amountError = amountError, projectError = projectError
         )

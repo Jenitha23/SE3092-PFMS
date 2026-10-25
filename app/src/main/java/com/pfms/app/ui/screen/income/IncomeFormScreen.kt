@@ -34,13 +34,14 @@ fun IncomeFormScreen(
     onEnableManualRate: () -> Unit = {},
     onClearExchangeRate: () -> Unit = {},
     canRetry: Boolean = false,
-    isCachedExchangeRate: Boolean = false
+    isCachedExchangeRate: Boolean = false,
+    isSavedExchangeRate: Boolean = false
 ) {
     val draft: IncomeFormViewModel = viewModel(key = "income-form-${initialIncome?.id ?: "new"}",
         factory = viewModelFactory { initializer { IncomeFormViewModel(createSavedStateHandle(), initialIncome) } })
     val state by draft.state.collectAsStateWithLifecycle()
     val backend = IncomeFormBackend(isSaving, errorMessage, canRetry, exchangeRate, exchangeRateDate,
-        isRateFetching, rateFetchError, isManualRateMode, isCachedExchangeRate)
+        isRateFetching, rateFetchError, isManualRateMode, isCachedExchangeRate, isSavedExchangeRate)
     LaunchedEffect(draft, backend) {
         draft.updateBackend(backend)
         draft.ensureRate(onFetchExchangeRate)
