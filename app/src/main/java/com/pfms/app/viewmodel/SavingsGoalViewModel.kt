@@ -215,6 +215,10 @@ class SavingsGoalViewModel @Inject constructor(
         perform { uid -> savingsGoalRepository.createGoal(goal.copy(id = id, userId = goal.userId.ifBlank { uid })) }
     }
 
+    fun createGoal(name: String, targetAmountMinor: Long, targetDate: String, openingSavedMinor: Long) =
+        createGoal(SavingsGoal(name = name, targetAmountMinor = targetAmountMinor, targetDate = targetDate,
+            openingSavedAmountMinor = openingSavedMinor))
+
     fun updateGoal(goal: SavingsGoal) = perform { uid ->
         savingsGoalRepository.updateGoal(goal.copy(userId = goal.userId.ifBlank { uid }))
     }
