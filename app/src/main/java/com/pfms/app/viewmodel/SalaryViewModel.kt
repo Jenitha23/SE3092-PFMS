@@ -145,9 +145,14 @@ class SalaryViewModel @Inject constructor(
     // SAVE SALARY TEMPLATE
     // -----------------------------------------
 
-    fun saveSalaryTemplate(amount: String) {
+    fun saveSalaryTemplate(amount: String, paymentDay: Int? = null, isEnabled: Boolean? = null) {
 
         if (_uiState.value.isSaving) return
+
+        if (paymentDay != null && paymentDay !in 1..31) {
+            showError("Choose a payday between 1 and 31.")
+            return
+        }
 
         val amountMinor = parseAmount(amount)
 
@@ -176,8 +181,8 @@ class SalaryViewModel @Inject constructor(
                         id = UUID.randomUUID().toString(),
                         amountMinor = amountMinor,
                         currency = "LKR",
-                        paymentDay = 25,
-                        isEnabled = true,
+                        paymentDay = paymentDay ?: 25,
+                        isEnabled = isEnabled ?: true,
                         createdAt = now,
                         updatedAt = now
                     )
@@ -186,6 +191,8 @@ class SalaryViewModel @Inject constructor(
 
                     existing.copy(
                         amountMinor = amountMinor,
+                        paymentDay = paymentDay ?: existing.paymentDay,
+                        isEnabled = isEnabled ?: existing.isEnabled,
                         updatedAt = now
                     )
                 }
@@ -201,7 +208,7 @@ class SalaryViewModel @Inject constructor(
 
             } catch (e: Exception) {
 
-                failure(e, ErrorAction.SAVE) { saveSalaryTemplate(amount) }
+                failure(e, ErrorAction.SAVE) { saveSalaryTemplate(amount, paymentDay, isEnabled) }
             }
         }
     }

@@ -62,8 +62,21 @@ object RecurringExpenseCalculator {
      * - Cancelled / paused subscriptions are excluded.
      */
     fun calculateMonthlySubscriptionTotal(subscriptions: List<RecurringExpense>): Long {
-        return subscriptions
-            .filter { it.subscription && it.active && it.flag != SubscriptionFlag.CANCEL }
+        return monthlyTotal(subscriptions.filter { it.subscription && it.active && it.flag != SubscriptionFlag.CANCEL })
+    }
+
+    /** Monthly equivalent of scheduled recurring expenses; paused templates are excluded. */
+    fun calculateMonthlyScheduledTotal(templates: List<RecurringExpense>): Long =
+        monthlyTotal(templates.filter { !it.subscription && it.active })
+
+    fun isDueSoon(template: RecurringExpense, today: LocalDate = LocalDate.now(COLOMBO_ZONE)): Boolean {
+        if (!template.active || (template.subscription && template.flag == SubscriptionFlag.CANCEL)) return false
+        val date = runCatching { LocalDate.parse(template.nextDueDate) }.getOrNull() ?: return false
+        return !date.isAfter(today.plusDays(7))
+    }
+
+    private fun monthlyTotal(templates: List<RecurringExpense>): Long {
+        return templates
             .fold(0L) { total, item ->
                 val monthly = when (item.recurrence) {
                     Recurrence.MONTHLY -> item.amountMinor

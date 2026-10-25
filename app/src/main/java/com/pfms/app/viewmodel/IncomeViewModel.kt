@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
-import java.math.RoundingMode
+import com.pfms.app.domain.usecase.IncomeEntryAmount
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -263,7 +263,8 @@ class IncomeViewModel @Inject constructor(
     }
 
     fun enableManualRate() {
-        _uiState.value = _uiState.value.copy(isManualRateMode = true)
+        rateJob?.cancel()
+        _uiState.value = _uiState.value.copy(isManualRateMode = true, isRateFetching = false, isCachedExchangeRate = false)
     }
 
     /** A manual rate is associated with the income's selected date, never today's date. */
@@ -754,21 +755,7 @@ class IncomeViewModel @Inject constructor(
     }
 
     private fun parseAmount(value: String): Long? {
-        return try {
-            val amount = BigDecimal(value.trim())
-
-            if (amount <= BigDecimal.ZERO ||
-                amount.scale() > 2
-            ) {
-                return null
-            }
-
-            amount.multiply(BigDecimal(100))
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValueExact()
-        } catch (e: Exception) {
-            null
-        }
+        return IncomeEntryAmount.parseMinor(value)
     }
 
 }

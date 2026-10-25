@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.catch
 import androidx.lifecycle.viewModelScope
 import com.pfms.app.domain.model.ExpenseCategory
 import com.pfms.app.domain.model.ExpenseClassification
+import com.pfms.app.domain.model.ExpensePaymentMethod
+import com.pfms.app.domain.model.Recurrence
 import com.pfms.app.domain.model.RecurringExpense
 import com.pfms.app.domain.model.SubscriptionFlag
 import com.pfms.app.domain.repository.AdvancedExpenseRepository
@@ -32,6 +34,13 @@ import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
 import java.util.UUID
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
+import com.pfms.app.domain.usecase.ExpenseRules
+import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneOffset
+import java.math.BigDecimal
 
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -93,6 +102,96 @@ class AdvancedExpenseViewModel @Inject constructor(
             null
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    private val controls = MutableStateFlow(AdvancedExpenseControls())
+    val screen = combine(categories, templates, monthlySubscriptionMinor, controls, ::advancedExpenseScreenState)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AdvancedExpenseScreenState())
+
+    fun showArchived(value: Boolean) { controls.update { it.copy(archived = value) } }
+    fun categoryName(value: String) { controls.update { it.copy(categoryEditor = it.categoryEditor.copy(name = value.take(50), error = null)) } }
+    fun categoryClassification(value: ExpenseClassification) { controls.update { it.copy(categoryEditor = it.categoryEditor.copy(classification = value)) } }
+    fun resetCategoryEditor() { controls.update { it.copy(categoryEditor = CategoryEditorState()) } }
+    fun editCategory(category: ExpenseCategory) {
+        if (!category.custom || category.archived) return
+        controls.update { it.copy(archived = false, categoryEditor = CategoryEditorState(category.name, category.classification, category)) }
+    }
+    fun saveCategoryDraft() {
+        val draft = controls.value.categoryEditor
+        val name = draft.name.trim()
+        if (name.isBlank()) {
+            controls.update { it.copy(categoryEditor = draft.copy(error = "Enter a category name.")) }; return
+        }
+        if (draft.original == null) createCategory(name, draft.classification, ::resetCategoryEditor)
+        else updateCategory(draft.original.copy(name = name, classification = draft.classification), ::resetCategoryEditor)
+    }
+    fun requestArchive(category: ExpenseCategory?) { controls.update { it.copy(archiveTarget = category?.takeIf { c -> c.custom }) } }
+    fun archiveSelectedCategory() {
+        val category = controls.value.archiveTarget ?: return
+        updateCategory(category.copy(archived = true)) {
+            controls.update { it.copy(archiveTarget = null, categoryEditor = if (it.categoryEditor.original?.id == category.id) CategoryEditorState() else it.categoryEditor) }
+        }
+    }
+    fun restoreCategory(category: ExpenseCategory) = updateCategory(category.copy(archived = false))
+
+    fun openTemplate(subscription: Boolean, template: RecurringExpense? = null) {
+        val original = template ?: RecurringExpense(id = UUID.randomUUID().toString(), subscription = subscription,
+            categoryId = categories.value.firstOrNull { !it.archived }?.id.orEmpty(),
+            nextDueDate = LocalDate.now(RecurringExpenseCalculator.COLOMBO_ZONE).toString())
+        clearMessage()
+        controls.update { it.copy(editor = RecurringEditorState(original, editing = template != null), menu = null) }
+    }
+    fun closeTemplate() { if (!_busy.value) controls.update { it.copy(editor = null) } }
+    private fun changeTemplate(block: (RecurringEditorState) -> RecurringEditorState) {
+        if (!_busy.value) controls.update { it.copy(editor = it.editor?.let(block)) }
+    }
+    fun templateTitle(value: String) = changeTemplate { it.copy(title = value, error = null) }
+    fun templateAmount(value: String) = changeTemplate { it.copy(amount = value, error = null) }
+    fun templateCategory(id: String) = changeTemplate { it.copy(categoryId = id, menu = null, error = null) }
+    fun templatePayment(value: ExpensePaymentMethod) = changeTemplate { it.copy(payment = value, menu = null) }
+    fun templateRecurrence(value: Recurrence) = changeTemplate { it.copy(recurrence = value) }
+    fun templateFlag(value: SubscriptionFlag) = changeTemplate { it.copy(flag = value) }
+    fun templateMenu(value: String?) = changeTemplate { it.copy(menu = value) }
+    fun templateDate(millis: Long?, reminder: Boolean) {
+        val date = millis?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString() } ?: return
+        changeTemplate { if (reminder) it.copy(reminder = date, menu = null, error = null) else it.copy(due = date, menu = null, error = null) }
+    }
+    fun clearTemplateReminder() = changeTemplate { it.copy(reminder = "") }
+    fun saveTemplateDraft() {
+        val draft = controls.value.editor ?: return
+        val amount = ExpenseRules.parseAmount(draft.amount)
+        val category = categories.value.firstOrNull { it.id == draft.categoryId && !it.archived }
+        val error = when {
+            draft.title.isBlank() -> "Enter a template name."
+            amount == null -> "Enter a positive amount with up to two decimal places."
+            category == null -> "Select an active expense category."
+            runCatching { LocalDate.parse(draft.due) }.isFailure -> "Choose a valid due date."
+            draft.reminder.isNotBlank() && runCatching { LocalDate.parse(draft.reminder) }.isFailure -> "Choose a valid review date."
+            else -> null
+        }
+        if (error != null) { changeTemplate { it.copy(error = error) }; return }
+        saveTemplate(draft.original.copy(title = draft.title.trim(), amountMinor = requireNotNull(amount),
+            categoryId = requireNotNull(category).id, categoryName = category.name, classification = category.classification,
+            paymentMethod = draft.payment, recurrence = draft.recurrence, nextDueDate = draft.due,
+            flag = draft.flag, reminderDate = draft.reminder)) { controls.update { it.copy(editor = null) } }
+    }
+    fun recordMenu(id: String?) { controls.update { it.copy(menu = id) } }
+    fun recurringFilter(key: String) { controls.update { it.copy(recurringFilter = key) } }
+    fun requestDelete(template: RecurringExpense?) { controls.update { it.copy(deleteTarget = template, menu = null) } }
+    fun deleteSelectedTemplate() {
+        val target = controls.value.deleteTarget ?: return
+        runTask({ controls.update { it.copy(deleteTarget = null) } }) { repository.deleteTemplate(target.id) }
+    }
+    fun requestConfirmation(template: RecurringExpense?) {
+        clearMessage()
+        controls.update { it.copy(confirmTarget = template, confirmAmount = template?.let { t -> BigDecimal.valueOf(t.amountMinor, 2).toPlainString() }.orEmpty(), confirmError = null) }
+    }
+    fun confirmationAmount(value: String) { controls.update { it.copy(confirmAmount = value, confirmError = null) } }
+    fun confirmSelectedTemplate() {
+        val target = controls.value.confirmTarget ?: return
+        val amount = ExpenseRules.parseAmount(controls.value.confirmAmount)
+        if (amount == null) { controls.update { it.copy(confirmError = "Enter a positive amount with up to two decimal places.") }; return }
+        confirm(target.copy(amountMinor = amount)) { controls.update { it.copy(confirmTarget = null) } }
+    }
 
     fun ensureDefaults() = runTask {
         repository.initializeDefaults()
