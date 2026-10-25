@@ -49,21 +49,38 @@ internal fun SavingsGoalEditorDialog(state: SavingsScreenState, vm: SavingsGoalS
 }
 
 @Composable
-internal fun SavingsTransactionEditorDialog(state: SavingsScreenState, vm: SavingsGoalScreenViewModel, onSave: () -> Unit) {
+internal fun SavingsTransactionEditorDialog(state: SavingsScreenState, vm: SavingsGoalScreenViewModel, onClearError: () -> Unit = {}, onSave: () -> Unit) {
     val draft = state.transactionDraft ?: return
-    val busy = state.source.operationInProgress
+    val busy = state.source.isLoading || state.source.operationInProgress || draft.submissionPending
     val contribution = draft.type == GoalTransactionType.CONTRIBUTION
     val keyboard = LocalSoftwareKeyboardController.current
     SavingsFormDialog(if (draft.original != null) "Edit Transaction" else if (contribution) "Add Contribution" else "Record Withdrawal",
         "Keep your goal ledger up to date.", busy, state.source.errorMessage,
         if (state.source.canRetry && state.source.errorMessage != null) "Retry" else if (draft.original != null) "Save Changes" else if (contribution) "Confirm Deposit" else "Confirm Withdrawal",
         vm::dismissTransaction, { keyboard?.hide(); onSave() }) {
-        if (!contribution) Text("Available goal savings: ${state.display.saved}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SavingsInput(draft.amount, vm::transactionAmount, "Amount (LKR)", !busy, money = true, error = draft.errors?.amountError)
+        if (!contribution) Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("Available to withdraw", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                draft.available?.let { FinanceValue(it, Modifier.testTag("withdrawal_available"), color = MaterialTheme.colorScheme.onPrimaryContainer) }
+                if (draft.currentSavings != null && draft.currentSavings != draft.available) {
+                    Text("Current goal savings: ${draft.currentSavings}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Text(when {
+                    draft.balanceError != null -> draft.balanceError
+                    draft.available == null -> "Availability will be checked when you save."
+                    draft.original != null -> "Replaces the original withdrawal. Existing ledger entries remain funded."
+                    else -> "Based on the selected date and your goal ledger."
+                }, style = MaterialTheme.typography.bodySmall,
+                    color = if (draft.balanceError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+        }
+        SavingsInput(draft.amount, { vm.transactionAmount(it); onClearError() }, "Amount (LKR)", !busy, money = true, error = draft.errors?.amountError)
+        if (contribution) Text("The limit uses recorded cash flow for the selected month. Savings from earlier months and bank balances are not included.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SavingsDateField("Date (YYYY-MM-DD)", draft.date, !busy, draft.errors?.dateError) { keyboard?.hide(); vm.transactionPicker(true) }
         SavingsInput(draft.note, vm::transactionNote, "Note (Optional)", !busy, multiline = true)
     }
-    if (draft.picker) SavingsDatePicker(draft.dateMillis, { vm.transactionPicker(false) }, vm::transactionDate)
+    if (draft.picker) SavingsDatePicker(draft.dateMillis, { vm.transactionPicker(false) }) { vm.transactionDate(it); onClearError() }
 }
 
 @Composable
@@ -92,7 +109,7 @@ private fun SavingsFormDialog(title: String, subtitle: String, busy: Boolean, er
                         error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             TextButton(onClick = dismiss, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
-                            Button(onClick = save, enabled = !busy, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) {
+                            Button(onClick = save, enabled = !busy, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("savings_form_save"), shape = RoundedCornerShape(14.dp)) {
                                 if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                                 else Text(label)
                             }

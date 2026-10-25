@@ -11,10 +11,17 @@ import com.pfms.app.domain.model.AuthUser
 import com.pfms.app.domain.model.GoalStatus
 import com.pfms.app.domain.model.GoalTransaction
 import com.pfms.app.domain.model.SavingsGoal
+import com.pfms.app.domain.model.SavingsRestorationState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.domain.repository.SavingsGoalRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import com.pfms.app.data.error.repositoryResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,6 +56,19 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     private val savingsGoalRemoteDataSource: SavingsGoalRemoteDataSource,
     private val authRepository: AuthRepository
 ) : SavingsGoalRepository, SavingsGoalPendingSyncable {
+    private val restoration = MutableStateFlow("" to SavingsRestorationState())
+    private val restorationMutex = Mutex()
+
+    override fun observeRestoration(): Flow<SavingsRestorationState> =
+        combine(authRepository.currentUser, restoration) { user, (uid, state) ->
+            if (user?.uid == uid) state else SavingsRestorationState()
+        }
+
+    override fun clearRestorationError() {
+        val (uid, state) = restoration.value
+        if (!state.isRefreshing) restoration.value = uid to SavingsRestorationState()
+    }
+
     @Inject @ApplicationContext lateinit var syncContext: Context
     private fun scheduleSync() {
         if (::syncContext.isInitialized) runCatching { IncomeSyncWorker.enqueue(syncContext, ExistingWorkPolicy.APPEND_OR_REPLACE) }
@@ -455,62 +475,61 @@ class OfflineFirstSavingsGoalRepository @Inject constructor(
     }
 
     override suspend fun refreshRemoteSavingsData(): Result<Unit> = withContext(Dispatchers.IO) {
-        repositoryResult {
-            val user = requireUser()
-
-            val remoteGoalsResult = savingsGoalRemoteDataSource.fetchGoals(user.uid)
-            if (remoteGoalsResult.isFailure) {
-                throw remoteGoalsResult.exceptionOrNull() ?: RuntimeException("Failed to fetch remote goals")
+        restorationMutex.withLock {
+            val uid = repositoryResult { requireUser().uid }.getOrElse { return@withLock Result.failure(it) }
+            restoration.value = uid to SavingsRestorationState(isRefreshing = true)
+            try {
+                val result = try {
+                    withTimeout(20_000L) { repositoryResult { restoreSavingsForUser(uid) } }
+                } catch (timeout: TimeoutCancellationException) {
+                    Result.failure(timeout)
+                }
+                restoration.value = uid to SavingsRestorationState(error = result.exceptionOrNull())
+                result
+            } catch (cancelled: CancellationException) {
+                restoration.value = uid to SavingsRestorationState()
+                throw cancelled
             }
+        }
+    }
 
-            val remoteGoals = remoteGoalsResult.getOrNull().orEmpty()
-            val pendingGoalsMap = savingsGoalDao.getPendingGoals(user.uid).associateBy { it.id }
+    private suspend fun requireRestorationSession(uid: String) {
+        check(requireUser().uid == uid) { "Authentication required: session changed during savings restoration" }
+    }
 
-            for (remoteGoal in remoteGoals) {
-                // Conflict policy: Local pending change always wins over remote state
-                if (remoteGoal.id in pendingGoalsMap) {
-                    continue
-                }
+    private suspend fun restoreSavingsForUser(uid: String) {
+        val goals = savingsGoalRemoteDataSource.fetchGoals(uid).getOrThrow()
+        requireRestorationSession(uid)
+        require(goals.all { it.userId == uid && it.id.isNotBlank() }) {
+            "Remote savings goals do not belong to the authenticated account"
+        }
 
-                val local = savingsGoalDao.getGoalById(user.uid, remoteGoal.id)
-                if (local == null) {
-                    savingsGoalDao.upsertGoal(
-                        remoteGoal.toEntity(syncStatus = SyncStatus.SYNCED, isDeleted = false)
-                    )
-                } else if (local.syncStatus == SyncStatus.SYNCED) {
-                    if (remoteGoal.updatedAt >= local.updatedAt) {
-                        savingsGoalDao.upsertGoal(
-                            remoteGoal.toEntity(syncStatus = SyncStatus.SYNCED, isDeleted = false)
-                        )
-                    }
+        // Fetch every ledger before merging anything: a failed fetch cannot masquerade as an empty ledger.
+        val ledgers = goals.associate { goal ->
+            val transactions = savingsGoalRemoteDataSource.fetchTransactionsForGoal(uid, goal.id).getOrThrow()
+            require(transactions.all { it.userId == uid && it.goalId == goal.id && it.id.isNotBlank() }) {
+                "Remote savings ledger does not belong to the requested goal and account"
+            }
+            goal.id to transactions
+        }
+        requireRestorationSession(uid)
+
+        for (goal in goals) {
+            for (transaction in ledgers.getValue(goal.id)) {
+                requireRestorationSession(uid)
+                // Re-read pending state after network waits. Local edits/deletions always win.
+                if (goalTransactionDao.getPendingTransactions(uid).any { it.id == transaction.id }) continue
+                val local = goalTransactionDao.getTransactionById(uid, transaction.id)
+                if (local == null || (local.syncStatus == SyncStatus.SYNCED && transaction.updatedAt >= local.updatedAt)) {
+                    goalTransactionDao.upsertTransaction(transaction.toEntity(SyncStatus.SYNCED, false))
                 }
             }
-
-            // Refresh transactions for each remote goal
-            val pendingTxMap = goalTransactionDao.getPendingTransactions(user.uid).associateBy { it.id }
-            for (remoteGoal in remoteGoals) {
-                val txResult = savingsGoalRemoteDataSource.fetchTransactionsForGoal(user.uid, remoteGoal.id)
-                if (txResult.isSuccess) {
-                    val remoteTxList = txResult.getOrNull().orEmpty()
-                    for (remoteTx in remoteTxList) {
-                        if (remoteTx.id in pendingTxMap) {
-                            continue
-                        }
-
-                        val localTx = goalTransactionDao.getTransactionById(user.uid, remoteTx.id)
-                        if (localTx == null) {
-                            goalTransactionDao.upsertTransaction(
-                                remoteTx.toEntity(syncStatus = SyncStatus.SYNCED, isDeleted = false)
-                            )
-                        } else if (localTx.syncStatus == SyncStatus.SYNCED) {
-                            if (remoteTx.updatedAt >= localTx.updatedAt) {
-                                goalTransactionDao.upsertTransaction(
-                                    remoteTx.toEntity(syncStatus = SyncStatus.SYNCED, isDeleted = false)
-                                )
-                            }
-                        }
-                    }
-                }
+            // Publish a newly restored goal only after its ledger is present in Room.
+            requireRestorationSession(uid)
+            if (savingsGoalDao.getPendingGoals(uid).any { it.id == goal.id }) continue
+            val local = savingsGoalDao.getGoalById(uid, goal.id)
+            if (local == null || (local.syncStatus == SyncStatus.SYNCED && goal.updatedAt >= local.updatedAt)) {
+                savingsGoalDao.upsertGoal(goal.toEntity(SyncStatus.SYNCED, false))
             }
         }
     }

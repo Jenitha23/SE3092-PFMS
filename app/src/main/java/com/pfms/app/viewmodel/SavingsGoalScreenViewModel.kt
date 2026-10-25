@@ -28,7 +28,9 @@ data class GoalEditorDraft(val original: SavingsGoal?, val name: String, val tar
     val opening: String, val errors: SavingsGoalEntryRules.GoalResult? = null, val picker: Boolean = false,
     val dateMillis: Long? = null, val monthlyPreview: String? = null, val monthsLabel: String = "")
 data class GoalTransactionDraft(val original: GoalTransaction?, val type: GoalTransactionType, val amount: String,
-    val date: String, val note: String, val errors: SavingsGoalEntryRules.TransactionResult? = null, val picker: Boolean = false, val dateMillis: Long? = null)
+    val date: String, val note: String, val errors: SavingsGoalEntryRules.TransactionResult? = null, val picker: Boolean = false, val dateMillis: Long? = null,
+    val balanceProvided: Boolean = false, val availableMinor: Long? = null, val available: String? = null,
+    val currentSavings: String? = null, val balanceError: String? = null, val submissionPending: Boolean = false)
 data class GoalLedgerRow(val original: GoalTransaction, val title: String, val amount: String, val date: String, val note: String?)
 data class SavingsPresentation(
     val saved: String = "LKR 0.00", val target: String = "LKR 0.00", val remaining: String = "LKR 0.00", val monthly: String = "LKR 0.00",
@@ -51,7 +53,12 @@ class SavingsGoalScreenViewModel : ViewModel() {
         _state.update { current ->
             val success = source.successVersion != current.source.successVersion
             current.copy(source = source, display = presentation(source), goalDraft = if (success) null else current.goalDraft,
-                transactionDraft = if (success) null else current.transactionDraft, confirmation = if (success) null else current.confirmation,
+                transactionDraft = if (success) null else current.transactionDraft?.let { draft ->
+                    withdrawalPreview(draft.copy(submissionPending = draft.submissionPending &&
+                        (source.operationInProgress || source.errorMessage == null)), source).let { refreshed ->
+                        if (draft.errors == null) refreshed else refreshed.copy(errors = transactionValidation(refreshed))
+                    }
+                }, confirmation = if (success) null else current.confirmation,
                 transactionToDelete = if (success) null else current.transactionToDelete)
         }
     }
@@ -90,26 +97,69 @@ class SavingsGoalScreenViewModel : ViewModel() {
         else onUpdate(draft.original.copy(name = draft.name.trim(), targetAmountMinor = validation.targetAmountMinor,
             targetDate = draft.date.trim(), openingSavedAmountMinor = validation.openingSavedAmountMinor))
     }
-    fun openTransaction(type: GoalTransactionType, original: GoalTransaction? = null) {
+    fun openTransaction(type: GoalTransactionType, original: GoalTransaction? = null, balanceProvided: Boolean = false) {
         val date = original?.date ?: today().toString()
-        _state.update { it.copy(transactionDraft = GoalTransactionDraft(original, type,
-            original?.let { tx -> SavingsGoalUiFormatter.formatMinorToDecimalString(tx.amountMinor) }.orEmpty(), date, original?.note.orEmpty(), dateMillis = millis(date))) }
+        _state.update { it.copy(transactionDraft = withdrawalPreview(GoalTransactionDraft(original, type,
+            original?.let { tx -> SavingsGoalUiFormatter.formatMinorToDecimalString(tx.amountMinor) }.orEmpty(), date, original?.note.orEmpty(),
+            dateMillis = millis(date), balanceProvided = balanceProvided), it.source)) }
     }
-    fun dismissTransaction() { if (!_state.value.source.operationInProgress) _state.update { it.copy(transactionDraft = null) } }
-    private fun changeTransaction(block: (GoalTransactionDraft) -> GoalTransactionDraft) { if (!_state.value.source.operationInProgress) _state.update { it.copy(transactionDraft = it.transactionDraft?.let(block)) } }
+    fun dismissTransaction() { if (!_state.value.source.operationInProgress && _state.value.transactionDraft?.submissionPending != true) _state.update { it.copy(transactionDraft = null) } }
+    private fun changeTransaction(block: (GoalTransactionDraft) -> GoalTransactionDraft) { if (!_state.value.source.operationInProgress && _state.value.transactionDraft?.submissionPending != true) _state.update { state ->
+        state.copy(transactionDraft = state.transactionDraft?.let { withdrawalPreview(block(it), state.source) })
+    } }
     fun transactionAmount(value: String) = changeTransaction { it.copy(amount = value, errors = null) }
     fun transactionNote(value: String) = changeTransaction { it.copy(note = value) }
     fun transactionPicker(value: Boolean) = changeTransaction { it.copy(picker = value) }
     fun transactionDate(value: Long?) { iso(value)?.let { date -> changeTransaction { it.copy(date = date, dateMillis = value, picker = false, errors = null) } } }
     fun submitTransaction(contribution: (Long, String?, String?) -> Unit, withdrawal: (Long, String?, String?) -> Unit, update: (GoalTransaction) -> Unit) {
         val draft = _state.value.transactionDraft ?: return
-        if (_state.value.source.operationInProgress) return
-        val result = SavingsGoalEntryRules.validateTransaction(draft.amount, draft.date)
+        if (_state.value.source.isLoading || _state.value.source.operationInProgress || draft.submissionPending) return
+        val refreshed = withdrawalPreview(draft, _state.value.source)
+        val result = transactionValidation(refreshed)
         if (!result.isValid) { changeTransaction { it.copy(errors = result) }; return }
         val note = draft.note.trim().ifBlank { null }
+        // Guard immediately, before persistence/loading state can make a round trip through Compose.
+        // Rejection releases this guard in sync(); confirmed success closes the draft there.
+        _state.update { it.copy(transactionDraft = refreshed.copy(submissionPending = true)) }
         if (draft.original != null) update(draft.original.copy(amountMinor = result.amountMinor, note = note, date = draft.date, updatedAt = System.currentTimeMillis()))
         else if (draft.type == GoalTransactionType.CONTRIBUTION) contribution(result.amountMinor, note, draft.date)
         else withdrawal(result.amountMinor, note, draft.date)
+    }
+
+    private fun transactionValidation(draft: GoalTransactionDraft): SavingsGoalEntryRules.TransactionResult {
+        val input = SavingsGoalEntryRules.validateTransaction(draft.amount, draft.date)
+        if (!input.isValid || draft.type != GoalTransactionType.WITHDRAWAL) return input
+        val error = draft.balanceError ?: draft.availableMinor?.takeIf { input.amountMinor > it }?.let {
+            "Insufficient savings. You can withdraw up to ${SavingsGoalUiFormatter.formatLkr(it)}."
+        }
+        return if (error == null) input else input.copy(isValid = false, amountError = error)
+    }
+
+    private fun withdrawalPreview(draft: GoalTransactionDraft, source: SavingsGoalUiState): GoalTransactionDraft {
+        if (draft.type != GoalTransactionType.WITHDRAWAL) return draft
+        val goal = source.activeGoal
+        // Individual compatibility dialogs may only know a supplied aggregate balance. Do not
+        // invent a zero balance for an edit whose caller has not supplied the goal/ledger.
+        if (goal == null && !draft.balanceProvided) return draft.copy(availableMinor = null, available = null, currentSavings = null, balanceError = null)
+        if (millis(draft.date) == null) return draft.copy(availableMinor = null, available = null, balanceError = null)
+        return try {
+            require(draft.original == null || goal == null || draft.original.goalId == goal.id) { "Goal changed" }
+            val ledger = if (goal == null) emptyList() else source.transactions.filter {
+                it.goalId == goal.id && (goal.userId.isBlank() || it.userId.isBlank() || it.userId == goal.userId)
+            }
+            val opening = goal?.openingSavedAmountMinor ?: source.currentSavedMinor
+            val current = ValidateGoalLedgerUseCase.validate(opening, ledger)
+            val candidate = draft.original?.copy(date = draft.date) ?: GoalTransaction(
+                id = "withdrawal-preview", goalId = goal?.id.orEmpty(), transactionType = GoalTransactionType.WITHDRAWAL,
+                date = draft.date, createdAt = System.currentTimeMillis())
+            val available = ValidateGoalLedgerUseCase.availableForWithdrawal(opening, ledger, candidate)
+            draft.copy(availableMinor = available, available = SavingsGoalUiFormatter.formatLkr(available),
+                currentSavings = SavingsGoalUiFormatter.formatLkr(current), balanceError = null)
+        } catch (_: IllegalArgumentException) {
+            draft.copy(availableMinor = null, available = null, currentSavings = null, balanceError = "Unable to verify available savings. Refresh the goal before withdrawing.")
+        } catch (_: ArithmeticException) {
+            draft.copy(availableMinor = null, available = null, currentSavings = null, balanceError = "Unable to verify available savings. Refresh the goal before withdrawing.")
+        }
     }
     fun confirmation(value: String?, transactionId: String? = null) { _state.update { it.copy(confirmation = value, transactionToDelete = transactionId) } }
     fun help(value: Boolean) { _state.update { it.copy(help = value) } }

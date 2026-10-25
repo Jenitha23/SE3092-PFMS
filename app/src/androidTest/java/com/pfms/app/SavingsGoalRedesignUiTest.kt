@@ -47,6 +47,25 @@ class SavingsGoalRedesignUiTest {
         } }
     }
     private fun hideKeyboard() { compose.runOnIdle { dismissKeyboard() }; androidx.test.espresso.Espresso.closeSoftKeyboard(); compose.waitForIdle() }
+    @Test fun restorationTransitionsFromLoadingToErrorThenPopulatedWithoutReopening() {
+        source = SavingsGoalUiState(isLoading = true)
+        content()
+        compose.onNodeWithText("No Active Savings Goal").assertDoesNotExist()
+        compose.runOnIdle {
+            source = SavingsGoalUiState(isLoading = false,
+                errorMessage = "Please check your internet connection and try again.", canRetry = true)
+        }
+        compose.onNodeWithText("Please check your internet connection and try again.").assertIsDisplayed()
+        compose.onNodeWithText("Retry").assertIsDisplayed()
+        compose.runOnIdle {
+            source = SavingsGoalUiState(isLoading = false,
+                activeGoal = SavingsGoal("restored", "user", "Emergency fund", 10000000, "2027-10-25", 1000000),
+                currentSavedMinor = 2000000, progressPercent = 20.0)
+        }
+        compose.onNodeWithText("No Active Savings Goal").assertDoesNotExist()
+        compose.onNodeWithText("Please check your internet connection and try again.").assertDoesNotExist()
+        compose.onNodeWithTag("goal_saved_amount").assertTextEquals("LKR 20,000.00")
+    }
     @Test fun emptyGoalIdeasOpenPrefilledFormAndTheFloatingNavigationWorks() {
         content()
         compose.onNodeWithText("No Active Savings Goal").assertIsDisplayed()

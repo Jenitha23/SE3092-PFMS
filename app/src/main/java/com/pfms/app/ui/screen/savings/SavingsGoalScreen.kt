@@ -50,7 +50,7 @@ fun SavingsGoalContent(uiState: SavingsGoalUiState, onBack: () -> Unit,
         modifier.blur(if (state.goalDraft != null) 3.dp else 0.dp), onHome, onIncome, onExpenses, onInsights)
     if (state.goalDraft != null) SavingsGoalEditorDialog(state, controller,
         onSave = { controller.submitGoal(onCreateGoal, onUpdateGoal) })
-    if (state.transactionDraft != null) SavingsTransactionEditorDialog(state, controller,
+    if (state.transactionDraft != null) SavingsTransactionEditorDialog(state, controller, onClearError,
         onSave = { controller.submitTransaction(onAddContribution, onAddWithdrawal, onUpdateTransaction) })
     SavingsGoalOverlays(state, controller, onArchiveGoal, onDeleteGoal, onDeleteTransaction)
 }

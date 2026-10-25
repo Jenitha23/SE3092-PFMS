@@ -6,6 +6,8 @@ import androidx.work.ExistingWorkPolicy
 import com.pfms.app.domain.repository.AuthRepository
 import com.pfms.app.domain.repository.ConnectivityObserver
 import com.pfms.app.domain.repository.SavingsGoalRepository
+import com.pfms.app.data.error.OperationErrors
+import com.pfms.app.data.error.ErrorAction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +19,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,30 +43,47 @@ class SyncStartup @Inject constructor(
         ExpenseSyncWorker.enqueuePeriodic(context)
 
         job = scope.launch {
-            combine(auth.currentUser.map { it?.uid }, connectivity.isOnline) { uid, online ->
-                uid to online
+            restoreForSessions {
+                IncomeSyncWorker.enqueue(context, ExistingWorkPolicy.APPEND_OR_REPLACE)
+                ExpenseSyncWorker.enqueue(context)
             }
-                .distinctUntilChanged()
-                .collectLatest { (uid, online) ->
-                    if (uid.isNullOrBlank() || !online) return@collectLatest
+        }
+    }
 
-                    // Keep existing pending-write scheduling behaviour.
-                    IncomeSyncWorker.enqueue(context, ExistingWorkPolicy.APPEND_OR_REPLACE)
-                    ExpenseSyncWorker.enqueue(context)
+    /** collectLatest cancels retries and in-flight restoration on sign-out/account switch/offline. */
+    internal suspend fun restoreForSessions(schedulePendingWrites: () -> Unit) {
+        combine(auth.currentUser.map { it?.uid }, connectivity.isOnline) { uid, online ->
+            uid to online
+        }
+            .distinctUntilChanged()
+            .collectLatest { (uid, online) ->
+                if (uid.isNullOrBlank() || !online) return@collectLatest
 
-                    // Firestore -> Room restoration. The repository skips pending local edits.
-                    try {
-                        savingsGoalRepository.refreshRemoteSavingsData()
-                            .onFailure { error ->
-                                Log.w(TAG, "Could not restore savings data; will retry on next online event", error)
-                            }
+                // Keep existing pending-write scheduling behaviour.
+                schedulePendingWrites()
+
+                // Firestore -> Room restoration. The repository skips pending local edits.
+                var retryDelay = 1_000L
+                while (true) {
+                    val result = try {
+                        withTimeout(25_000L) { savingsGoalRepository.refreshRemoteSavingsData() }
+                    } catch (error: TimeoutCancellationException) {
+                        Result.failure(error)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        Log.w(TAG, "Unexpected savings restoration failure", error)
+                        Result.failure(error)
                     }
+                    if (result.isSuccess) break
+                    if (!OperationErrors.present(result.exceptionOrNull(), ErrorAction.LOAD).canRetry) {
+                        Log.w(TAG, "Savings restoration requires user attention", result.exceptionOrNull())
+                        break
+                    }
+                    Log.w(TAG, "Could not restore savings data; retrying while online", result.exceptionOrNull())
+                    delay(retryDelay)
+                    retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
                 }
-        }
+            }
     }
 
     companion object {
