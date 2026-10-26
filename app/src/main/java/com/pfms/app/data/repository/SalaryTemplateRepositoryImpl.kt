@@ -86,7 +86,7 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
                         }.collect { snapshot ->
                             if (snapshot.authoritative && ::issues.isInitialized) issues.recovered(user.uid, "salary-load")
                             salaryTemplateDao.reconcile(user.uid,
-                            snapshot.rows.map { it.copy(userId = user.uid).toEntity() }, snapshot.authoritative) }
+                                snapshot.rows.map { it.copy(userId = user.uid).toEntity() }, snapshot.authoritative) }
                     }
                     salaryTemplateDao.observeSalaryTemplate(user.uid).collect { send(it?.takeIf { row -> !row.isDeleted }?.toDomain()) }
                 }
@@ -143,81 +143,119 @@ class SalaryTemplateRepositoryImpl @Inject constructor(
     ) = withContext(Dispatchers.IO) {
         val user = requireUser()
         require(templateId.isNotBlank()) { "Template ID must not be blank" }
-        require(monthKey.isNotBlank()) { "Month key must not be blank" }
+        require(Regex("""\d{4}-\d{2}""").matches(monthKey)) { "Invalid salary month" }
         require(amountMinor > 0L) { "Confirmed salary amount must be greater than zero" }
 
-        val templateEntity = salaryTemplateDao.getSalaryTemplate(user.uid)
-            ?: throw IllegalStateException("Salary template not found for user: ${user.uid}")
-
-        require(templateEntity.id == templateId) {
-            "Template ID mismatch: expected '${templateEntity.id}' but received '$templateId'"
-        }
-
-        // Prevent duplicate confirmation if already confirmed for this month
-        if (templateEntity.lastConfirmedMonth == monthKey) {
-            throw IllegalStateException("Salary for month '$monthKey' has already been confirmed.")
-        }
-
-        // Deterministic income ID prevents duplicate records across offline/online reconciliation
-        val deterministicIncomeId = "salary_${templateId}_${monthKey}"
-
-        val existingIncome = incomeDao.getIncomeById(user.uid, deterministicIncomeId)
-        if (existingIncome != null && !existingIncome.isDeleted) {
-            throw IllegalStateException("A salary income record for month '$monthKey' already exists.")
-        }
-
-        val todayColombo = LocalDate.now(ZoneId.of("Asia/Colombo")).toString()
+        // The salary's deterministic ID is also the idempotency key.
+        val incomeId = "salary_${templateId}_${monthKey}"
         val now = System.currentTimeMillis()
+        val receivedDate = LocalDate.now(ZoneId.of("Asia/Colombo")).toString()
+        var templateChanged = false
 
-        val salaryIncome = Income(
-            id = deterministicIncomeId,
-            userId = user.uid,
-            amountMinor = amountMinor,
-            currency = templateEntity.currency,
-            source = "Salary",
-            receivedDate = todayColombo,
-            note = "Monthly salary confirmation for $monthKey",
-            amountLkrMinor = if (templateEntity.currency == "LKR") amountMinor else null,
-            paymentStatus = "Received",
-            createdAt = now,
-            updatedAt = now
-        )
-
-        val updatedTemplateEntity = templateEntity.copy(
-            amountMinor = amountMinor,
-            lastConfirmedMonth = monthKey,
-            updatedAt = now,
-            syncStatus = SyncStatus.PENDING_UPDATE
-        )
-
-        val incomeEntity = salaryIncome.toEntity(
-            syncStatus = SyncStatus.PENDING_INSERT,
-            isDeleted = false
-        )
-
-        // Atomic local Room transaction
+        // Read AND validate within the same Room transaction; never create duplicates.
         transactionRunner {
-            val latest = salaryTemplateDao.getSalaryTemplate(user.uid)
-                ?: error("Salary template not found")
-            check(latest.id == templateId && latest.lastConfirmedMonth != monthKey) {
-                "Salary for this month has already been confirmed."
+            val current = salaryTemplateDao.getSalaryTemplate(user.uid)
+                ?: throw IllegalStateException("Salary template not found for this account.")
+
+            check(current.id == templateId) {
+                "Salary template has changed. Please reopen the reminder."
             }
-            check(incomeDao.getIncomeById(user.uid, deterministicIncomeId)?.isDeleted != false) {
-                "A salary record for this month already exists."
+
+            val existing = incomeDao.getIncomeById(user.uid, incomeId)
+
+            when {
+                existing != null && existing.isDeleted -> {
+                    // A deletion tombstone must not be silently resurrected.
+                    throw IllegalStateException(
+                        "This month's salary was previously deleted. Review Income before confirming."
+                    )
+                }
+
+                existing != null -> {
+                    // The ID links the record to this template/month. Check the contents as well.
+                    check(
+                        existing.userId == user.uid &&
+                                existing.source == "Salary" &&
+                                existing.currency == current.currency
+                    ) {
+                        "Existing salary record conflicts with this salary template. Review Income."
+                    }
+                    check(existing.amountMinor == amountMinor) {
+                        "Salary already recorded for $monthKey with a different amount. " +
+                                "Please review or edit the existing income entry."
+                    }
+                    // Do not overwrite the already-recorded salary (amount, date or metadata).
+                    // Repair only the template's missing confirmation marker.
+                    if (current.lastConfirmedMonth != monthKey) {
+                        salaryTemplateDao.upsertSalaryTemplate(
+                            current.copy(
+                                amountMinor = existing.amountMinor,
+                                lastConfirmedMonth = monthKey,
+                                updatedAt = now,
+                                syncStatus = SyncStatus.PENDING_UPDATE
+                            )
+                        )
+                        templateChanged = true
+                    }
+                }
+
+                else -> {
+                    check(current.lastConfirmedMonth != monthKey) {
+                        "Salary is marked confirmed for $monthKey, but its income record is missing. " +
+                                "Please review Income before trying again."
+                    }
+
+                    val income = Income(
+                        id = incomeId,
+                        userId = user.uid,
+                        amountMinor = amountMinor,
+                        currency = current.currency,
+                        source = "Salary",
+                        receivedDate = receivedDate,
+                        note = "Monthly salary confirmation for $monthKey",
+                        amountLkrMinor = if (current.currency == "LKR") amountMinor else null,
+                        paymentStatus = "Received",
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    incomeDao.upsertIncome(
+                        income.toEntity(
+                            syncStatus = SyncStatus.PENDING_INSERT,
+                            isDeleted = false
+                        )
+                    )
+                    salaryTemplateDao.upsertSalaryTemplate(
+                        current.copy(
+                            amountMinor = amountMinor,
+                            lastConfirmedMonth = monthKey,
+                            updatedAt = now,
+                            syncStatus = SyncStatus.PENDING_UPDATE
+                        )
+                    )
+                    templateChanged = true
+                }
             }
-            incomeDao.upsertIncome(incomeEntity)
-            salaryTemplateDao.upsertSalaryTemplate(updatedTemplateEntity)
         }
 
-        // Remote sync attempts (idempotent, failures remain safely pending)
+        // The local transaction has succeeded. The worker handles the income upload.
+        // A failed remote attempt must not turn a successful local confirmation into an error.
         scheduleSync()
-        // Income is owned by the Room queue; don't also queue the same write in the Firestore SDK.
-        try {
-            withTimeout(10_000) { salaryTemplateRemoteDataSource.upsertSalaryTemplate(user.uid, updatedTemplateEntity.toDomain()) }
-            salaryTemplateDao.completeSync(updatedTemplateEntity)
-        } catch (e: Exception) {
-            if (e is CancellationException && e !is TimeoutCancellationException) throw e
-            // Retains PENDING_UPDATE locally
+        val submitted = salaryTemplateDao.getSalaryTemplate(user.uid)
+        if (submitted != null && submitted.lastConfirmedMonth == monthKey &&
+            submitted.syncStatus != SyncStatus.SYNCED && templateChanged
+        ) {
+            try {
+                withTimeout(10_000) {
+                    salaryTemplateRemoteDataSource.upsertSalaryTemplate(
+                        user.uid,
+                        submitted.toDomain()
+                    )
+                }
+                salaryTemplateDao.completeSync(submitted)
+            } catch (e: Exception) {
+                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                // The locally confirmed template remains pending for later sync.
+            }
         }
     }
 

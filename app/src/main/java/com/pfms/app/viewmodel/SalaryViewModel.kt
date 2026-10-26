@@ -1,6 +1,6 @@
-
 package com.pfms.app.viewmodel
 
+import android.util.Log
 import com.pfms.app.data.error.ErrorAction
 import com.pfms.app.data.error.OperationErrors
 import kotlinx.coroutines.Job
@@ -271,15 +271,35 @@ class SalaryViewModel @Inject constructor(
 
                 // Close reminder only after the
                 // repository confirms success.
+                dismissedMonth = monthKey
+                failedAction = null
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     showConfirmation = false,
+                    errorMessage = null,
+                    canRetry = false,
                     operationSuccessful = false
                 )
 
             } catch (e: Exception) {
-
-                failure(e, ErrorAction.SAVE) { confirmSalary(amount) }
+                Log.e("PFMS_SALARY", "Salary confirmation failed", e)
+                val message = e.message.orEmpty()
+                if (e is IllegalStateException && (
+                            message.startsWith("Salary already recorded for") ||
+                                    message.startsWith("This month's salary was previously deleted") ||
+                                    message.startsWith("Existing salary record conflicts") ||
+                                    message.startsWith("Salary is marked confirmed")
+                            )
+                ) {
+                    failedAction = null
+                    _uiState.value = _uiState.value.copy(
+                        isSaving = false,
+                        errorMessage = message,
+                        canRetry = false
+                    )
+                } else {
+                    failure(e, ErrorAction.SAVE) { confirmSalary(amount) }
+                }
             }
         }
     }
