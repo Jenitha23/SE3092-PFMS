@@ -6,6 +6,10 @@ import com.pfms.app.domain.model.dashboard.MonthlySummary
 import com.pfms.app.domain.model.dashboard.Transaction
 import com.pfms.app.domain.repository.DashboardRepository
 import com.pfms.app.domain.repository.IncomeRepository
+import com.pfms.app.domain.repository.SavingsGoalRepository
+import com.pfms.app.domain.model.GoalTransaction
+import com.pfms.app.domain.usecase.savings.CalculateCurrentMonthGoalContributionUseCase
+import kotlinx.coroutines.flow.flowOf
 import com.pfms.app.domain.usecase.dashboard.AppClock
 import com.pfms.app.domain.usecase.dashboard.TransactionHistoryCalculator
 import com.pfms.app.domain.usecase.dashboard.DashboardOverviewCalculator
@@ -53,7 +57,9 @@ data class DashboardUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModel @Inject constructor(
     private val incomeRepository: IncomeRepository,
-    private val dashboardRepository: DashboardRepository
+    private val dashboardRepository: DashboardRepository,
+    private val savingsGoalRepository: SavingsGoalRepository,
+    private val currentMonthGoalContribution: CalculateCurrentMonthGoalContributionUseCase
 ) : ViewModel() {
 
     private val selectedMonth = MutableStateFlow(AppClock.currentMonth())
@@ -82,7 +88,7 @@ class DashboardViewModel @Inject constructor(
         val month: YearMonth,
         val summary: MonthlySummary,
         val latest: List<Transaction>,
-        val content: DashboardContentState
+        val overview: com.pfms.app.domain.usecase.dashboard.DashboardOverview
     )
 
     private val monthBundle = selectedMonth.flatMapLatest { month ->
@@ -101,18 +107,30 @@ class DashboardViewModel @Inject constructor(
             }
             val latest = TransactionHistoryCalculator.merge(monthIncomes, monthExpenses)
                 .take(LATEST_COUNT)
-            MonthBundle(month, summary, latest, DashboardPresentationMapper.content(overview, latest))
+            MonthBundle(month, summary, latest, overview)
         }.flowOn(Dispatchers.Default)
     }
 
+    // Observe saved contributions locally (including pending offline changes), so the
+    // dashboard allowance refreshes immediately when the savings goal ledger changes.
+    private val activeGoalLedger = savingsGoalRepository.observeActiveGoal()
+        .flatMapLatest { goal ->
+            if (goal == null) flowOf(null to emptyList<GoalTransaction>())
+            else savingsGoalRepository.observeTransactions(goal.id).map { goal to it }
+        }
+
     val uiState: StateFlow<DashboardUiState> = retryKey.flatMapLatest {
-        monthBundle.map { bundle ->
+        combine(monthBundle, activeGoalLedger) { bundle, (goal, transactions) ->
+            val netContributionsMinor = if (goal == null) 0L else
+                currentMonthGoalContribution(goal.id, transactions, bundle.month)
             DashboardUiState(
                 isLoading = false,
                 selectedMonth = bundle.month,
                 summary = bundle.summary,
                 latestTransactions = bundle.latest,
-                content = bundle.content
+                content = DashboardPresentationMapper.content(
+                    bundle.overview, bundle.latest, netContributionsMinor
+                )
             )
         }.catch { error ->
             val problem = com.pfms.app.data.error.OperationErrors.present(error, com.pfms.app.data.error.ErrorAction.LOAD)

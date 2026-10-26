@@ -15,20 +15,21 @@ import java.util.Locale
 import kotlin.math.abs
 
 data class DashboardIdentity(val name: String = "Your account", val initials: String = "TM",
-    val subtitle: String = "Personal finance")
+                             val subtitle: String = "Personal finance")
 data class DashboardGoal(val title: String = "No active savings goal",
-    val saved: String = "Set a goal to track your savings progress", val percent: String = "0%",
-    val progress: Float = 0f, val target: String = "Plan your next milestone", val hasGoal: Boolean = false,
-    val loading: Boolean = false, val error: String? = null)
+                         val saved: String = "Set a goal to track your savings progress", val percent: String = "0%",
+                         val progress: Float = 0f, val target: String = "Plan your next milestone", val hasGoal: Boolean = false,
+                         val loading: Boolean = false, val error: String? = null)
 data class DashboardBar(val month: java.time.YearMonth, val label: String, val income: Float,
-    val expense: Float, val description: String, val selected: Boolean)
+                        val expense: Float, val description: String, val selected: Boolean)
 data class DashboardLedgerRow(val transaction: Transaction, val title: String, val detail: String,
-    val amount: String, val badge: String, val positive: Boolean, val pending: Boolean)
+                              val amount: String, val badge: String, val positive: Boolean, val pending: Boolean)
 data class DashboardContentState(
     val month: String, val monthName: String, val cycle: String, val remaining: String,
     val net: String, val status: String, val deficit: Boolean,
     val income: String, val expenses: String, val growth: String, val expenseRatio: String,
     val coverage: String, val coverageProgress: Float, val coverageNote: String,
+    val savingsAllocation: String, val availableAfterSavings: String,
     val chartPeriod: String, val bars: List<DashboardBar>, val hasNegativeBars: Boolean,
     val averageNet: String, val dailySpend: String, val dailyPace: String, val dailyPaceUp: Boolean,
     val sparkline: List<Float>, val committed: String, val committedProgress: Float,
@@ -36,7 +37,7 @@ data class DashboardContentState(
     val transactions: List<DashboardLedgerRow>, val hasData: Boolean
 )
 data class DashboardChromeState(val identity: DashboardIdentity = DashboardIdentity(),
-    val goal: DashboardGoal = DashboardGoal(loading = true), val monthMenuExpanded: Boolean = false)
+                                val goal: DashboardGoal = DashboardGoal(loading = true), val monthMenuExpanded: Boolean = false)
 
 /** Formatting and chart coordinates belong to presentation; money rules stay in the domain. */
 object DashboardPresentationMapper {
@@ -49,7 +50,7 @@ object DashboardPresentationMapper {
         minimumFractionDigits = 2; maximumFractionDigits = 2
     }.format(BigDecimal.valueOf(minor, 2))
     private fun delta(value: Double?): String = if (value == null) "No prior comparison"
-        else (if (value > 0) "+" else "") + percent(value) + " vs last month"
+    else (if (value > 0) "+" else "") + percent(value) + " vs last month"
 
     fun identity(profile: UserProfile?, session: SessionState): DashboardIdentity {
         val user: AuthUser? = (session as? SessionState.Authenticated)?.user
@@ -69,7 +70,11 @@ object DashboardPresentationMapper {
             "Target: $date · ${money(state.requiredMonthlySavingMinor)}/mo", true, state.isLoading, state.errorMessage)
     }
 
-    fun content(data: DashboardOverview, transactions: List<Transaction>): DashboardContentState {
+    fun content(
+        data: DashboardOverview,
+        transactions: List<Transaction>,
+        netGoalContributionsMinor: Long = 0L
+    ): DashboardContentState {
         val summary = data.summary
         val scale = data.trend.maxOfOrNull { maxOf(abs(it.incomeMinor.toDouble()), abs(it.expenseMinor.toDouble())) }
             ?.coerceAtLeast(1.0) ?: 1.0
@@ -83,7 +88,7 @@ object DashboardPresentationMapper {
             month = summary.month.format(shortMonth),
             monthName = summary.month.format(DateTimeFormatter.ofPattern("MMMM", Locale.ENGLISH)).uppercase(Locale.ROOT),
             cycle = if (data.isCurrentMonth) "CYCLE ${summary.month.monthValue} · DAY ${data.elapsedDays} OF ${summary.month.lengthOfMonth()}"
-                else "${summary.month.year} · MONTH COMPLETE · ${summary.month.lengthOfMonth()} DAYS",
+            else "${summary.month.year} · MONTH COMPLETE · ${summary.month.lengthOfMonth()} DAYS",
             remaining = if (data.isCurrentMonth) "${data.daysRemaining} days left" else "Past month",
             net = money(summary.netSavingsMinor),
             status = when {
@@ -96,8 +101,13 @@ object DashboardPresentationMapper {
             expenseRatio = data.expenseToIncomePercent?.let { "${percent(it)} of inflow" } ?: "No positive inflow",
             coverage = data.coveragePercent?.let(::percent) ?: "No outflow",
             coverageProgress = ((data.coveragePercent ?: 0.0) / 100).toFloat().coerceIn(0f, 1f),
-            coverageNote = if (summary.netSavingsMinor < 0) "Shortfall: ${money(-summary.netSavingsMinor)}"
-                else "Net available: ${money(summary.netSavingsMinor)}",
+            // Net cash flow remains income - expenses. Saving is a transfer, not an expense.
+            // Positive allocations reduce the remaining surplus; withdrawals increase it.
+            coverageNote = "Net cash flow: ${money(summary.netSavingsMinor)}",
+            savingsAllocation = money(netGoalContributionsMinor),
+            availableAfterSavings = money(
+                Math.subtractExact(summary.netSavingsMinor, netGoalContributionsMinor)
+            ),
             chartPeriod = "${data.trend.first().month.format(shortMonth)} – ${data.trend.last().month.format(shortMonth)}",
             bars = bars, hasNegativeBars = bars.any { it.income < 0f || it.expense < 0f },
             averageNet = money(data.historicalAverageNetMinor) + "/mo",
@@ -124,7 +134,7 @@ object DashboardPresentationMapper {
             else -> row.classification?.displayLabel() ?: "Expense"
         }
         val title = if (row.type == TransactionType.EXPENSE && row.subtitle == row.paymentMethod?.displayLabel()) row.title
-            else row.subtitle.substringBefore(" • ").substringBefore(" · ").ifBlank { row.title }
+        else row.subtitle.substringBefore(" • ").substringBefore(" · ").ifBlank { row.title }
         return DashboardLedgerRow(row, title, "${row.title} · $date",
             (if (row.isPending) "" else if (positive) "+" else "−") + money(row.amountMinor), badge, positive, row.isPending)
     }

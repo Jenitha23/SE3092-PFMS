@@ -46,7 +46,7 @@ internal fun DashboardCycleStrip(content: DashboardContentState?) {
 
 @Composable
 internal fun DashboardCashflowCard(state: DashboardUiState, chrome: DashboardChromeState,
-    months: List<Pair<YearMonth, String>>, actions: DashboardActions) {
+                                   months: List<Pair<YearMonth, String>>, actions: DashboardActions) {
     val content = state.content
     Surface(shape = RoundedCornerShape(26.dp), color = VaultGreen,
         border = BorderStroke(1.dp, VaultMint.copy(alpha = 0.25f)), shadowElevation = 4.dp) {
@@ -104,6 +104,19 @@ internal fun DashboardCashflowCard(state: DashboardUiState, chrome: DashboardChr
                     trackColor = Color.Black.copy(alpha = 0.25f), gapSize = 0.dp, drawStopIndicator = {})
                 Text(content?.coverageNote ?: "Totals use your recorded entries", style = MaterialTheme.typography.bodySmall,
                     color = if (content?.deficit == true) CashflowRed else VaultMuted)
+                HorizontalDivider(color = VaultMuted.copy(alpha = 0.15f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Net savings goal contributions", Modifier.weight(1f),
+                        color = VaultMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(content?.savingsAllocation ?: "—", color = Color.White,
+                        style = MaterialTheme.typography.labelMedium)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Remaining after goal savings", Modifier.weight(1f),
+                        color = VaultMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(content?.availableAfterSavings ?: "—", color = VaultMint,
+                        style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }
@@ -111,7 +124,7 @@ internal fun DashboardCashflowCard(state: DashboardUiState, chrome: DashboardChr
 
 @Composable
 private fun CashflowMetric(label: String, amount: String, note: String, accent: Color,
-    onClick: () -> Unit, modifier: Modifier) {
+                           onClick: () -> Unit, modifier: Modifier) {
     Surface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(18.dp),
         color = Color.White.copy(alpha = 0.045f), border = BorderStroke(1.dp, VaultMuted.copy(alpha = 0.17f))) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -136,7 +149,7 @@ internal fun DashboardQuickActions(actions: DashboardActions) {
 
 @Composable
 private fun QuickAction(label: String, icon: FinanceSymbol, primary: Boolean,
-    onClick: () -> Unit, modifier: Modifier) {
+                        onClick: () -> Unit, modifier: Modifier) {
     Surface(onClick = onClick, shape = RoundedCornerShape(13.dp), modifier = modifier,
         color = if (primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
         Row(Modifier.heightIn(min = 52.dp).padding(horizontal = 6.dp, vertical = 8.dp),
