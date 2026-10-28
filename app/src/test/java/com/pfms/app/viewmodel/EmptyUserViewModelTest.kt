@@ -1,3 +1,4 @@
+
 package com.pfms.app.viewmodel
 
 import com.pfms.app.data.*
@@ -14,48 +15,119 @@ import org.junit.Rule
 import org.junit.Test
 
 class EmptyUserViewModelTest {
-    @get:Rule val dispatcherRule = MainDispatcherRule()
+
+    @get:Rule
+    val dispatcherRule = MainDispatcherRule()
+
     private val incomes = FakeIncomeRepository()
     private val expenses = FakeExpenseRepository()
     private val dashboard = OfflineFirstDashboardRepository(expenses)
 
-    @Test fun newUserDashboardAnalyticsAndHistoryExposeLoadedZeroStates() = runTest {
-        val home = dispatcherRule.track(DashboardViewModel(incomes, dashboard)).uiState.first { !it.isLoading }
+    // New dependencies required by DashboardViewModel
+    private val savingsGoals = FakeSavingsGoalRepository()
+    private val currentMonthGoalContribution =
+        CalculateCurrentMonthGoalContributionUseCase()
+
+    @Test
+    fun newUserDashboardAnalyticsAndHistoryExposeLoadedZeroStates() = runTest {
+
+        val home = dispatcherRule.track(
+            DashboardViewModel(
+                incomeRepository = incomes,
+                dashboardRepository = dashboard,
+                savingsGoalRepository = savingsGoals,
+                currentMonthGoalContribution = currentMonthGoalContribution
+            )
+        ).uiState.first { !it.isLoading }
+
         assertEquals(0L, home.summary!!.totalIncomeMinor)
         assertEquals(0L, home.summary.totalExpenseMinor)
         assertTrue(home.latestTransactions.isEmpty())
-        val analytics = dispatcherRule.track(SpendingAnalyticsViewModel(incomes, dashboard)).uiState.first { !it.isLoading }
+
+        val analytics = dispatcherRule.track(
+            SpendingAnalyticsViewModel(incomes, dashboard)
+        ).uiState.first { !it.isLoading }
+
         assertNull(analytics.errorMessage)
         assertEquals(0L, analytics.summary!!.totalExpenseMinor)
         assertTrue(analytics.insights!!.largestExpenses.isEmpty())
         assertEquals(6, analytics.trend.size)
-        val history = dispatcherRule.track(TransactionHistoryViewModel(incomes, dashboard)).uiState.first { !it.isLoading }
+
+        val history = dispatcherRule.track(
+            TransactionHistoryViewModel(incomes, dashboard)
+        ).uiState.first { !it.isLoading }
+
         assertFalse(history.hasAnyTransactions)
         assertEquals(0L, history.summary.netMinor)
         assertFalse(history.canLoadMore)
     }
 
-    @Test fun monthWithoutIncomeStillShowsExpensesAndNegativeNetSavings() = runTest {
-        expenses.addExpense(Expense(id = "expense", amountMinor = 100, date = AppClock.currentMonth().atDay(1).toString()))
-        val state = dispatcherRule.track(DashboardViewModel(incomes, dashboard)).uiState.first { !it.isLoading }
+    @Test
+    fun monthWithoutIncomeStillShowsExpensesAndNegativeNetSavings() = runTest {
+
+        expenses.addExpense(
+            Expense(
+                id = "expense",
+                amountMinor = 100,
+                date = AppClock.currentMonth().atDay(1).toString()
+            )
+        )
+
+        val state = dispatcherRule.track(
+            DashboardViewModel(
+                incomeRepository = incomes,
+                dashboardRepository = dashboard,
+                savingsGoalRepository = savingsGoals,
+                currentMonthGoalContribution = currentMonthGoalContribution
+            )
+        ).uiState.first { !it.isLoading }
+
         assertEquals(0L, state.summary!!.totalIncomeMinor)
         assertEquals(-100L, state.summary.netSavingsMinor)
         assertTrue(state.summary.hasData)
     }
 
-    @Test fun emptySavingsRepositoryExposesNoGoalAndZeroProgress() = runTest {
+    @Test
+    fun emptySavingsRepositoryExposesNoGoalAndZeroProgress() = runTest {
+
         val saved = CalculateSavedAmountUseCase()
         val progress = CalculateGoalProgressUseCase(saved)
         val contribution = CalculateCurrentMonthGoalContributionUseCase()
-        val net = CalculateMonthlyNetSavingsUseCase(GetMonthlyIncomeSummaryUseCase())
+        val net = CalculateMonthlyNetSavingsUseCase(
+            GetMonthlyIncomeSummaryUseCase()
+        )
         val trailing = CalculateTrailingNetSavingsAverageUseCase(net)
-        val vm = dispatcherRule.track(SavingsGoalViewModel(
-            FakeSavingsGoalRepository(), expenses, incomes,
-            FakeAuthRepository(AuthUser("new-user", "New user", "new@example.com", true)),
-            saved, progress, contribution, net, trailing,
-            CalculateGoalPaceUseCase(progress, contribution, net, trailing), CalculateDiscretionaryImpactUseCase()
-        ))
+
+        val vm = dispatcherRule.track(
+            SavingsGoalViewModel(
+                FakeSavingsGoalRepository(),
+                expenses,
+                incomes,
+                FakeAuthRepository(
+                    AuthUser(
+                        "new-user",
+                        "New user",
+                        "new@example.com",
+                        true
+                    )
+                ),
+                saved,
+                progress,
+                contribution,
+                net,
+                trailing,
+                CalculateGoalPaceUseCase(
+                    progress,
+                    contribution,
+                    net,
+                    trailing
+                ),
+                CalculateDiscretionaryImpactUseCase()
+            )
+        )
+
         val state = vm.uiState.first { !it.isLoading }
+
         assertNull(state.activeGoal)
         assertEquals(0L, state.currentSavedMinor)
         assertEquals(0.0, state.progressPercent, 0.0)

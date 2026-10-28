@@ -1,5 +1,7 @@
 package com.pfms.app.viewmodel
 
+import com.pfms.app.data.FakeSavingsGoalRepository
+import com.pfms.app.domain.usecase.savings.CalculateCurrentMonthGoalContributionUseCase
 import com.pfms.app.domain.model.Expense
 import com.pfms.app.domain.model.Income
 import com.pfms.app.domain.repository.DashboardRepository
@@ -45,6 +47,17 @@ class DashboardViewModelTest {
             expenses.map { list -> list.filter { it.date >= start.toString() && it.date <= end.toString() } }
     }
 
+    // Centralized test factory: construct the production ViewModel with all required dependencies.
+    private fun newDashboardViewModel(
+        incomeRepository: IncomeRepository,
+        dashboardRepository: DashboardRepository
+    ): DashboardViewModel = DashboardViewModel(
+        incomeRepository = incomeRepository,
+        dashboardRepository = dashboardRepository,
+        savingsGoalRepository = FakeSavingsGoalRepository(),
+        currentMonthGoalContribution = CalculateCurrentMonthGoalContributionUseCase()
+    )
+
     private val thisMonth = AppClock.currentMonth()
     private fun day(n: Int) = thisMonth.atDay(n).toString()
 
@@ -54,7 +67,7 @@ class DashboardViewModelTest {
             expense("old", thisMonth.minusMonths(1).atDay(1).toString(), 40_000L),
             expense("current", day(1), 10_000L)
         ))
-        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), repo))
+        val vm = mainDispatcherRule.track(newDashboardViewModel(FakeIncomeRepository(), repo))
         val state = vm.uiState.first { !it.isLoading }
         assertEquals(listOf("current"), state.latestTransactions.map { it.id })
         assertEquals(10_000L, state.summary!!.totalExpenseMinor)
@@ -64,7 +77,7 @@ class DashboardViewModelTest {
 
     @Test
     fun monthPickerRefusesFutureMonthsAndClosesAfterSelection() = runTest {
-        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository()))
+        val vm = mainDispatcherRule.track(newDashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository()))
         vm.uiState.first { !it.isLoading }
         vm.showMonthMenu()
         assertTrue(vm.chrome.value.monthMenuExpanded)
@@ -77,7 +90,7 @@ class DashboardViewModelTest {
 
     @Test
     fun emitsTotalsForTheCurrentMonth() = runTest {
-        val vm = DashboardViewModel(
+        val vm = newDashboardViewModel(
             FakeIncomeRepository(listOf(income("i1", day(1), 10_000_000L))),
             FakeDashboardRepository(listOf(expense("e1", day(1), 2_500_000L)))
         ).also { mainDispatcherRule.track(it) }
@@ -91,7 +104,7 @@ class DashboardViewModelTest {
 
     @Test
     fun emptyDataGivesZeroedSummaryNotAnError() = runTest {
-        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository()))
+        val vm = mainDispatcherRule.track(newDashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository()))
         val state = vm.uiState.first { !it.isLoading }
         assertNull(state.errorMessage)
         assertFalse(state.summary!!.hasData)
@@ -101,7 +114,7 @@ class DashboardViewModelTest {
     @Test
     fun latestTransactionsAreCappedAtTen() = runTest {
         val many = (1..15).map { expense("e$it", day(1), 1_000L * it) }
-        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository(many)))
+        val vm = mainDispatcherRule.track(newDashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository(many)))
         val state = vm.uiState.first { !it.isLoading }
         assertEquals(10, state.latestTransactions.size)
         assertEquals(15, state.summary?.expenseCount)
@@ -110,7 +123,7 @@ class DashboardViewModelTest {
     @Test
     fun newExpenseUpdatesTheDashboardInRealTime() = runTest {
         val repo = FakeDashboardRepository()
-        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), repo))
+        val vm = mainDispatcherRule.track(newDashboardViewModel(FakeIncomeRepository(), repo))
         vm.uiState.first { !it.isLoading }
         repo.expenses.value = listOf(expense("e1", day(1), 500_000L))
         val updated = vm.uiState.first { it.summary?.totalExpenseMinor == 500_000L }
@@ -119,7 +132,7 @@ class DashboardViewModelTest {
 
     @Test
     fun monthNavigationStopsAtTheCurrentMonth() = runTest {
-        val vm = mainDispatcherRule.track(DashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository()))
+        val vm = mainDispatcherRule.track(newDashboardViewModel(FakeIncomeRepository(), FakeDashboardRepository()))
         vm.uiState.first { !it.isLoading }
 
         vm.previousMonth()

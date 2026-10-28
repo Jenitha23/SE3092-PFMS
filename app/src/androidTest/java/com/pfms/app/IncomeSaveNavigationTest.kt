@@ -17,6 +17,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
+import com.pfms.app.data.FakeSavingsGoalRepository
+import com.pfms.app.domain.usecase.savings.CalculateCurrentMonthGoalContributionUseCase
 import com.pfms.app.data.exchange.ExchangeRateService
 import com.pfms.app.data.local.PfmsDatabase
 import com.pfms.app.data.local.entity.SyncStatus
@@ -77,7 +79,10 @@ class IncomeSaveNavigationTest {
             dashboard = DashboardViewModel(repository, object : DashboardRepository {
                 override fun observeExpenses(): Flow<List<Expense>> = flowOf(emptyList())
                 override fun observeExpensesBetween(start: LocalDate, end: LocalDate) = observeExpenses()
-            })
+            },
+                savingsGoalRepository = FakeSavingsGoalRepository(),
+                currentMonthGoalContribution = CalculateCurrentMonthGoalContributionUseCase()
+            )
             stores.put("income", income)
             stores.put("dashboard", dashboard)
         }
