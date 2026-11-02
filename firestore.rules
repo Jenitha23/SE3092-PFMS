@@ -41,7 +41,10 @@ service cloud.firestore {
         || d.createdAt == resource.data.createdAt;
     }
     function payment(x) {
-      return x in ['CASH', 'CARD', 'BANK_TRANSFER_AUTO_DEBIT', 'DIGITAL_WALLET_PLATFORM'];
+      return x in [
+        'Cash', 'Card', 'Bank Transfer / Auto-debit', 'Digital Wallet / Platform',
+        'CASH', 'CARD', 'BANK_TRANSFER_AUTO_DEBIT', 'DIGITAL_WALLET_PLATFORM'
+      ];
     }
     function classification(x) { return x in ['COMMITTED', 'DISCRETIONARY']; }
     function validProfile(d, uid) {

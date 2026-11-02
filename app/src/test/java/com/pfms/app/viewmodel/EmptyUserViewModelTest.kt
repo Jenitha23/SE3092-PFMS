@@ -1,6 +1,7 @@
-
 package com.pfms.app.viewmodel
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.pfms.app.data.*
 import com.pfms.app.data.repository.OfflineFirstDashboardRepository
 import com.pfms.app.domain.model.*
@@ -62,6 +63,7 @@ class EmptyUserViewModelTest {
         assertFalse(history.canLoadMore)
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     @Test
     fun monthWithoutIncomeStillShowsExpensesAndNegativeNetSavings() = runTest {
 

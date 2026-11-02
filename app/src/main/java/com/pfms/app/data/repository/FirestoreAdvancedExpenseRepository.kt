@@ -347,7 +347,9 @@ class FirestoreAdvancedExpenseRepository @Inject constructor(
                     "merchant" to template.title,
                     "note" to "Recurring expense (${template.recurrence.name.lowercase()})",
                     "createdAt" to now,
-                    "updatedAt" to now
+                    "updatedAt" to now,
+                    "syncRevision" to UUID.randomUUID().toString(),
+                    "isDeleted" to false
                 )
             )
 
