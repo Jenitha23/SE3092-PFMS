@@ -24,3 +24,9 @@ local.properties
 firestore-debug.log
 firebase-debug.log
 ui-debug.log
+# Firebase configuration
+/app/google-services.json
+
+# Release signing keys
+*.jks
+*.keystore
