@@ -28,6 +28,8 @@ import com.pfms.app.ui.screen.RegisterScreen
 import com.pfms.app.ui.screen.SettingsScreen
 import com.pfms.app.ui.screen.PrivacyPolicyScreen
 import com.pfms.app.ui.screen.SplashScreen
+import com.pfms.app.ui.screen.onboarding.WelcomeOnboardingScreen
+import com.pfms.app.viewmodel.WelcomeOnboardingViewModel
 import com.pfms.app.ui.screen.savings.SavingsGoalScreen
 import com.pfms.app.ui.screen.analytics.SpendingAnalyticsScreen
 import com.pfms.app.ui.screen.analytics.SpendingPatternsScreen
@@ -94,11 +96,16 @@ fun PfmsNavGraph(
     val biometricEnabled by biometricSettingsViewModel.biometricEnabled.collectAsStateWithLifecycle()
     val biometricAvailable = remember { biometricSettingsViewModel.isBiometricAvailable() }
     val advancedExpenseViewModel: AdvancedExpenseViewModel = hiltViewModel()
+    val welcomeOnboarding: WelcomeOnboardingViewModel = hiltViewModel()
+    val welcomeSeen by welcomeOnboarding.welcomeSeen.collectAsStateWithLifecycle()
     val onboarding: IncomeOnboardingViewModel = hiltViewModel()
     val onboardingState by onboarding.uiState.collectAsStateWithLifecycle()
     val expenseState by expenseViewModel.uiState.collectAsStateWithLifecycle()
     val salaryState by salaryViewModel.uiState.collectAsStateWithLifecycle()
     var showDashboardQuickAdd by rememberSaveable { mutableStateOf(false) }
+    // Remember the requested first action until the profile update is confirmed.
+    // 0 = no pending action, 1 = income, 2 = expense, 3 = dashboard only, 4 = salary template.
+    var pendingFirstAction by rememberSaveable { mutableIntStateOf(0) }
 
     val navController = rememberNavController()
 
@@ -172,7 +179,11 @@ fun PfmsNavGraph(
 
         SessionState.Loading -> Routes.Splash
 
-        SessionState.Unauthenticated -> Routes.Login
+        SessionState.Unauthenticated -> when (welcomeSeen) {
+            null -> Routes.Splash
+            false -> Routes.WelcomeOnboarding
+            true -> Routes.Login
+        }
 
         is SessionState.Authenticated -> {
 
@@ -218,6 +229,15 @@ fun PfmsNavGraph(
                 launchSingleTop = true
             }
         }
+        if (targetRoute == Routes.Dashboard && pendingFirstAction != 0) {
+            when (pendingFirstAction) {
+                1 -> navController.navigate(Routes.AddIncome) { launchSingleTop = true }
+                2 -> showDashboardQuickAdd = true
+                4 -> navController.navigate(Routes.SalaryTemplate) { launchSingleTop = true }
+                // 3 means the user selected Skip; stay on the dashboard.
+            }
+            pendingFirstAction = 0
+        }
     }
 
 
@@ -259,7 +279,35 @@ fun PfmsNavGraph(
         navController = navController,
         startDestination = Routes.Splash
     ) {
-        composable(Routes.IncomeOnboarding) { IncomeOnboardingScreen(onboardingState, onboarding::save) }
+        // Shown only on first unauthenticated install; persisted through DataStore.
+        composable(Routes.WelcomeOnboarding) {
+            WelcomeOnboardingScreen(
+                onGetStarted = welcomeOnboarding::completeWelcome
+
+            )
+        }
+
+        composable(Routes.IncomeOnboarding) {
+            IncomeOnboardingScreen(
+                state = onboardingState,
+                onAddIncome = { estimate ->
+                    pendingFirstAction = 1
+                    onboarding.completeSetup(estimate)
+                },
+                onAddExpense = { estimate ->
+                    pendingFirstAction = 2
+                    onboarding.completeSetup(estimate)
+                },
+                onSaveSalary = { estimate ->
+                    pendingFirstAction = 4
+                    onboarding.completeSetup(estimate)
+                },
+                onSkip = { estimate ->
+                    pendingFirstAction = 3
+                    onboarding.completeSetup(estimate)
+                }
+            )
+        }
 
 
         // -------------------------------------
@@ -489,61 +537,61 @@ fun PfmsNavGraph(
             IncomeListScreen(
                 state = incomeStream,
                 actions = com.pfms.app.ui.screen.income.IncomeStreamActions(
-                onRetry = incomeViewModel::retry,
-                onPreviousMonth = incomeViewModel::previousStreamMonth,
-                onNextMonth = incomeViewModel::nextStreamMonth,
-                onShowMonths = incomeViewModel::showStreamMonths,
-                onMonth = incomeViewModel::selectStreamMonth,
-                onFilter = incomeViewModel::filterStream,
-                onSort = incomeViewModel::toggleStreamSort,
-                onMenu = incomeViewModel::showStreamRecordMenu,
-                onDelete = incomeViewModel::requestStreamDelete,
-                onConfirmDelete = incomeViewModel::confirmStreamDelete,
-                onAdd = {
-                    navController.navigate(Routes.AddIncome) {
-                        launchSingleTop = true
-                    }
-                },
+                    onRetry = incomeViewModel::retry,
+                    onPreviousMonth = incomeViewModel::previousStreamMonth,
+                    onNextMonth = incomeViewModel::nextStreamMonth,
+                    onShowMonths = incomeViewModel::showStreamMonths,
+                    onMonth = incomeViewModel::selectStreamMonth,
+                    onFilter = incomeViewModel::filterStream,
+                    onSort = incomeViewModel::toggleStreamSort,
+                    onMenu = incomeViewModel::showStreamRecordMenu,
+                    onDelete = incomeViewModel::requestStreamDelete,
+                    onConfirmDelete = incomeViewModel::confirmStreamDelete,
+                    onAdd = {
+                        navController.navigate(Routes.AddIncome) {
+                            launchSingleTop = true
+                        }
+                    },
 
-                onEdit = { incomeId ->
-                    navController.navigate(Routes.editIncome(incomeId)) {
-                        launchSingleTop = true
-                    }
-                },
+                    onEdit = { incomeId ->
+                        navController.navigate(Routes.editIncome(incomeId)) {
+                            launchSingleTop = true
+                        }
+                    },
 
-                onMarkReceived = { incomeId ->
-                    incomeViewModel.markFreelanceAsReceived(incomeId)
-                },
+                    onMarkReceived = { incomeId ->
+                        incomeViewModel.markFreelanceAsReceived(incomeId)
+                    },
 
-                onBack = {
-                    navController.popBackStack()
-                },
+                    onBack = {
+                        navController.popBackStack()
+                    },
 
-                onSalary = {
-                    navController.navigate(Routes.SalaryTemplate) {
-                        launchSingleTop = true
-                    }
-                },
+                    onSalary = {
+                        navController.navigate(Routes.SalaryTemplate) {
+                            launchSingleTop = true
+                        }
+                    },
 
-                onAnalytics = {
-                    navController.navigate(Routes.IncomeAnalytics) {
-                        launchSingleTop = true
-                    }
-                },
+                    onAnalytics = {
+                        navController.navigate(Routes.IncomeAnalytics) {
+                            launchSingleTop = true
+                        }
+                    },
 
-                onHome = {
-                    navController.navigate(Routes.Dashboard) {
-                        launchSingleTop = true
-                    }
-                },
+                    onHome = {
+                        navController.navigate(Routes.Dashboard) {
+                            launchSingleTop = true
+                        }
+                    },
 
-                onExpenses = {
-                    navController.navigate(Routes.ExpenseList) {
-                        launchSingleTop = true
-                    }
-                },
+                    onExpenses = {
+                        navController.navigate(Routes.ExpenseList) {
+                            launchSingleTop = true
+                        }
+                    },
 
-                onGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } }
+                    onGoals = { navController.navigate(Routes.SavingsGoal) { launchSingleTop = true } }
                 )
             )
         }
