@@ -9,6 +9,7 @@ object Routes {
         currentUser != null && (expectedUser == null || expectedUser == currentUser)
 
     const val Splash = "splash"
+    const val WelcomeOnboarding = "welcome_onboarding"
     const val Login = "login"
     const val Register = "register"
     const val ForgotPassword = "forgot_password"

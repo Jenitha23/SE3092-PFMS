@@ -26,14 +26,23 @@ class IncomeOnboardingViewModel @Inject constructor(private val users: UserRepos
             }.collect { profile ->
                 if (profile?.uid != userId) { userId = profile?.uid; state.value = IncomeOnboardingState() }
                 if (!state.value.saving) state.value = state.value.copy(required = profile != null &&
-                    !profile.incomeOnboardingComplete && profile.estimatedMonthlyIncomeMinor == null)
+                        !profile.incomeOnboardingComplete && profile.estimatedMonthlyIncomeMinor == null)
             }
         }
     }
-    fun save(text: String) {
+    /** Blank estimate is optional for all three paths; nonblank values must be valid. */
+    fun completeSetup(text: String) {
+        val input = text.trim()
+        val minor = if (input.isBlank()) null else parseEstimate(input)
+        if (input.isNotBlank() && minor == null) {
+            state.value = state.value.copy(error = "Enter a positive or zero LKR amount with up to 2 decimal places.")
+            return
+        }
+        submit(minor)
+    }
+
+    private fun submit(minor: Long?) {
         if (state.value.saving) return
-        val minor = parseEstimate(text)
-        if (minor == null) { state.value = state.value.copy(error = "Enter zero or a positive amount with up to 2 decimal places."); return }
         val savingUser = userId
         state.value = state.value.copy(saving = true, error = null)
         viewModelScope.launch {
