@@ -1,12 +1,27 @@
+
 package com.pfms.app.ui.navigation
 
 /** Centralized route names for the PFMS navigation graph. */
 object Routes {
-    fun reminderDestination(route: String?): String? =
-        route?.takeIf { it in setOf(Dashboard, IncomeList, SpendingAnalytics, SavingsGoal, RecurringExpenses, Subscriptions) }
 
-    fun reminderMatchesUser(expectedUser: String?, currentUser: String?): Boolean =
-        currentUser != null && (expectedUser == null || expectedUser == currentUser)
+    fun reminderDestination(route: String?): String? =
+        route?.takeIf {
+            it in setOf(
+                Dashboard,
+                IncomeList,
+                SpendingAnalytics,
+                SavingsGoal,
+                RecurringExpenses,
+                Subscriptions
+            )
+        }
+
+    fun reminderMatchesUser(
+        expectedUser: String?,
+        currentUser: String?
+    ): Boolean =
+        currentUser != null &&
+                (expectedUser == null || expectedUser == currentUser)
 
     const val Splash = "splash"
     const val WelcomeOnboarding = "welcome_onboarding"
@@ -29,26 +44,33 @@ object Routes {
     const val IncomeList = "income_list"
     const val AddIncome = "add_income"
     const val EditIncome = "edit_income/{incomeId}"
+
     fun editIncome(incomeId: String): String =
         "edit_income/${android.net.Uri.encode(incomeId)}"
+
     const val SalaryTemplate = "salary_template"
     const val IncomeAnalytics = "income_analytics"
+
+    // NEW: Crypto Buy/Sell
+    const val CryptoTrading = "crypto_trading"
 
     const val Categories = "expense_categories"
     const val RecurringExpenses = "recurring_expenses"
     const val Subscriptions = "subscriptions"
 
-    // Savings Goal Management — Member 2 (FR-23 through FR-28)
+    // Savings Goal Management — Member 2
     const val SavingsGoal = "savings_goal"
 
     // Expense Management — Member 1
     const val ExpenseList = "expense_list"
     const val AddExpense = "add_expense"
     const val EditExpense = "edit_expense/{expenseId}"
+
     fun editExpense(expenseId: String): String =
         "edit_expense/${android.net.Uri.encode(expenseId)}"
 
     const val RepeatExpense = "repeat_expense/{expenseId}"
+
     fun repeatExpense(expenseId: String): String =
         "repeat_expense/${android.net.Uri.encode(expenseId)}"
 }

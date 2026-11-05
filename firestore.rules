@@ -229,6 +229,47 @@ service cloud.firestore {
         allow create: if owner(uid) && validDuplicateGuard(request.resource.data,uid);
         allow update: if false;
       }
+      // New: append-only cryptocurrency Buy/Sell trades. Existing rules unchanged.
+      match /cryptoTrades/{tradeId} {
+        allow read: if owner(uid);
+        allow create: if owner(uid)
+          && fields(request.resource.data,
+            ['id','userId','asset','side','quantity','grossLkrMinor','feeLkrMinor',
+             'date','createdAt','originalCurrency','originalGrossMinor',
+             'originalFeeMinor','exchangeRate','note','realizedLkrMinor'],
+            ['id','userId','asset','side','quantity','grossLkrMinor','feeLkrMinor',
+             'date','createdAt','originalCurrency','originalGrossMinor',
+             'originalFeeMinor','exchangeRate','note','realizedLkrMinor'])
+          && request.resource.data.id == tradeId
+          && request.resource.data.userId == uid
+          && request.resource.data.asset is string
+          && request.resource.data.asset.matches('^[A-Z0-9]{2,15}$')
+          && request.resource.data.side in ['BUY','SELL']
+          && request.resource.data.quantity is string
+          && request.resource.data.quantity.matches('^[0-9]+(\\.[0-9]{1,18})?$')
+          && !request.resource.data.quantity.matches('^0+(\\.0+)?$')
+          && money(request.resource.data.grossLkrMinor)
+          && nonnegative(request.resource.data.feeLkrMinor)
+          && dateText(request.resource.data.date)
+          && millis(request.resource.data.createdAt)
+          && request.resource.data.createdAt > 0
+          && request.resource.data.originalCurrency in ['LKR','USD']
+          && money(request.resource.data.originalGrossMinor)
+          && nonnegative(request.resource.data.originalFeeMinor)
+          && (request.resource.data.exchangeRate == null ||
+              nonempty(request.resource.data.exchangeRate, 100))
+          && (request.resource.data.originalCurrency != 'USD' ||
+              nonempty(request.resource.data.exchangeRate, 100))
+          && textValue(request.resource.data.note, 2000)
+          && (request.resource.data.realizedLkrMinor == null ||
+              request.resource.data.realizedLkrMinor is int)
+          && (request.resource.data.side != 'BUY' ||
+              request.resource.data.realizedLkrMinor == null)
+          && (request.resource.data.side != 'SELL' ||
+              request.resource.data.realizedLkrMinor is int);
+        // Prevent changes that would invalidate historical FIFO cost basis.
+        allow update, delete: if false;
+      }
       // Reserved by the app, but no production data schema currently exists.
       match /reminders/{id} { allow read, delete: if owner(uid); allow create, update: if false; }
     }

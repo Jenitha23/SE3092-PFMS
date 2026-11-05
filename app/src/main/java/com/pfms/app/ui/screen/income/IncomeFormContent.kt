@@ -30,7 +30,8 @@ data class IncomeFormActions(
     val onNote: (String) -> Unit = {}, val onToggleNotes: () -> Unit = {},
     val onDatePicker: (Boolean) -> Unit = {}, val onDate: (Long?) -> Unit = {},
     val onInfo: (Boolean) -> Unit = {}, val onManualRate: (String) -> Unit = {},
-    val onEnableManualRate: () -> Unit = {}, val onRefreshRate: () -> Unit = {}
+    val onEnableManualRate: () -> Unit = {}, val onRefreshRate: () -> Unit = {},
+    val onCryptoTrading: () -> Unit = {}, val showCryptoTrading: Boolean = false
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

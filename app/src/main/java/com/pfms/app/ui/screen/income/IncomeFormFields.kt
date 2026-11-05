@@ -105,6 +105,22 @@ internal fun IncomeFreelanceFields(state: IncomeFormState, actions: IncomeFormAc
 @Composable
 internal fun IncomeCryptoFields(state: IncomeFormState, actions: IncomeFormActions) {
     IncomeFormCard {
+        if (actions.showCryptoTrading) {
+            IncomeFormLabel("CRYPTO ENTRY METHOD")
+            OutlinedButton(
+                onClick = actions.onCryptoTrading,
+                enabled = !state.isSaving,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("crypto_buy_sell_button"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Buy / Sell (Automatic FIFO)")
+            }
+            Text(
+                "Or record a realized gain or loss manually below.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         IncomeFormLabel("CRYPTO RESULT")
         IncomeFormOptions(listOf("Gain", "Loss"), state.cryptoType, actions.onCryptoType, !state.isSaving)
         Text("Enter a positive amount. Losses are deducted from realized income.",
@@ -141,7 +157,7 @@ private fun IncomeFormOptions(options: List<String>, selected: String, onSelect:
 
 @Composable
 internal fun IncomeFormTextField(value: String, onValue: (String) -> Unit, placeholder: String, description: String,
-    enabled: Boolean = true, singleLine: Boolean = true, error: String? = null, keyboard: KeyboardType = KeyboardType.Text) {
+                                 enabled: Boolean = true, singleLine: Boolean = true, error: String? = null, keyboard: KeyboardType = KeyboardType.Text) {
     OutlinedTextField(value = value, onValueChange = onValue, placeholder = { Text(placeholder) },
         singleLine = singleLine, minLines = if (singleLine) 1 else 2, maxLines = if (singleLine) 1 else 5,
         enabled = enabled, isError = error != null, keyboardOptions = KeyboardOptions(keyboardType = keyboard),
