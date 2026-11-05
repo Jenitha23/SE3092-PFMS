@@ -38,6 +38,7 @@ import com.pfms.app.ui.screen.history.TransactionHistoryScreen
 import com.pfms.app.domain.model.dashboard.Transaction
 import com.pfms.app.domain.model.dashboard.TransactionType
 
+import com.pfms.app.ui.screen.crypto.CryptoTradingScreen
 import com.pfms.app.ui.screen.income.IncomeAnalyticsScreen
 import com.pfms.app.ui.screen.income.IncomeFormScreen
 import com.pfms.app.ui.screen.income.IncomeListScreen
@@ -600,10 +601,23 @@ fun PfmsNavGraph(
         // ADD INCOME
         // -------------------------------------
 
+        // NEW: Crypto Buy/Sell (automatic gain/loss). Existing income flow retained.
+        composable(Routes.CryptoTrading) {
+            CryptoTradingScreen(
+                onBack = { navController.popBackStack() },
+                onManualGainLoss = {
+                    navController.navigate(Routes.AddIncome) { launchSingleTop = true }
+                }
+            )
+        }
+
         composable(Routes.AddIncome) {
             val incomeState by incomeViewModel.uiState.collectAsStateWithLifecycle()
 
             IncomeFormScreen(
+                onCryptoTrading = {
+                    navController.navigate(Routes.CryptoTrading) { launchSingleTop = true }
+                },
                 onBack = {
                     incomeViewModel.discardDraft()
                     incomeViewModel.clearExchangeRate()
@@ -1058,3 +1072,4 @@ fun PfmsNavGraph(
         )
     }
 }
+

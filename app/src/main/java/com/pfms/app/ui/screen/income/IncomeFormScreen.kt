@@ -1,3 +1,4 @@
+
 package com.pfms.app.ui.screen.income
 
 import androidx.compose.runtime.*
@@ -7,15 +8,23 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import com.pfms.app.domain.model.Income
 import com.pfms.app.viewmodel.IncomeFormBackend
 import com.pfms.app.viewmodel.IncomeFormValues
 import com.pfms.app.viewmodel.IncomeFormViewModel
+
 import java.math.BigDecimal
 
 typealias IncomeFormInput = IncomeFormValues
 
-/** Route adapter: forwards repository state and user actions to the draft ViewModel. */
+/**
+ * Route adapter: forwards repository state and user actions
+ * to the draft ViewModel.
+ *
+ * Supports navigation to the new Crypto Buy/Sell screen
+ * without changing the existing Manual Gain/Loss logic.
+ */
 @Composable
 fun IncomeFormScreen(
     onBack: () -> Unit,
@@ -35,28 +44,97 @@ fun IncomeFormScreen(
     onClearExchangeRate: () -> Unit = {},
     canRetry: Boolean = false,
     isCachedExchangeRate: Boolean = false,
-    isSavedExchangeRate: Boolean = false
+    isSavedExchangeRate: Boolean = false,
+
+    // NEW: Navigation callback for Crypto Buy/Sell
+    onCryptoTrading: () -> Unit = {}
 ) {
-    val draft: IncomeFormViewModel = viewModel(key = "income-form-${initialIncome?.id ?: "new"}",
-        factory = viewModelFactory { initializer { IncomeFormViewModel(createSavedStateHandle(), initialIncome) } })
+
+    val draft: IncomeFormViewModel = viewModel(
+        key = "income-form-${initialIncome?.id ?: "new"}",
+        factory = viewModelFactory {
+            initializer {
+                IncomeFormViewModel(
+                    createSavedStateHandle(),
+                    initialIncome
+                )
+            }
+        }
+    )
+
     val state by draft.state.collectAsStateWithLifecycle()
-    val backend = IncomeFormBackend(isSaving, errorMessage, canRetry, exchangeRate, exchangeRateDate,
-        isRateFetching, rateFetchError, isManualRateMode, isCachedExchangeRate, isSavedExchangeRate)
+
+    val backend = IncomeFormBackend(
+        isSaving,
+        errorMessage,
+        canRetry,
+        exchangeRate,
+        exchangeRateDate,
+        isRateFetching,
+        rateFetchError,
+        isManualRateMode,
+        isCachedExchangeRate,
+        isSavedExchangeRate
+    )
+
     LaunchedEffect(draft, backend) {
         draft.updateBackend(backend)
         draft.ensureRate(onFetchExchangeRate)
     }
-    IncomeFormContent(state, IncomeFormActions(
-        onBack = onBack, onSave = { draft.submit(onSetManualRate, onSave) },
-        onAmount = draft::amountChanged, onSource = draft::sourceChanged,
-        onCurrency = { draft.currencyChanged(it, onFetchExchangeRate, onClearExchangeRate) },
-        onIncrement = draft::increment, onProject = draft::projectChanged, onStatus = draft::statusChanged,
-        onCryptoType = draft::cryptoTypeChanged, onAsset = draft::assetChanged,
-        onNote = draft::noteChanged, onToggleNotes = draft::showNotes,
-        onDatePicker = draft::showDatePicker,
-        onDate = { draft.dateSelected(it, onFetchExchangeRate, onClearExchangeRate) },
-        onInfo = draft::showInfo, onManualRate = draft::manualRateChanged,
-        onEnableManualRate = onEnableManualRate,
-        onRefreshRate = { draft.refreshRate(onFetchExchangeRate) }
-    ), modifier)
+
+    IncomeFormContent(
+        state = state,
+        actions = IncomeFormActions(
+            onBack = onBack,
+
+            onSave = {
+                draft.submit(
+                    onSetManualRate,
+                    onSave
+                )
+            },
+
+            onAmount = draft::amountChanged,
+            onSource = draft::sourceChanged,
+
+            onCurrency = {
+                draft.currencyChanged(
+                    it,
+                    onFetchExchangeRate,
+                    onClearExchangeRate
+                )
+            },
+
+            onIncrement = draft::increment,
+            onProject = draft::projectChanged,
+            onStatus = draft::statusChanged,
+
+            // Existing Manual Crypto Gain/Loss actions
+            onCryptoType = draft::cryptoTypeChanged,
+            onAsset = draft::assetChanged,
+
+            onNote = draft::noteChanged,
+            onToggleNotes = draft::showNotes,
+            onDatePicker = draft::showDatePicker,
+
+            onDate = {
+                draft.dateSelected(
+                    it,
+                    onFetchExchangeRate,
+                    onClearExchangeRate
+                )
+            },
+
+            onInfo = draft::showInfo,
+            onManualRate = draft::manualRateChanged,
+            onEnableManualRate = onEnableManualRate,
+
+            onRefreshRate = {
+                draft.refreshRate(onFetchExchangeRate)
+            },
+            onCryptoTrading = onCryptoTrading,
+            showCryptoTrading = initialIncome == null
+        ),
+        modifier = modifier
+    )
 }
